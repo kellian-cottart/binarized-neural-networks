@@ -76,21 +76,23 @@ class DNN(torch.nn.Module):
         """
         self.load_state_dict(torch.load(path))
 
-    def train_network(self, data, n_epochs, learning_rate=0.01):
+    def train_network(self, train_data, n_epochs, learning_rate=0.01, **kwargs):
         """ Train DNN
 
         Args: 
-            data (torch.utils.data.DataLoader): Training data containing (data, labels) pairs 
+            train_data (torch.utils.data.DataLoader): Training data containing (data, labels) pairs 
+            test_data (torch.utils.data.DataLoader): Testing data containing (data, labels) pairs
             n_epochs (int): Number of training epochs
             learning_rate (float): Learning rate for training
+            *args: Additional arguments such as mnist_test, and fashion_mnist_test
         """
         ### OPTIMIZER ###
         optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
         loss_function = torch.nn.CrossEntropyLoss()
-
+        accuracy_array = []
         ### TRAINING LOOP ###
         for epoch in range(n_epochs):
-            for i, (x, y) in enumerate(data):
+            for i, (x, y) in enumerate(train_data):
                 ### FORWARD PASS ###
                 # Flatten input
                 x = x.view(x.shape[0], -1).to(self.device)
@@ -106,12 +108,19 @@ class DNN(torch.nn.Module):
 
                 ### PRINT LOSS ###
                 # print loss every 10% of all epochs at the first batch
-                if epoch > 10 and epoch % (n_epochs//10) == 0 and i == 0:
+                if n_epochs > 10 and epoch % (n_epochs//10) == 0 and i == 0:
                     print('Epoch: {}/{}, Batch: {}/{}, Loss: {:.4f}'.format(
-                        epoch+1, n_epochs, i+1, len(data), loss.item()))
-                elif epoch < 10 and i == 0:
+                        epoch+1, n_epochs, i+1, len(train_data), loss.item()))
+                elif n_epochs < 10 and i == 0:
                     print('Epoch: {}/{}, Batch: {}/{}, Loss: {:.4f}'.format(
-                        epoch+1, n_epochs, i+1, len(data), loss.item()))
+                        epoch+1, n_epochs, i+1, len(train_data), loss.item()))
+            accuracy = []
+            if 'mnist_test' in kwargs:
+                accuracy.append(self.test(kwargs['mnist_test']))
+            if 'fashion_mnist_test' in kwargs:
+                accuracy.append(self.test(kwargs['fashion_mnist_test']))
+            accuracy_array.append(accuracy)
+        return accuracy_array
 
     def test(self, data):
         """ Test DNN
