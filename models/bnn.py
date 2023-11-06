@@ -1,6 +1,8 @@
 
 import torch
 from .optimizer import SurrogateAdam
+from tqdm import trange
+import time
 
 
 class BinarizedLinear(torch.nn.Linear):
@@ -123,33 +125,21 @@ networks
         loss_function = torch.nn.CrossEntropyLoss()
         accuracy_array = []
         ### TRAINING ###
-        for epoch in range(n_epochs):
+        pbar = trange(n_epochs, desc='Initialization')
+        for epoch in pbar:
             # Set the network to training mode
-            self.train()
             for i, (x, y) in enumerate(train_data):
                 ### FORWARD PASS ###
                 # Flatten input
                 x = x.view(x.shape[0], -1).to(self.device)
                 y = y.to(self.device)
-                y_hat = self.forward(x).to(self.device)
-
+                y_hat = self.forward(x)
                 ### LOSS ###
                 loss = loss_function(y_hat, y)
-
                 ### BACKWARD PASS ###
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-
-                ### PRINT LOSS ###
-                # print loss every 10% of all epochs at the first batch
-                if n_epochs > 10 and epoch % (n_epochs//10) == 0 and i == 0:
-                    print('Epoch: {}/{}, Batch: {}/{}, Loss: {:.4f}'.format(
-                        epoch+1, n_epochs, i+1, len(train_data), loss.item()))
-                elif n_epochs < 10 and i == 0:
-                    print('Epoch: {}/{}, Batch: {}/{}, Loss: {:.4f}'.format(
-                        epoch+1, n_epochs, i+1, len(train_data), loss.item()))
-
             ### EVALUATE ###
             accuracy = []
             if 'mnist_test' in kwargs:
@@ -157,6 +147,10 @@ networks
             if 'fashion_mnist_test' in kwargs:
                 accuracy.append(self.test(kwargs['fashion_mnist_test']))
             accuracy_array.append(accuracy)
+            # Set postfix w/ all accuracies
+            pbar.set_description(f"Epoch {epoch+1}/{n_epochs}")
+            pbar.set_postfix(
+                loss=loss.item(), mnist_test=accuracy[0], fashion_mnist_test=accuracy[1])
         return accuracy_array
 
     def test(self, data):
@@ -202,3 +196,19 @@ networks
             # Retrieve the most likely class
             _, predicted = torch.max(y_pred.data, 1)
         return predicted
+
+    def save_state(self, path):
+        """ Save the state of the network
+
+        Args:
+            path (str): Path to save the state of the network
+        """
+        torch.save(self.state_dict(), path)
+
+    def load_state(self, path):
+        """ Load the state of the network
+
+        Args:
+            path (str): Path to load the state of the network
+        """
+        self.load_state_dict(torch.load(path))
