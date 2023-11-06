@@ -25,11 +25,31 @@ class BinarizedLinear(torch.nn.Linear):
         self.weight.data = torch.sign(self.weight.buffer)
         output = torch.nn.functional.linear(input, self.weight)
 
-        # Remove bias
-        if self.bias is not None:
-            output -= self.bias.view(1, -1).expand_as(output)
-
+        # Add the bias term
+        if not self.bias is None:
+            self.bias.buffer = self.bias.data.clone()
+            output += self.bias.view(1, -1).expand_as(output)
         return output
+
+
+class SignActivation(torch.autograd.Function):
+    """ Sign Activation Function
+
+    Allows for backpropagation of the sign function
+    """
+
+    @staticmethod
+    def forward(ctx, i):
+        result = i.sign()
+        ctx.save_for_backward(i)
+        return result
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        i, = ctx.saved_tensors
+        grad_i = grad_output.clone()
+        grad_i[i.abs() > 1.0] = 0
+        return grad_i
 
 
 class BNN(torch.nn.Module):
@@ -65,26 +85,28 @@ networks
                 layers[i+1], affine=True, track_running_stats=True, device=device))
 
         ### WEIGHT INITIALIZATION ###
-        for i in range(self.n_layers+1):
+        for layer in self.layers[::2]:
             if init == 'gauss':
                 torch.nn.init.normal_(
-                    self.layers[i].weight, mean=0.0, std=std)
+                    layer.weight, mean=0.0, std=std)
             elif init == 'uniform':
                 torch.nn.init.uniform_(
-                    self.layers[i].weight, a=-std/2, b=std/2)
+                    layer.weight, a=-std/2, b=std/2)
             elif init == 'xavier':
-                torch.nn.init.xavier_normal_(self.layers[i].weight)
+                torch.nn.init.xavier_normal_(layer.weight)
 
     def forward(self, x):
         """Forward propagation of the binarized neural network"""
-        for layer in self.layers:
-            x = layer(x)
-            if layer != self.layers[-1]:
-                # Activation function is the sign function
-                x = torch.sign(x).to(self.device)
+        # For each pair of layers (binarized_linear + batchnorm)
+        for binarized_linear, batchnorm in zip(self.layers[::2], self.layers[1::2]):
+            x = binarized_linear(x)
+            x = batchnorm(x)
+            if batchnorm != self.layers[-1]:
+                # Apply the sign function to the output of the batchnorm layer
+                x = SignActivation.apply(x)
         return x
 
-    def train_network(self, train_data, n_epochs, learning_rate=0.01, metaplasticity=0, **kwargs):
+    def train_network(self, train_data, n_epochs, learning_rate=0.01, metaplasticity=0, weight_decay=0.01, **kwargs):
         """Train the binarized neural network
 
         Args:
@@ -97,29 +119,36 @@ networks
         """
         ### OPTIMIZER ###
         optimizer = SurrogateAdam(
-            self.parameters(), lr=learning_rate, metaplasticity=metaplasticity)
+            self.parameters(), lr=learning_rate, metaplasticity=metaplasticity, weight_decay=weight_decay)
         loss_function = torch.nn.CrossEntropyLoss()
         accuracy_array = []
         ### TRAINING ###
-        accuracy = []
         for epoch in range(n_epochs):
             # Set the network to training mode
             self.train()
-            for x, y in train_data:
-                # Forward pass
+            for i, (x, y) in enumerate(train_data):
+                ### FORWARD PASS ###
+                # Flatten input
                 x = x.view(x.shape[0], -1).to(self.device)
                 y = y.to(self.device)
-                y_hat = self.forward(x)
+                y_hat = self.forward(x).to(self.device)
 
-                # Loss function
+                ### LOSS ###
                 loss = loss_function(y_hat, y)
 
-                # Backward pass
-                # but we cannot backpropagate through the sign function using adam
-                # we have to use a surrogate gradient using hardtanh
+                ### BACKWARD PASS ###
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+
+                ### PRINT LOSS ###
+                # print loss every 10% of all epochs at the first batch
+                if n_epochs > 10 and epoch % (n_epochs//10) == 0 and i == 0:
+                    print('Epoch: {}/{}, Batch: {}/{}, Loss: {:.4f}'.format(
+                        epoch+1, n_epochs, i+1, len(train_data), loss.item()))
+                elif n_epochs < 10 and i == 0:
+                    print('Epoch: {}/{}, Batch: {}/{}, Loss: {:.4f}'.format(
+                        epoch+1, n_epochs, i+1, len(train_data), loss.item()))
 
             ### EVALUATE ###
             accuracy = []
@@ -128,8 +157,7 @@ networks
             if 'fashion_mnist_test' in kwargs:
                 accuracy.append(self.test(kwargs['fashion_mnist_test']))
             accuracy_array.append(accuracy)
-
-        return accuracy
+        return accuracy_array
 
     def test(self, data):
         """ Test DNN

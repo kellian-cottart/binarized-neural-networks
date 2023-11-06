@@ -173,7 +173,7 @@ class SurrogateAdam(torch.optim.Optimizer):
             max_exp_avg_sqs = []
             state_steps = []
             beta1, beta2 = group['betas']
-            metaplaticity = group['metaplasticity']
+            metaplasticity = group['metaplasticity']
 
             self._init_group(
                 group,
@@ -196,7 +196,7 @@ class SurrogateAdam(torch.optim.Optimizer):
                 amsgrad=group['amsgrad'],
                 beta1=beta1,
                 beta2=beta2,
-                metaplasticity=metaplaticity,
+                metaplasticity=metaplasticity,
                 lr=group['lr'],
                 weight_decay=group['weight_decay'],
                 eps=group['eps'],
@@ -205,7 +205,6 @@ class SurrogateAdam(torch.optim.Optimizer):
                 differentiable=group['differentiable'],
                 grad_scale=getattr(self, "grad_scale", None),
             )
-
         return loss
 
 
@@ -261,7 +260,7 @@ def adam_metaplasticity(params: List[torch.Tensor],
 
         # Decay the first and second moment running average coefficient
         exp_avg.lerp_(grad, 1 - beta1)
-        exp_avg_sq.mul_(beta2).addcmul_(grad, grad.conj(), value=1 - beta2)
+        exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
 
         step = _get_value(step_t)
 
@@ -276,13 +275,11 @@ def adam_metaplasticity(params: List[torch.Tensor],
                 max_exp_avg_sqs[i], exp_avg_sq, out=max_exp_avg_sqs[i])
 
             # Use the max. for normalizing running avg. of gradient
-            denom = (max_exp_avg_sqs[i].sqrt() /
-                     bias_correction2_sqrt).add_(eps)
+            denom = (max_exp_avg_sqs[i].sqrt()).add_(eps)
         else:
-            denom = (exp_avg_sq.sqrt() /
-                     bias_correction2_sqrt).add_(eps)
+            denom = (exp_avg_sq.sqrt()).add_(eps)
 
-        step_size = lr / bias_correction1
+        step_size = lr * bias_correction2_sqrt / bias_correction1
 
         # Get the binary weights
         binary_weights = torch.sign(param.data)
@@ -290,15 +287,14 @@ def adam_metaplasticity(params: List[torch.Tensor],
         # If the condition for the metaplastic update is met (i.e., the binary weights and the exponential average have the same sign), update the metaplasticity
         metaplastic_computation = torch.nn.functional.hardtanh(
             torch.mul(metaplasticity, param.data))
-        metaplastic_condition = torch.mul(binary_weights, exp_avg) > 0
+        metaplastic_condition = torch.mul(binary_weights, exp_avg) > 0.0
 
-        # Update the exponential average
-        decayed_exp_avg = torch.mul(exp_avg, metaplastic_computation)
-
-        if len(param.size()) == 1:
+        if param.dim() == 1:
             # Update the bias
             param.data.addcdiv_(exp_avg, denom, value=-step_size)
         else:
+            # Update the exponential average
+            decayed_exp_avg = torch.mul(metaplastic_computation, exp_avg)
             # Update the weights with the metaplasticity
             param.data.addcdiv_(torch.where(metaplastic_condition,
                                             decayed_exp_avg, exp_avg), denom, value=-step_size)
