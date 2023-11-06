@@ -92,6 +92,8 @@ class DNN(torch.nn.Module):
         accuracy_array = []
         ### TRAINING LOOP ###
         for epoch in range(n_epochs):
+            # Set model to training mode
+            self.train()
             for i, (x, y) in enumerate(train_data):
                 ### FORWARD PASS ###
                 # Flatten input
@@ -114,6 +116,8 @@ class DNN(torch.nn.Module):
                 elif n_epochs < 10 and i == 0:
                     print('Epoch: {}/{}, Batch: {}/{}, Loss: {:.4f}'.format(
                         epoch+1, n_epochs, i+1, len(train_data), loss.item()))
+
+            ### EVALUATE ###
             accuracy = []
             if 'mnist_test' in kwargs:
                 accuracy.append(self.test(kwargs['mnist_test']))

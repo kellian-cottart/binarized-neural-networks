@@ -39,21 +39,19 @@ if __name__ == "__main__":
     all_test = {'mnist_test': mnist_test,
                 'fashion_mnist_test': fashion_mnist_test}
 
-    ### CREATE DNN ###
     input_size = mnist_train.dataset.data.shape[1] * \
         mnist_train.dataset.data.shape[2]
-    dnn = models.DNN([input_size, 128, 64, 10], init='gauss', device=DEVICE)
 
-    ### TRAIN DNN w/ MNIST ###
-    mnist_accuracy = dnn.train_network(
-        mnist_train, n_epochs=50, learning_rate=0.01, **all_test)
+    bnn = models.BNN([input_size, 128, 64, 10], init='gauss', device=DEVICE)
 
-    ### TRAIN DNN w/ Fashion-MNIST ###
-    fmnist_accuracy = dnn.train_network(fashion_mnist_train, n_epochs=50,
-                                        learning_rate=0.01, **all_test)
+    mnist_accuracy = bnn.train_network(
+        mnist_train, n_epochs=50, learning_rate=0.01, metaplasticity=0, **all_test)
+
+    fmnist_accuracy = bnn.train_network(fashion_mnist_train, n_epochs=50,
+                                        learning_rate=0.01, metaplasticity=0, **all_test)
 
     ### VISUALIZE ACCURACY ###
     t_epoch = 100
     t_accuracy = torch.tensor(mnist_accuracy + fmnist_accuracy)
     os.makedirs(ARRAY_PATH, exist_ok=True)
-    torch.save(t_accuracy, os.path.join(ARRAY_PATH, 't_accuracy.pt'))
+    torch.save(t_accuracy, os.path.join(ARRAY_PATH, 't_accuracy-bnn.pt'))
