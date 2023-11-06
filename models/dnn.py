@@ -31,15 +31,15 @@ class DNN(torch.nn.Module):
                 layers[i+1], affine=True, track_running_stats=True, device=device))
 
         ### WEIGHT INITIALIZATION ###
-        for i in range(self.n_layers+1):
+        for layer in self.layers[::2]:
             if init == 'gauss':
                 torch.nn.init.normal_(
-                    self.layers[i].weight, mean=0.0, std=std)
+                    layer.weight, mean=0.0, std=std)
             elif init == 'uniform':
                 torch.nn.init.uniform_(
-                    self.layers[i].weight, a=-std/2, b=std/2)
+                    layer.weight, a=-std/2, b=std/2)
             elif init == 'xavier':
-                torch.nn.init.xavier_normal_(self.layers[i].weight)
+                torch.nn.init.xavier_normal_(layer.weight)
 
     def forward(self, x):
         """ Forward pass of DNN
@@ -52,10 +52,12 @@ class DNN(torch.nn.Module):
 
         """
         ### FORWARD PASS ###
-        for layer in self.layers:
-            x = layer(x)
-            if layer != self.layers[-1]:
-                x = torch.nn.functional.relu(x).to(self.device)
+        # For each pair of layers (linear + batchnorm)
+        for linear, batchnorm in zip(self.layers[::2], self.layers[1::2]):
+            x = linear(x)
+            x = batchnorm(x)
+            if batchnorm != self.layers[-1]:
+                x = torch.nn.functional.relu(x)
         return x
 
     def save_state(self, path):
@@ -76,7 +78,7 @@ class DNN(torch.nn.Module):
         """
         self.load_state_dict(torch.load(path))
 
-    def train_network(self, train_data, n_epochs, learning_rate=0.01, **kwargs):
+    def train_network(self, train_data, n_epochs, learning_rate=0.01, weight_decay=0.01, **kwargs):
         """ Train DNN
 
         Args: 
@@ -87,7 +89,8 @@ class DNN(torch.nn.Module):
             *args: Additional arguments such as mnist_test, and fashion_mnist_test
         """
         ### OPTIMIZER ###
-        optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
+        optimizer = torch.optim.Adam(
+            self.parameters(), lr=learning_rate, weight_decay=weight_decay)
         loss_function = torch.nn.CrossEntropyLoss()
         accuracy_array = []
         ### TRAINING LOOP ###
