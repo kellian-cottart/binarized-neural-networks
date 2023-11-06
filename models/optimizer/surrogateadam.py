@@ -254,21 +254,18 @@ def adam_metaplasticity(params: List[torch.Tensor],
 
         # Update step
         step_t += 1
-
         if weight_decay != 0:
-            grad = grad.add(param, alpha=weight_decay)
+            grad = grad.add(param.data, alpha=weight_decay)
 
         # Decay the first and second moment running average coefficient
         exp_avg.lerp_(grad, 1 - beta1)
         exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
 
         step = _get_value(step_t)
-
         bias_correction1 = 1 - beta1 ** step
         bias_correction2 = 1 - beta2 ** step
         # Get the bias correction for the second moment
         bias_correction2_sqrt = _dispatch_sqrt(bias_correction2)
-
         if amsgrad:
             # Maintains the maximum of all 2nd moment running avg. till now
             torch.maximum(
@@ -278,18 +275,13 @@ def adam_metaplasticity(params: List[torch.Tensor],
             denom = (max_exp_avg_sqs[i].sqrt()).add_(eps)
         else:
             denom = (exp_avg_sq.sqrt()).add_(eps)
-
         step_size = lr * bias_correction2_sqrt / bias_correction1
-
-        # Get the binary weights
-        binary_weights = torch.sign(param.data)
-
         # If the condition for the metaplastic update is met (i.e., the binary weights and the exponential average have the same sign), update the metaplasticity
         metaplastic_computation = torch.nn.functional.hardtanh(
             torch.mul(metaplasticity, param.data))
-        metaplastic_condition = torch.mul(binary_weights, exp_avg) > 0.0
-
-        if param.dim() == 1:
+        metaplastic_condition = torch.mul(
+            torch.sign(param).data, exp_avg) > 0.0
+        if param.data.dim() == 1:
             # Update the bias
             param.data.addcdiv_(exp_avg, denom, value=-step_size)
         else:

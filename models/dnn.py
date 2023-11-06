@@ -1,4 +1,5 @@
 import torch
+from tqdm import trange
 
 
 class DNN(torch.nn.Module):
@@ -94,32 +95,22 @@ class DNN(torch.nn.Module):
         loss_function = torch.nn.CrossEntropyLoss()
         accuracy_array = []
         ### TRAINING LOOP ###
-        for epoch in range(n_epochs):
+        pbar = trange(n_epochs, desc='Initialization')
+        for epoch in pbar:
             # Set model to training mode
-            self.train()
             for i, (x, y) in enumerate(train_data):
                 ### FORWARD PASS ###
                 # Flatten input
                 x = x.view(x.shape[0], -1).to(self.device)
-                y_pred = self.forward(x).to(self.device)
+                y = y.to(self.device)
+                y_pred = self.forward(x)
 
                 ### LOSS ###
-                loss = loss_function(y_pred, y.to(self.device))
-
+                loss = loss_function(y_pred, y)
                 ### BACKWARD PASS ###
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-
-                ### PRINT LOSS ###
-                # print loss every 10% of all epochs at the first batch
-                if n_epochs > 10 and epoch % (n_epochs//10) == 0 and i == 0:
-                    print('Epoch: {}/{}, Batch: {}/{}, Loss: {:.4f}'.format(
-                        epoch+1, n_epochs, i+1, len(train_data), loss.item()))
-                elif n_epochs < 10 and i == 0:
-                    print('Epoch: {}/{}, Batch: {}/{}, Loss: {:.4f}'.format(
-                        epoch+1, n_epochs, i+1, len(train_data), loss.item()))
-
             ### EVALUATE ###
             accuracy = []
             if 'mnist_test' in kwargs:
@@ -127,6 +118,10 @@ class DNN(torch.nn.Module):
             if 'fashion_mnist_test' in kwargs:
                 accuracy.append(self.test(kwargs['fashion_mnist_test']))
             accuracy_array.append(accuracy)
+            # Set postfix w/ all accuracies
+            pbar.set_description(f"Epoch {epoch+1}/{n_epochs}")
+            pbar.set_postfix(
+                loss=loss.item(), mnist_test=accuracy[0], fashion_mnist_test=accuracy[1])
         return accuracy_array
 
     def test(self, data):
