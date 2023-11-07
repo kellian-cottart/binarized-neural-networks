@@ -2,7 +2,6 @@
 import torch
 from .optimizer import SurrogateAdam
 from tqdm import trange
-import time
 
 
 class BinarizedLinear(torch.nn.Linear):
@@ -19,7 +18,7 @@ class BinarizedLinear(torch.nn.Linear):
         """
 
         """
-        # Put the binary weight in a buffer
+        # Set the hidden weights
         if not hasattr(self.weight, 'buffer'):
             self.weight.buffer = self.weight.data.clone()
 
@@ -28,16 +27,16 @@ class BinarizedLinear(torch.nn.Linear):
         output = torch.nn.functional.linear(input, self.weight)
 
         # Add the bias term
-        if not self.bias is None:
+        if self.bias is not None:
             self.bias.buffer = self.bias.data.clone()
             output += self.bias.view(1, -1).expand_as(output)
         return output
 
 
-class SignActivation(torch.autograd.Function):
+class Sign(torch.autograd.Function):
     """ Sign Activation Function
 
-    Allows for backpropagation of the sign function
+    Allows for backpropagation of the sign function because it is not differentiable
     """
 
     @staticmethod
@@ -105,7 +104,7 @@ networks
             x = batchnorm(x)
             if batchnorm != self.layers[-1]:
                 # Apply the sign function to the output of the batchnorm layer
-                x = SignActivation.apply(x)
+                x = Sign.apply(x)
         return x
 
     def train_network(self, train_data, n_epochs, learning_rate=0.01, metaplasticity=0, weight_decay=0.01, **kwargs):
@@ -120,8 +119,8 @@ networks
             list: List of accuracies for each epoch
         """
         ### OPTIMIZER ###
-        optimizer = SurrogateAdam(
-            self.parameters(), lr=learning_rate, metaplasticity=metaplasticity, weight_decay=weight_decay)
+        optimizer = SurrogateAdam(self.parameters(
+        ), lr=learning_rate, metaplasticity=metaplasticity, weight_decay=weight_decay)
         loss_function = torch.nn.CrossEntropyLoss()
         accuracy_array = []
         ### TRAINING ###
@@ -139,7 +138,16 @@ networks
                 ### BACKWARD PASS ###
                 optimizer.zero_grad()
                 loss.backward()
+                # Copy the weights in the buffer to the weights
+                for param in list(self.parameters()):
+                    if hasattr(param, 'buffer'):
+                        param.data.copy_(param.buffer)
+                # Do a step of the optimizer
                 optimizer.step()
+                # Copy the buffer to the weights # to avoid binary weights
+                for param in list(self.parameters()):
+                    if hasattr(param, 'buffer'):
+                        param.buffer.copy_(param.data)
             ### EVALUATE ###
             accuracy = []
             if 'mnist_test' in kwargs:
