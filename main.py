@@ -4,7 +4,6 @@ import torch
 import matplotlib.pyplot as plt
 import os
 import datetime
-import time
 
 ### GLOBAL VARIABLES ###
 SEED = 2506
@@ -12,7 +11,7 @@ BATCH_SIZE = 100
 LEARNING_RATE = 0.005
 WEIGHT_DECAY = 1e-8
 METAPLASTICITY = 1.5
-N_EPOCHS = 10
+N_EPOCHS = 50
 STD = 0.1
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
