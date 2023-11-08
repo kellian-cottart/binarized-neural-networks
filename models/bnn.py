@@ -144,7 +144,7 @@ networks
                         param.data.copy_(param.buffer)
                 # Do a step of the optimizer
                 optimizer.step()
-                # Copy the buffer to the weights # to avoid binary weights
+                # Copy the buffer to the weights
                 for param in list(self.parameters()):
                     if hasattr(param, 'buffer'):
                         param.buffer.copy_(param.data)
