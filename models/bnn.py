@@ -90,16 +90,8 @@ networks
                 ### BACKWARD PASS ###
                 optimizer.zero_grad()
                 loss.backward()
-                # Copy the weights in the buffer to the weights
-                for param in list(self.parameters()):
-                    if hasattr(param, 'buffer'):
-                        param.data.copy_(param.buffer)
                 # Do a step of the optimizer
                 optimizer.step()
-                # Copy the buffer to the weights
-                for param in list(self.parameters()):
-                    if hasattr(param, 'buffer'):
-                        param.buffer.copy_(param.data)
             ### EVALUATE ###
             accuracy = []
             if 'mnist_test' in kwargs:
