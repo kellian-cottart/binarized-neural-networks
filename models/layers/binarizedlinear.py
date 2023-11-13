@@ -45,17 +45,8 @@ class BinarizedLinear(torch.nn.Linear):
             self.weight.data.sign_()
             self.bias.data.sign_() if self.bias is not None else None
             return torch.nn.functional.linear(input, self.weight, self.bias)
-
-        # Set the hidden weights
-        if not hasattr(self.weight, 'buffer'):
-            self.weight.buffer = self.weight.data.clone()
-
-        # Binarize the weights based on the sign of the hidden weights
-        self.weight.data = torch.sign(self.weight.buffer)
-        output = torch.nn.functional.linear(input, self.weight)
-
-        # Add the bias term
-        if self.bias is not None:
-            self.bias.buffer = self.bias.data.clone()
-            output += self.bias.view(1, -1).expand_as(output)
-        return output
+        else:
+            if self.bias:
+                return torch.nn.functional.linear(input, Sign.apply(self.weight), Sign.apply(self.bias))
+            else:
+                return torch.nn.functional.linear(input, Sign.apply(self.weight))

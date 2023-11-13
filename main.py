@@ -38,12 +38,12 @@ if __name__ == "__main__":
 
     ### NETWORKS ###
     networks_data = {
-        # "BNNO": {
-        #     "model": models.BNNO([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE),
-        #     "parameters": {'n_epochs': N_EPOCHS, 'learning_rate': LEARNING_RATE,
-        #                    'weight_decay': WEIGHT_DECAY, 'metaplasticity': METAPLASTICITY, 'gamma': 0.1, 'threshold': 1e-7, **all_test},
-        #     "accuracy": []
-        # },
+        "BNNO": {
+            "model": models.BNNO([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE),
+            "parameters": {'n_epochs': N_EPOCHS, 'learning_rate': LEARNING_RATE,
+                           'weight_decay': WEIGHT_DECAY, 'metaplasticity': METAPLASTICITY, 'gamma': 0.1, 'threshold': 1e-7, **all_test},
+            "accuracy": []
+        },
         "BNN wout Meta": {
             "model": models.BNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE),
             "parameters": {'n_epochs': N_EPOCHS, 'learning_rate': LEARNING_RATE,
