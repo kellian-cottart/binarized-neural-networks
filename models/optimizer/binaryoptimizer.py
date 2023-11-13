@@ -12,10 +12,9 @@ class BinaryOptimizer(torch.optim.Optimizer):
     Args:
         params (iterable): iterable of parameters to optimize or dicts defining
             parameter groups
-        lr (float): learning rate
+        gamma (float): momentum factor (analogue to the learning rate)
+        threshold (float): threshold for flipping the sign of the weights
         metaplasticity (float): metaplasticity value
-        betas (Tuple[float, float]): coefficients used for computing
-            running averages of gradient and its square
         eps (float): term added to the denominator to improve
             numerical stability
         weight_decay (float): weight decay (L2 penalty)
@@ -26,7 +25,6 @@ class BinaryOptimizer(torch.optim.Optimizer):
 
     def __init__(self,
                  params: params_t,
-                 lr: Union[float, torch.Tensor] = 1e-3,
                  gamma: float = 1e-2,
                  threshold: float = 1e-7,
                  metaplasticity: float = 0.1,
@@ -34,8 +32,6 @@ class BinaryOptimizer(torch.optim.Optimizer):
                  weight_decay: float = 0,
                  amsgrad: bool = False,
                  maximize: bool = False,):
-        if not 0.0 <= lr:
-            raise ValueError(f"Invalid learning rate: {lr}")
         if not 0.0 <= metaplasticity:
             raise ValueError(f"Invalid metaplasticity value: {metaplasticity}")
         if not 0.0 <= eps:
@@ -47,7 +43,7 @@ class BinaryOptimizer(torch.optim.Optimizer):
         if not 0.0 <= weight_decay:
             raise ValueError(f"Invalid weight_decay value: {weight_decay}")
 
-        defaults = dict(lr=lr, gamma=gamma, threshold=threshold, metaplasticity=metaplasticity, eps=eps,
+        defaults = dict(gamma=gamma, threshold=threshold, metaplasticity=metaplasticity, eps=eps,
                         weight_decay=weight_decay, amsgrad=amsgrad, maximize=maximize)
         super().__init__(params, defaults)
 
@@ -169,7 +165,6 @@ class BinaryOptimizer(torch.optim.Optimizer):
                 gamma=gamma,
                 threshold=threshold,
                 metaplasticity=metaplasticity,
-                lr=group['lr'],
                 weight_decay=group['weight_decay'],
                 eps=group['eps'],
                 maximize=group['maximize'],
@@ -191,7 +186,6 @@ def binary_optimizer(params: List[torch.Tensor],
                      gamma: float,
                      threshold: float,
                      metaplasticity: float,
-                     lr: Union[float, torch.Tensor],
                      weight_decay: float,
                      eps: float,
                      maximize: bool):
@@ -200,6 +194,7 @@ def binary_optimizer(params: List[torch.Tensor],
     """
     for i, param in enumerate(params):
         grad = grads[i] if not maximize else -grads[i]
+        momentum = exp_avgs[i]
         step_t = state_steps[i]
 
         # Update step
@@ -208,26 +203,15 @@ def binary_optimizer(params: List[torch.Tensor],
             grad = grad.add(param.data, alpha=weight_decay)
 
         # Decay the first and second moment running average coefficient
-        # exp_avg.mul_(gamma).add_(grad, alpha=1 - gamma)
+        # .mul_(gamma).add_(grad, alpha=1 - gamma)
         # exp_avg_sq.mul_(gamma).addcmul_(grad, grad, value=1 - gamma)
 
         # Get the local learning rate
         # step = _get_value(step_t)
 
-        # Copy the gradient into the momentum
-        momentum = torch.clone(grad)
-
         # Decay momentum running average coefficient
-        momentum.mul_(1-gamma).add_(grad, alpha=gamma)
+        momentum.mul_(1-gamma).add_(grad.data, alpha=gamma)
 
-        # Condition for flipping the sign of the weights
-        condition = (momentum.sign() == param.data.sign()) * \
-            (momentum.abs() > threshold)
-
-        # Transform the condition to a tensor of {-1, 1} values by casting to float
-        # Where the condition is False, the weights must not be flipped
-        condition = condition.double() * -1
-        condition[condition == 0] = 1
-
-        # Update the weights
-        param.data.mul_(condition)
+        # Update the weights by flipping the sign of the weights if the threshold is reached
+        param.data = torch.sign(-torch.sign(param.data *
+                                            momentum - threshold) * param.data)
