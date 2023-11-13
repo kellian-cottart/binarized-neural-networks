@@ -213,5 +213,5 @@ def binary_optimizer(params: List[torch.Tensor],
         momentum.mul_(1-gamma).add_(grad.data, alpha=gamma)
 
         # Update the weights by flipping the sign of the weights if the threshold is reached
-        param.data = torch.sign(-torch.sign(param.data *
-                                            momentum - threshold) * param.data)
+        param.data = -torch.sign(param.data *
+                                 momentum - threshold) * param.data
