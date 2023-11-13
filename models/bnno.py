@@ -1,21 +1,19 @@
 
 import torch
-from .optimizer import SurrogateAdam
+from .optimizer import BinaryOptimizer
 from .layers import *
 from tqdm import trange
 
 
-class BNN(torch.nn.Module):
-    """ Binarized Neural Network (BNN) 
+class BNNO(torch.nn.Module):
+    """ Binarized Neural Network (BNN) with BOP (Binary Optimizer)
 
-    Neural Network with binary weights and activations, using hidden weights called "degrees of certainty" (DOCs) to approximate real-valued weights.
+    Neural Network with binary weights and activations, not using latent weights.
 
-    Axel Laborieux et al., Synaptic metaplasticity in binarized neural
-networks
     """
 
-    def __init__(self, layers=[512], init='gauss', std=0.01, device='cuda'):
-        """ Initialize BNN
+    def __init__(self, layers=[512], init='normal', std=0.01, device='cuda'):
+        """ Initialize BNNO
 
         Args: 
             layers (list): List of layer sizes (including input and output layers)
@@ -24,7 +22,7 @@ networks
             device (str): Device to use for computation (e.g. 'cuda' or 'cpu')
 
         """
-        super(BNN, self).__init__()
+        super(BNNO, self).__init__()
         self.n_layers = len(layers)-2
         self.layers = torch.nn.ModuleList()
         self.device = device
@@ -33,11 +31,12 @@ networks
         for i in range(self.n_layers+1):
             # Linear layers with BatchNorm
             self.layers.append(BinarizedLinear(
-                layers[i], layers[i+1], bias=False, device=device))
+                layers[i], layers[i+1], bias=False, device=device, latent_weights=False))
             self.layers.append(torch.nn.BatchNorm1d(
                 layers[i+1], affine=True, track_running_stats=True, device=device))
 
         ### WEIGHT INITIALIZATION ###
+        # Init weights
         for layer in self.layers[::2]:
             if init == 'gauss':
                 torch.nn.init.normal_(
@@ -59,7 +58,7 @@ networks
                 x = Sign.apply(x)
         return x
 
-    def train_network(self, train_data, n_epochs, learning_rate=0.01, metaplasticity=0, weight_decay=0.01, **kwargs):
+    def train_network(self, train_data, n_epochs, learning_rate=0.01, metaplasticity=0, weight_decay=0.01, gamma=1e-3, threshold=1e-7, **kwargs):
         """Train the binarized neural network
 
         Args:
@@ -71,8 +70,8 @@ networks
             list: List of accuracies for each epoch
         """
         ### OPTIMIZER ###
-        optimizer = SurrogateAdam(self.parameters(
-        ), lr=learning_rate, metaplasticity=metaplasticity, weight_decay=weight_decay)
+        optimizer = BinaryOptimizer(self.parameters(), lr=learning_rate, gamma=gamma, threshold=threshold,
+                                    metaplasticity=metaplasticity, weight_decay=weight_decay)
         loss_function = torch.nn.CrossEntropyLoss()
         accuracy_array = []
         ### TRAINING ###
@@ -90,16 +89,8 @@ networks
                 ### BACKWARD PASS ###
                 optimizer.zero_grad()
                 loss.backward()
-                # Copy the weights in the buffer to the weights
-                for param in list(self.parameters()):
-                    if hasattr(param, 'buffer'):
-                        param.data.copy_(param.buffer)
                 # Do a step of the optimizer
                 optimizer.step()
-                # Copy the buffer to the weights
-                for param in list(self.parameters()):
-                    if hasattr(param, 'buffer'):
-                        param.buffer.copy_(param.data)
             ### EVALUATE ###
             accuracy = []
             if 'mnist_test' in kwargs:

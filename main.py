@@ -9,9 +9,12 @@ BATCH_SIZE = 100
 LEARNING_RATE = 0.005
 WEIGHT_DECAY = 1e-8
 METAPLASTICITY = 1.5
-N_EPOCHS = 50
+N_EPOCHS = 10
 STD = 0.1
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# For bnno
+GAMMA = 1e-3
+THRESHOLD = 1e-6
 
 ### PATHS ###
 SAVE_FOLDER = "saved"
@@ -35,24 +38,18 @@ if __name__ == "__main__":
 
     ### NETWORKS ###
     networks_data = {
-        "DNN": {
-            "model": models.DNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE),
-            "parameters": {'n_epochs': N_EPOCHS, 'learning_rate': LEARNING_RATE,
-                           'weight_decay': WEIGHT_DECAY, **all_test},
-            "accuracy": []
-        },
+        # "BNNO": {
+        #     "model": models.BNNO([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE),
+        #     "parameters": {'n_epochs': N_EPOCHS, 'learning_rate': LEARNING_RATE,
+        #                    'weight_decay': WEIGHT_DECAY, 'metaplasticity': METAPLASTICITY, 'gamma': 0.1, 'threshold': 1e-7, **all_test},
+        #     "accuracy": []
+        # },
         "BNN wout Meta": {
             "model": models.BNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE),
             "parameters": {'n_epochs': N_EPOCHS, 'learning_rate': LEARNING_RATE,
                            'weight_decay': WEIGHT_DECAY, 'metaplasticity': 0, **all_test},
             "accuracy": []
         },
-        "BNN w Meta": {
-            "model": models.BNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE),
-            "parameters": {'n_epochs': N_EPOCHS, 'learning_rate': LEARNING_RATE,
-                           'weight_decay': WEIGHT_DECAY, 'metaplasticity': METAPLASTICITY, **all_test},
-            "accuracy": []
-        }
     }
 
     for name, data in networks_data.items():
