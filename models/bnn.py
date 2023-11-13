@@ -1,6 +1,6 @@
 
 import torch
-from .optimizer import SurrogateAdam
+from .optimizer import *
 from .layers import *
 from tqdm import trange
 
@@ -14,7 +14,7 @@ class BNN(torch.nn.Module):
 networks
     """
 
-    def __init__(self, layers=[512], init='gauss', std=0.01, device='cuda'):
+    def __init__(self, layers=[512], init='gauss', std=0.01, device='cuda', latent_weights=True):
         """ Initialize BNN
 
         Args: 
@@ -22,18 +22,20 @@ networks
             init (str): Initialization method for weights
             std (float): Standard deviation for initialization
             device (str): Device to use for computation (e.g. 'cuda' or 'cpu')
+            latent_weights (bool): Whether to use latent weights or not
 
         """
         super(BNN, self).__init__()
         self.n_layers = len(layers)-2
         self.layers = torch.nn.ModuleList()
         self.device = device
+        self.latent_weights = latent_weights
 
         ### LAYER INITIALIZATION ###
         for i in range(self.n_layers+1):
             # Linear layers with BatchNorm
             self.layers.append(BinarizedLinear(
-                layers[i], layers[i+1], bias=False, device=device))
+                layers[i], layers[i+1], bias=False, device=device, latent_weights=latent_weights))
             self.layers.append(torch.nn.BatchNorm1d(
                 layers[i+1], affine=True, track_running_stats=True, device=device))
 
@@ -59,7 +61,7 @@ networks
                 x = Sign.apply(x)
         return x
 
-    def train_network(self, train_data, n_epochs, learning_rate=0.01, metaplasticity=0, weight_decay=0.01, **kwargs):
+    def train_network(self, train_data, n_epochs, learning_rate=0.01, metaplasticity=0, weight_decay=0.01, gamma=1e-3, threshold=1e-6, **kwargs):
         """Train the binarized neural network
 
         Args:
@@ -71,8 +73,12 @@ networks
             list: List of accuracies for each epoch
         """
         ### OPTIMIZER ###
-        optimizer = SurrogateAdam(self.parameters(
-        ), lr=learning_rate, metaplasticity=metaplasticity, weight_decay=weight_decay)
+        if self.latent_weights:
+            optimizer = SurrogateAdam(self.parameters(
+            ), lr=learning_rate, metaplasticity=metaplasticity, weight_decay=weight_decay)
+        else:
+            optimizer = BinaryOptimizer(self.parameters(), metaplasticity=metaplasticity,
+                                        gamma=gamma, threshold=threshold, weight_decay=weight_decay)
         loss_function = torch.nn.CrossEntropyLoss()
         accuracy_array = []
         ### TRAINING ###
