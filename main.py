@@ -9,12 +9,11 @@ BATCH_SIZE = 100
 LEARNING_RATE = 0.005
 WEIGHT_DECAY = 1e-8
 METAPLASTICITY = 1.5
-N_EPOCHS = 10
+N_EPOCHS = 50
 STD = 0.1
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-# For bnno
 GAMMA = 1e-2
 THRESHOLD = 1e-6
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 ### PATHS ###
 SAVE_FOLDER = "saved"
@@ -38,25 +37,19 @@ if __name__ == "__main__":
 
     ### NETWORKS ###
     networks_data = {
-        "BNN Binary Optimizer": {
+        "BNN Meta": {
             "model": models.BNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE, latent_weights=False),
-            "parameters": {'n_epochs': N_EPOCHS, 'learning_rate': LEARNING_RATE,
-                           'weight_decay': WEIGHT_DECAY, 'metaplasticity': METAPLASTICITY, 'gamma': GAMMA, 'threshold': THRESHOLD, **all_test},
+            "parameters": {'n_epochs': N_EPOCHS, "optimizer": "metaplastic", **all_test},
+            "optimizer_parameters": {"lr": LEARNING_RATE, "weight_decay": WEIGHT_DECAY, "metaplasticity": METAPLASTICITY},
             "accuracy": []
         },
-        # "BNN wout Meta": {
-        #     "model": models.BNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE),
-        #     "parameters": {'n_epochs': N_EPOCHS, 'learning_rate': LEARNING_RATE,
-        #                    'weight_decay': WEIGHT_DECAY, 'metaplasticity': 0, **all_test},
-        #     "accuracy": []
-        # },
     }
 
     for name, data in networks_data.items():
         print(f"Training {name}...")
         for train_dataset in [mnist_train, fashion_mnist_train]:
             data['accuracy'].append(data['model'].train_network(
-                train_dataset, **data['parameters']))
+                train_dataset, **data['parameters'], optimizer_params=data['optimizer_parameters']))
 
         # Creating folders
         full_name = os.path.join(SAVE_FOLDER, name)

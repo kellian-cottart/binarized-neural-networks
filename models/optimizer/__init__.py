@@ -1,2 +1,3 @@
-from .surrogateadam import *
+from .metaplasticadam import *
 from .binaryoptimizer import *
+from .bayesbinn import *

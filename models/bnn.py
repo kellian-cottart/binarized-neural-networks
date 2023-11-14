@@ -61,26 +61,37 @@ networks
                 x = Sign.apply(x)
         return x
 
-    def train_network(self, train_data, n_epochs, learning_rate=0.01, metaplasticity=0, weight_decay=0.01, gamma=1e-3, threshold=1e-6, **kwargs):
+    def train_network(self, train_data, n_epochs, optimizer_params, optimizer="metaplastic", **kwargs):
         """Train the binarized neural network
 
         Args:
             train_data (torch.utils.data.DataLoader): Training dataset
             n_epochs (int): Number of epochs to train the network
-            learning_rate (float): Learning rate for the optimizer
+            optimizer_params (dict): Dictionary of parameters for the optimizer
+                lr (float): Learning rate (Adam optimizer)
+                metaplasticity (float): Metaplasticity value (Adam optimizer)
+                gamma (float): Gamma value (BOP optimizer)
+                threshold (float): Threshold value (BOP optimizer)
+                weight_decay (float): Weight decay value (Adam and BOP optimizer)
+            optimizer (str): Optimizer to use (either "metaplastic", "bop", "bayesbinn")
 
         Returns:
             list: List of accuracies for each epoch
         """
         ### OPTIMIZER ###
-        if self.latent_weights:
-            optimizer = SurrogateAdam(self.parameters(
-            ), lr=learning_rate, metaplasticity=metaplasticity, weight_decay=weight_decay)
+        if optimizer == "metaplastic":
+            optimizer = MetaplasticAdam
+        elif optimizer == "bop":
+            optimizer = BinaryOptimizer
+        elif optimizer == "bayesbinn":
+            optimizer = BayesBiNN
         else:
-            optimizer = BinaryOptimizer(self.parameters(), metaplasticity=metaplasticity,
-                                        gamma=gamma, threshold=threshold, weight_decay=weight_decay)
+            raise ValueError(f"Invalid optimizer: {optimizer}")
+        optimizer = optimizer(self.parameters(), **optimizer_params)
+        ### LOSS ###
         loss_function = torch.nn.CrossEntropyLoss()
         accuracy_array = []
+
         ### TRAINING ###
         pbar = trange(n_epochs, desc='Initialization')
         for epoch in pbar:

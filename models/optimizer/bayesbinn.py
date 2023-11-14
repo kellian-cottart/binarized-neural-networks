@@ -3,50 +3,43 @@ from torch.optim.optimizer import params_t, _get_value, _dispatch_sqrt
 from typing import List, Optional, Union, Tuple
 
 
-class SurrogateAdam(torch.optim.Optimizer):
-    """ Surrogate Adam optimizer w/ hardtanh surrogate gradient
-    Adding Metaplasticity to BNNs
-    Directly taken from the definition of Adam in PyTorch
+class BayesBiNN(torch.optim.Optimizer):
+    """ BayesBiNN Optimizer for PyTorch
 
-    Args:
-        params (iterable): iterable of parameters to optimize or dicts defining
-            parameter groups
+    Training Binary Neural Networks using the Bayesian Learning Rule, (Meng et al)
+
+    Args: 
+        params (iterable): iterable of parameters to optimize or dicts defining parameter groups
         lr (float): learning rate
-        metaplasticity (float): metaplasticity value
-        betas (Tuple[float, float]): coefficients used for computing
-            running averages of gradient and its square
-        eps (float): term added to the denominator to improve
-            numerical stability
-        weight_decay (float): weight decay (L2 penalty)
-        amsgrad (bool): whether to use the AMSGrad variant of this
-            algorithm from the paper `On the Convergence of Adam and
-            Beyond`_
+        beta (float): beta parameter to compute the running average of gradients
+        temperature (float): temperature value of the Gumbel soft-max trick (Maddison et al., 2017)
+        num_mcmc_samples (int): number of MCMC samples to compute the gradient (default: 1, if 0: computes the point estimate)
+        prior_lambda (FloatTensor): lambda of the prior distribution (default: None)
     """
 
     def __init__(self,
                  params: params_t,
                  lr: Union[float, torch.Tensor] = 1e-3,
-                 betas: Tuple[float, float] = (0.9, 0.999),
-                 metaplasticity: float = 0.1,
-                 eps: float = 1e-8,
-                 weight_decay: float = 0,
-                 amsgrad: bool = False,
-                 maximize: bool = False,):
+                 beta: float = 0.0,
+                 temperature: float = 1.0,
+                 num_mcmc_samples: int = 1,
+                 prior_lambda: Optional[torch.Tensor] = None
+                 ):
         if not 0.0 <= lr:
             raise ValueError(f"Invalid learning rate: {lr}")
-        if not 0.0 <= metaplasticity:
-            raise ValueError(f"Invalid metaplasticity value: {metaplasticity}")
-        if not 0.0 <= eps:
-            raise ValueError(f"Invalid epsilon value: {eps}")
-        if not 0.0 <= betas[0] < 1.0:
-            raise ValueError(f"Invalid beta parameter at index 0: {betas[0]}")
-        if not 0.0 <= betas[1] < 1.0:
-            raise ValueError(f"Invalid beta parameter at index 1: {betas[1]}")
-        if not 0.0 <= weight_decay:
-            raise ValueError(f"Invalid weight_decay value: {weight_decay}")
+        if not 0.0 <= beta <= 1.0:
+            raise ValueError(f"Invalid beta parameter: {beta}")
+        if not 0.0 <= temperature:
+            raise ValueError(f"Invalid temperature: {temperature}")
+        if not isinstance(prior_lambda, torch.Tensor) or prior_lambda is not None:
+            raise ValueError(
+                f"Invalid prior lambda: {prior_lambda}, must be a tensor")
+        if not 0 <= num_mcmc_samples:
+            raise ValueError(
+                f"Invalid number of MCMC samples: {num_mcmc_samples}")
 
-        defaults = dict(lr=lr, betas=betas, metaplasticity=metaplasticity, eps=eps,
-                        weight_decay=weight_decay, amsgrad=amsgrad, maximize=maximize)
+        defaults = dict(lr=lr, beta=beta, temperature=temperature,
+                        prior_lambda=prior_lambda, num_mcmc_samples=num_mcmc_samples)
         super().__init__(params, defaults)
 
     def __setstate__(self, state):
@@ -72,7 +65,6 @@ class SurrogateAdam(torch.optim.Optimizer):
         grads,
         exp_avgs,
         exp_avg_sqs,
-        max_exp_avg_sqs,
         state_steps
     ):
         """ Initialize the group before the optimization step
@@ -105,16 +97,9 @@ class SurrogateAdam(torch.optim.Optimizer):
                     # Exponential moving average of squared gradient values
                     state['exp_avg_sq'] = torch.zeros_like(
                         p, memory_format=torch.preserve_format)
-                    if group['amsgrad']:
-                        # Maintains max of all exp. moving avg. of sq. grad. values
-                        state['max_exp_avg_sq'] = torch.zeros_like(
-                            p, memory_format=torch.preserve_format)
 
                 exp_avgs.append(state['exp_avg'])
                 exp_avg_sqs.append(state['exp_avg_sq'])
-
-                if group['amsgrad']:
-                    max_exp_avg_sqs.append(state['max_exp_avg_sq'])
 
                 state_steps.append(state['step'])
 
@@ -141,8 +126,10 @@ class SurrogateAdam(torch.optim.Optimizer):
             exp_avg_sqs = []
             max_exp_avg_sqs = []
             state_steps = []
-            beta1, beta2 = group['betas']
-            metaplasticity = group['metaplasticity']
+            beta = group['beta']
+            lr = group['lr']
+            weight_decay = group['weight_decay']
+            eps = group['eps']
 
             self._init_group(
                 group,
@@ -162,15 +149,10 @@ class SurrogateAdam(torch.optim.Optimizer):
                 max_exp_avg_sqs,
                 state_steps,
                 found_inf=getattr(self, "found_inf", None),
-                amsgrad=group['amsgrad'],
-                beta1=beta1,
-                beta2=beta2,
-                metaplasticity=metaplasticity,
-                lr=group['lr'],
-                weight_decay=group['weight_decay'],
-                eps=group['eps'],
-                maximize=group['maximize'],
-                grad_scale=getattr(self, "grad_scale", None),
+                beta=beta,
+                lr=lr,
+                weight_decay=weight_decay,
+                eps=eps,
             )
         return loss
 
