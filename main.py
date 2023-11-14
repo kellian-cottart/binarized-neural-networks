@@ -6,7 +6,7 @@ import os
 ### GLOBAL VARIABLES ###
 SEED = 2506
 BATCH_SIZE = 100
-LEARNING_RATE = 0.005
+LEARNING_RATE = 0.01
 WEIGHT_DECAY = 1e-8
 METAPLASTICITY = 1.5
 N_EPOCHS = 50
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     ### NETWORKS ###
     networks_data = {
         "BNN Meta": {
-            "model": models.BNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE, latent_weights=False),
+            "model": models.BNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE, latent_weights=True),
             "parameters": {'n_epochs': N_EPOCHS, "optimizer": "metaplastic", **all_test},
             "optimizer_parameters": {"lr": LEARNING_RATE, "weight_decay": WEIGHT_DECAY, "metaplasticity": METAPLASTICITY},
             "accuracy": []
