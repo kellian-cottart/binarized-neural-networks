@@ -1,6 +1,7 @@
 import torch
-from torch.optim.optimizer import params_t, _get_value, _dispatch_sqrt
-from typing import List, Optional, Union, Tuple
+from torch.optim.optimizer import params_t, _get_value
+from typing import List, Optional, Union
+from torch.nn.utils import parameters_to_vector, vector_to_parameters
 
 
 class BayesBiNN(torch.optim.Optimizer):
@@ -23,7 +24,8 @@ class BayesBiNN(torch.optim.Optimizer):
                  beta: float = 0.0,
                  temperature: float = 1.0,
                  num_mcmc_samples: int = 1,
-                 prior_lambda: Optional[torch.Tensor] = None
+                 prior_lambda: Optional[torch.Tensor] = None,
+                 init_lambda: int = 10,
                  ):
         if not 0.0 <= lr:
             raise ValueError(f"Invalid learning rate: {lr}")
@@ -31,7 +33,7 @@ class BayesBiNN(torch.optim.Optimizer):
             raise ValueError(f"Invalid beta parameter: {beta}")
         if not 0.0 <= temperature:
             raise ValueError(f"Invalid temperature: {temperature}")
-        if not isinstance(prior_lambda, torch.Tensor) or prior_lambda is not None:
+        if prior_lambda is not None and not isinstance(prior_lambda, torch.Tensor):
             raise ValueError(
                 f"Invalid prior lambda: {prior_lambda}, must be a tensor")
         if not 0 <= num_mcmc_samples:
@@ -39,7 +41,7 @@ class BayesBiNN(torch.optim.Optimizer):
                 f"Invalid number of MCMC samples: {num_mcmc_samples}")
 
         defaults = dict(lr=lr, beta=beta, temperature=temperature,
-                        prior_lambda=prior_lambda, num_mcmc_samples=num_mcmc_samples)
+                        prior_lambda=prior_lambda, num_mcmc_samples=num_mcmc_samples, init_lambda=init_lambda)
         super().__init__(params, defaults)
 
     def __setstate__(self, state):
@@ -64,7 +66,6 @@ class BayesBiNN(torch.optim.Optimizer):
         params_with_grad,
         grads,
         exp_avgs,
-        exp_avg_sqs,
         state_steps
     ):
         """ Initialize the group before the optimization step
@@ -94,12 +95,8 @@ class BayesBiNN(torch.optim.Optimizer):
                     # Exponential moving average of gradient values
                     state['exp_avg'] = torch.zeros_like(
                         p, memory_format=torch.preserve_format)
-                    # Exponential moving average of squared gradient values
-                    state['exp_avg_sq'] = torch.zeros_like(
-                        p, memory_format=torch.preserve_format)
 
                 exp_avgs.append(state['exp_avg'])
-                exp_avg_sqs.append(state['exp_avg_sq'])
 
                 state_steps.append(state['step'])
 
@@ -123,112 +120,116 @@ class BayesBiNN(torch.optim.Optimizer):
             params_with_grad = []
             grads = []
             exp_avgs = []
-            exp_avg_sqs = []
-            max_exp_avg_sqs = []
             state_steps = []
+
             beta = group['beta']
             lr = group['lr']
-            weight_decay = group['weight_decay']
-            eps = group['eps']
+            temperature = group['temperature']
+            prior_lambda = group['prior_lambda']
+            num_mcmc_samples = group['num_mcmc_samples']
+            init_lambda = group['init_lambda']
 
             self._init_group(
                 group,
                 params_with_grad,
                 grads,
                 exp_avgs,
-                exp_avg_sqs,
-                max_exp_avg_sqs,
                 state_steps)
 
             ### ADAM OPTIMIZATION STEP ###
-            adam_metaplasticity(
+            bayes_optimization(
                 params_with_grad,
                 grads,
                 exp_avgs,
-                exp_avg_sqs,
-                max_exp_avg_sqs,
                 state_steps,
-                found_inf=getattr(self, "found_inf", None),
                 beta=beta,
                 lr=lr,
-                weight_decay=weight_decay,
-                eps=eps,
+                temperature=temperature,
+                num_mcmc_samples=num_mcmc_samples,
+                prior_lambda=prior_lambda,
+                init_lambda=init_lambda,
+                loss=loss,
             )
         return loss
 
 
-def adam_metaplasticity(params: List[torch.Tensor],
-                        grads: List[torch.Tensor],
-                        exp_avgs: List[torch.Tensor],
-                        exp_avg_sqs: List[torch.Tensor],
-                        max_exp_avg_sqs: List[torch.Tensor],
-                        state_steps: List[torch.Tensor],
-                        grad_scale: Optional[torch.Tensor],
-                        found_inf: Optional[torch.Tensor],
-                        *,
-                        amsgrad: bool,
-                        beta1: float,
-                        beta2: float,
-                        metaplasticity: float,
-                        lr: Union[float, torch.Tensor],
-                        weight_decay: float,
-                        eps: float,
-                        maximize: bool):
+def bayes_optimization(params: List[torch.Tensor],
+                       grads: List[torch.Tensor],
+                       exp_avgs: List[torch.Tensor],
+                       state_steps: List[torch.Tensor],
+                       *,
+                       beta: float,
+                       lr: Union[float, torch.Tensor],
+                       temperature: float,
+                       num_mcmc_samples: int,
+                       prior_lambda: torch.Tensor,
+                       init_lambda: int,
+                       eps: float = 1e-8,
+                       loss: Optional[torch.Tensor] = None,
+                       ):
     """ Perform a single optimization step
-    Taken from _single_tensor_adam() in PyTorch, updated to support metaplasticity
+
+    The optimization step is based of the BayesBiNN algorithm (Meng et al)
+    The general idea is to have an optimization step from a well-posed optimization problem using the Bayesian Learning Rule
+    Using the Gumbel soft-max trick (Maddison et al., 2017), we can sample from the Bernoulli distribution to compute the gradient
+
+    Args:
+        params (list): List of parameters
+        grads (list): List of gradients
+        exp_avgs (list): List of exponential averages
+        exp_avg_sqs (list): List of exponential averages of squared gradients
+        state_steps (list): List of state steps
+        beta (float): beta parameter to compute the running average of gradients
+        lr (float): learning rate
+        weight_decay (float): weight decay
+        lmbda (FloatTensor): natural parameter of the Bernoulli distribution
+        mu (FloatTensor): mean of the Bernoulli distribution
+        temperature (float): temperature value of the Gumbel soft-max trick (Maddison et al., 2017)
+        num_mcmc_samples (int): number of MCMC samples to compute the gradient (default: 1, if 0: computes the point estimate)
     """
 
-    assert grad_scale is None and found_inf is None
-
-    if torch.jit.is_scripting():
-        # this assert is due to JIT being dumb and not realizing that the ops below
-        # have overloads to handle both float and Tensor lrs, so we just assert it's
-        # a float since most people using JIT are using floats
-        assert isinstance(lr, float)
-
     for i, param in enumerate(params):
-        grad = grads[i] if not maximize else -grads[i]
+        grad = grads[i]
         exp_avg = exp_avgs[i]
-        exp_avg_sq = exp_avg_sqs[i]
         step_t = state_steps[i]
 
         # Update step
         step_t += 1
-        if weight_decay != 0:
-            grad = grad.add(param.data, alpha=weight_decay)
+
+        if prior_lambda is None:
+            prior_lambda = torch.zeros_like(param)
+        # Compute mu expectation of the bernoulli distribution
+        lmbda = param.data
+        mu = torch.tanh(lmbda)
+
+        for _ in range(num_mcmc_samples):
+            ### SAMPLE FROM THE BINARY DISTRIBUTION ###
+            # Generate the noise sampled within [0, 1)
+            epsilon = torch.rand_like(mu)
+            # Gumbel soft-max trick (Maddison et al., 2017)
+            delta = torch.log(epsilon / (1 - epsilon)) / 2
+            # Relaxed version by linear transformation of the concrete variables (real weights)
+            relaxed_binary_weights = torch.tanh((lmbda + delta) / temperature)
+
+            ### COMPUTE LOSS ###
+
+            ### COMPUTE G & S ###
+            # g is backtracked gradient
+            g = torch.autograd.grad(loss, param, retain_graph=True)[0]
+            # s developed gives this:
+            s = (1-relaxed_binary_weights*relaxed_binary_weights + eps) * \
+                (1 - mu * mu + eps) / temperature
+            element_wise = torch.mul(g, s)
+            # Compute the gradient
+            grad.mul_(element_wise)
 
         # Decay the first and second moment running average coefficient
-        exp_avg.lerp_(grad, 1 - beta1)
-        exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
-
         step = _get_value(step_t)
-        bias_correction1 = 1 - beta1 ** step
-        bias_correction2 = 1 - beta2 ** step
-        # Get the bias correction for the second moment
-        bias_correction2_sqrt = _dispatch_sqrt(bias_correction2)
-        if amsgrad:
-            # Maintains the maximum of all 2nd moment running avg. till now
-            torch.maximum(
-                max_exp_avg_sqs[i], exp_avg_sq, out=max_exp_avg_sqs[i])
-
-            # Use the max. for normalizing running avg. of gradient
-            denom = (max_exp_avg_sqs[i].sqrt()).add_(eps)
-        else:
-            denom = (exp_avg_sq.sqrt()).add_(eps)
-        step_size = lr * bias_correction2_sqrt / bias_correction1
-        # If the condition for the metaplastic update is met (i.e., the binary weights and the exponential average have the same sign), update the metaplasticity
-        if param.data.dim() == 1:
-            # Update the bias
-            param.data.addcdiv_(exp_avg, denom, value=-step_size)
-        else:
-            # Compute the metaplasticity
-            metaplastic_computation = torch.ones_like(
-                param.data) - torch.pow(torch.tanh(torch.mul(metaplasticity, torch.abs(param.data))), 2)
-            # Compute the condition where the metaplasticity is applied
-            metaplastic_condition = torch.mul(
-                torch.sign(param.data), exp_avg) > 0.0
-            # Update the exponential average
-            updated_exp_avg = torch.mul(metaplastic_computation, exp_avg)
-            # Update the weights with the metaplasticity
-            param.data.addcdiv_(torch.where(metaplastic_condition,
-                                            updated_exp_avg, exp_avg), denom, value=-step_size)
+        # Update beta
+        exp_avg = exp_avg.mul_(beta).add_(grad, alpha=1 - beta).add_(
+            lmbda, alpha=1 - beta).sub_(prior_lambda, alpha=1 - beta)
+        bias_correction = 1 - beta ** step
+        # Update mu
+        mu = torch.tanh(lmbda)
+        # Update lambda
+        param.data = lmbda - lr*exp_avg/bias_correction

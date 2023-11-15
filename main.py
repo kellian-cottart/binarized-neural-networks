@@ -37,10 +37,16 @@ if __name__ == "__main__":
 
     ### NETWORKS ###
     networks_data = {
-        "BNN Meta": {
+        # "BNN Bayes": {
+        #     "model": models.BNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE, latent_weights=True),
+        #     "parameters": {'n_epochs': N_EPOCHS, "optimizer": "bayesbinn", **all_test},
+        #     "optimizer_parameters": {"lr": LEARNING_RATE, "beta": 0.0, "temperature": 1.0, "num_mcmc_samples": 5},
+        #     "accuracy": []
+        # },
+        "BNN Bayes": {
             "model": models.BNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE, latent_weights=True),
-            "parameters": {'n_epochs': N_EPOCHS, "optimizer": "metaplastic", **all_test},
-            "optimizer_parameters": {"lr": LEARNING_RATE, "weight_decay": WEIGHT_DECAY, "metaplasticity": METAPLASTICITY},
+            "parameters": {'n_epochs': N_EPOCHS, "optimizer": "bayesbinn", **all_test},
+            "optimizer_parameters": {"train_set_size": mnist_train.dataset.data.shape[0], "lr": LEARNING_RATE, "temperature": 1.0, "num_samples": 5},
             "accuracy": []
         },
     }

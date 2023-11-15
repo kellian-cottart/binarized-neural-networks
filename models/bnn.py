@@ -87,7 +87,9 @@ networks
             optimizer = BayesBiNN
         else:
             raise ValueError(f"Invalid optimizer: {optimizer}")
-        optimizer = optimizer(self.parameters(), **optimizer_params)
+
+        optimizer = optimizer(
+            self if optimizer == BayesBiNN else self.parameters(), **optimizer_params)
         ### LOSS ###
         loss_function = torch.nn.CrossEntropyLoss()
         accuracy_array = []
@@ -108,7 +110,13 @@ networks
                 optimizer.zero_grad()
                 loss.backward()
                 # Do a step of the optimizer
-                optimizer.step()
+
+                def closure():
+                    self.zero_grad()
+                    output = self.forward(x)
+                    loss = loss_function(output, y)
+                    return loss, output
+                optimizer.step(closure=closure)
             ### EVALUATE ###
             accuracy = []
             if 'mnist_test' in kwargs:
