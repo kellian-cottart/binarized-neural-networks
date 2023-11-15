@@ -38,9 +38,9 @@ if __name__ == "__main__":
     networks_data = {
         "BNN Meta": {
             "model": models.BNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE),
-            "optimizer": MetaplasticAdam,
+            "optimizer": BiNNOptimizer,
             "criterion": torch.nn.CrossEntropyLoss(),
-            "optimizer_parameters": {"lr": LEARNING_RATE, "weight_decay": WEIGHT_DECAY, "metaplasticity": METAPLASTICITY},
+            "optimizer_parameters": {"lr": LEARNING_RATE, "train_set_size": len(mnist_train.dataset), "N": 5, "temperature": 1e-08, "beta": 0.0},
             "parameters": {'n_epochs': N_EPOCHS},
         }
         # "BNN Bayes": {
@@ -56,12 +56,13 @@ if __name__ == "__main__":
 
     for name, data in networks_data.items():
 
-        network = trainer.Trainer(
-            data['model'], optimizer=data["optimizer"], optimizer_parameters=data['optimizer_parameters'], criterion=torch.nn.CrossEntropyLoss(), device=DEVICE)
+        if data["optimizer"] == BiNNOptimizer:
+            network = trainer.BayesTrainer(**data, device=DEVICE)
+        else:
+            network = trainer.Trainer(**data, device=DEVICE)
 
         print(f"Training {name}...")
         for train_dataset in training_pipeline:
-            print(f"Training on {train_dataset.dataset}...")
             network.fit(
                 train_dataset, **data['parameters'], test_loader=testing_pipeline, verbose=True)
 

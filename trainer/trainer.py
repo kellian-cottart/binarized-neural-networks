@@ -5,7 +5,7 @@ import torch
 class Trainer:
     """Base class for all trainers."""
 
-    def __init__(self, model, optimizer, optimizer_parameters, criterion, device):
+    def __init__(self, model, optimizer, optimizer_parameters, criterion, device, *args, **kwargs):
         self.model = model
         self.optimizer = optimizer(model.parameters(), **optimizer_parameters)
         self.criterion = criterion
@@ -16,6 +16,13 @@ class Trainer:
     def batch_step(self, inputs, targets):
         """Perform the training of a single sample of the batch
         """
+        def closure():
+            # Closure for the optimizer sending the loss to the optimizer
+            self.optimizer.zero_grad()
+            output = self.model.forward(inputs)
+            loss = self.criterion(output, targets)
+            return loss, output
+
         ### FORWARD PASS ###
         inputs = inputs.view(inputs.shape[0], -1).to(self.device)
         targets = targets.to(self.device)
@@ -27,7 +34,7 @@ class Trainer:
         ### BACKWARD PASS ###
         self.optimizer.zero_grad()
         self.loss.backward()
-        self.optimizer.step()
+        self.optimizer.step(closure=closure)
 
     def epoch_step(self, train_loader, test_loader=None):
         """Perform the training of a single epoch
@@ -44,8 +51,11 @@ class Trainer:
     def fit(self, train_loader, n_epochs, test_loader=None, verbose=True, **kwargs):
         """Train the model for n_epochs
         """
-        pbar = trange(
-            n_epochs, desc='Initialization') if verbose else range(n_epochs)
+        if verbose:
+            print(f"Training on {train_loader.dataset}...")
+            pbar = trange(
+                n_epochs, desc='Initialization')
+        pbar = range(n_epochs)
         for epoch in pbar:
             self.epoch_step(train_loader, test_loader)
             if verbose:
