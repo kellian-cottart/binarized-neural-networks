@@ -120,9 +120,7 @@ class BayesBiNN(Optimizer):
         defaults = self.defaults
         # We only support a single parameter group.
         parameters = self.param_groups[0]['params']
-        lr = self.param_groups[0]['lr']
         momentum_beta = defaults['beta']
-        momentum = self.state['momentum']
 
         mu = self.state['mu']
         lamda = self.state['lamda']
@@ -204,45 +202,3 @@ class BayesBiNN(Optimizer):
         self.state['mu'] = torch.tanh(lamda)
 
         return loss, pred_list
-
-    def get_distribution_params(self):
-        """Returns current mean and precision of variational distribution
-           (usually used to save parameters from current task as prior for next task).
-        """
-        mu = self.state['mu'].clone().detach()
-        precision = mu*(1-mu)  # variance term
-
-        return mu, precision
-
-    def get_mc_predictions(self, forward_function, inputs, ret_numpy=False, raw_noises=None, *args, **kwargs):
-        """Returns Monte Carlo predictions.
-        Arguments:
-            forward_function (callable): The forward function of the model
-                that takes inputs and returns the outputs.
-            inputs (FloatTensor): The inputs to the model.
-            mc_samples (int): The number of Monte Carlo samples.
-            ret_numpy (bool): If true, the returned list contains numpy arrays,
-                otherwise it contains torch tensors.
-        """
-
-        # We only support a single parameter group.
-        parameters = self.param_groups[0]['params']
-        predictions = []
-
-        if raw_noises is None:  # use the mean value (sign) to make predictions
-            raw_noises = []
-            mean_vector = torch.where(self.state['mu'] <= 0, torch.zeros_like(
-                self.state['mu']), torch.ones_like(self.state['mu']))
-            # perform inference using the sign of the mean value when there is no sampling
-            raw_noises.append(mean_vector)
-
-        for raw_noise in raw_noises:
-            # Sample a parameter vector:
-            vector_to_parameters(2*raw_noise-1, parameters)
-            # Call the forward computation function
-            outputs = forward_function(inputs, *args, **kwargs)
-            if ret_numpy:
-                outputs = outputs.data.cpu().numpy()
-            predictions.append(outputs)
-
-        return predictions

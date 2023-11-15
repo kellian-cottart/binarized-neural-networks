@@ -1,6 +1,8 @@
 from utils import *
 import models
 import torch
+import trainer
+from optimizer import *
 import os
 
 ### GLOBAL VARIABLES ###
@@ -9,7 +11,7 @@ BATCH_SIZE = 100
 LEARNING_RATE = 0.01
 WEIGHT_DECAY = 1e-8
 METAPLASTICITY = 1.5
-N_EPOCHS = 50
+N_EPOCHS = 10
 STD = 0.1
 GAMMA = 1e-2
 THRESHOLD = 1e-6
@@ -29,33 +31,39 @@ if __name__ == "__main__":
     fashion_mnist_train, fashion_mnist_test = fashion_mnist(
         DATASETS_PATH, BATCH_SIZE)
 
-    all_test = {'mnist_test': mnist_test,
-                'fashion_mnist_test': fashion_mnist_test}
-
     input_size = mnist_train.dataset.data.shape[1] * \
         mnist_train.dataset.data.shape[2]
 
     ### NETWORKS ###
     networks_data = {
+        "BNN Meta": {
+            "model": models.BNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE),
+            "optimizer": MetaplasticAdam,
+            "criterion": torch.nn.CrossEntropyLoss(),
+            "optimizer_parameters": {"lr": LEARNING_RATE, "weight_decay": WEIGHT_DECAY, "metaplasticity": METAPLASTICITY},
+            "parameters": {'n_epochs': N_EPOCHS},
+        }
         # "BNN Bayes": {
         #     "model": models.BNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE, latent_weights=True),
         #     "parameters": {'n_epochs': N_EPOCHS, "optimizer": "bayesbinn", **all_test},
-        #     "optimizer_parameters": {"lr": LEARNING_RATE, "beta": 0.0, "temperature": 1.0, "num_mcmc_samples": 5},
+        #     "optimizer_parameters": {"lr": LEARNING_RATE, "beta": 0.0, "temperature": 1e-08, "num_mcmc_samples": 1},
         #     "accuracy": []
         # },
-        "BNN Bayes": {
-            "model": models.BNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE, latent_weights=True),
-            "parameters": {'n_epochs': N_EPOCHS, "optimizer": "bayesbinn", **all_test},
-            "optimizer_parameters": {"train_set_size": mnist_train.dataset.data.shape[0], "lr": LEARNING_RATE, "temperature": 1.0, "num_samples": 5},
-            "accuracy": []
-        },
     }
 
+    training_pipeline = [mnist_train, fashion_mnist_train]
+    testing_pipeline = [mnist_test, fashion_mnist_test]
+
     for name, data in networks_data.items():
+
+        network = trainer.Trainer(
+            data['model'], optimizer=data["optimizer"], optimizer_parameters=data['optimizer_parameters'], criterion=torch.nn.CrossEntropyLoss(), device=DEVICE)
+
         print(f"Training {name}...")
-        for train_dataset in [mnist_train, fashion_mnist_train]:
-            data['accuracy'].append(data['model'].train_network(
-                train_dataset, **data['parameters'], optimizer_params=data['optimizer_parameters']))
+        for train_dataset in training_pipeline:
+            print(f"Training on {train_dataset.dataset}...")
+            network.fit(
+                train_dataset, **data['parameters'], test_loader=testing_pipeline, verbose=True)
 
         # Creating folders
         full_name = os.path.join(SAVE_FOLDER, name)
@@ -64,12 +72,11 @@ if __name__ == "__main__":
 
         print(f"Saving {name} weights, accuracy and figure...")
         weights_name = name + "-weights"
-        data['model'].save_state(versionning(
-            folder, weights_name, ".pt"))
+        network.save(versionning(folder, weights_name, ".pt"))
 
         print(f"Saving {name} accuracy...")
         accuracy_name = name + "-accuracy"
-        accuracy = torch.tensor(data['accuracy'][0] + data['accuracy'][1])
+        accuracy = network.testing_accuracy
         torch.save(accuracy, versionning(
             folder, accuracy_name, ".pt"))
 

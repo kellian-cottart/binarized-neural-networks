@@ -148,7 +148,7 @@ class BayesBiNN(torch.optim.Optimizer):
                 num_mcmc_samples=num_mcmc_samples,
                 prior_lambda=prior_lambda,
                 init_lambda=init_lambda,
-                loss=loss,
+                closure=loss,
             )
         return loss
 
@@ -165,71 +165,49 @@ def bayes_optimization(params: List[torch.Tensor],
                        prior_lambda: torch.Tensor,
                        init_lambda: int,
                        eps: float = 1e-8,
-                       loss: Optional[torch.Tensor] = None,
+                       closure: Optional[torch.Tensor] = None,
                        ):
     """ Perform a single optimization step
 
     The optimization step is based of the BayesBiNN algorithm (Meng et al)
     The general idea is to have an optimization step from a well-posed optimization problem using the Bayesian Learning Rule
     Using the Gumbel soft-max trick (Maddison et al., 2017), we can sample from the Bernoulli distribution to compute the gradient
+    The implementation is based on Issam Laradji's implementation of the BayesBiNN algorithm
 
     Args:
         params (list): List of parameters
         grads (list): List of gradients
         exp_avgs (list): List of exponential averages
-        exp_avg_sqs (list): List of exponential averages of squared gradients
         state_steps (list): List of state steps
         beta (float): beta parameter to compute the running average of gradients
         lr (float): learning rate
-        weight_decay (float): weight decay
-        lmbda (FloatTensor): natural parameter of the Bernoulli distribution
-        mu (FloatTensor): mean of the Bernoulli distribution
         temperature (float): temperature value of the Gumbel soft-max trick (Maddison et al., 2017)
+        prior_lambda (FloatTensor): lambda of the prior distribution (default: None)
+        init_lambda (int): initial value of lambda
         num_mcmc_samples (int): number of MCMC samples to compute the gradient (default: 1, if 0: computes the point estimate)
     """
-
     for i, param in enumerate(params):
         grad = grads[i]
         exp_avg = exp_avgs[i]
-        step_t = state_steps[i]
+        state_step = state_steps[i]
 
-        # Update step
-        step_t += 1
+        # Update the parameters
+        state_step.add_(1)
+        bias_correction = 1 - beta ** state_step
+        step_size = lr * bias_correction
 
-        if prior_lambda is None:
-            prior_lambda = torch.zeros_like(param)
-        # Compute mu expectation of the bernoulli distribution
-        lmbda = param.data
-        mu = torch.tanh(lmbda)
 
-        for _ in range(num_mcmc_samples):
-            ### SAMPLE FROM THE BINARY DISTRIBUTION ###
-            # Generate the noise sampled within [0, 1)
-            epsilon = torch.rand_like(mu)
-            # Gumbel soft-max trick (Maddison et al., 2017)
-            delta = torch.log(epsilon / (1 - epsilon)) / 2
-            # Relaxed version by linear transformation of the concrete variables (real weights)
-            relaxed_binary_weights = torch.tanh((lmbda + delta) / temperature)
-
-            ### COMPUTE LOSS ###
-
-            ### COMPUTE G & S ###
-            # g is backtracked gradient
-            g = torch.autograd.grad(loss, param, retain_graph=True)[0]
-            # s developed gives this:
-            s = (1-relaxed_binary_weights*relaxed_binary_weights + eps) * \
-                (1 - mu * mu + eps) / temperature
-            element_wise = torch.mul(g, s)
-            # Compute the gradient
-            grad.mul_(element_wise)
-
-        # Decay the first and second moment running average coefficient
-        step = _get_value(step_t)
-        # Update beta
-        exp_avg = exp_avg.mul_(beta).add_(grad, alpha=1 - beta).add_(
-            lmbda, alpha=1 - beta).sub_(prior_lambda, alpha=1 - beta)
-        bias_correction = 1 - beta ** step
-        # Update mu
-        mu = torch.tanh(lmbda)
-        # Update lambda
-        param.data = lmbda - lr*exp_avg/bias_correction
+def update(self, prior_lambda: torch.Tensor):
+    """ Update mu and lambda """
+    for group in self.param_groups:
+        for p in group['params']:
+            if p.grad is None:
+                continue
+            state = self.state[p]
+            mu = state['mu']
+            lambda_ = state['lambda']
+            # Update mu
+            mu.add_(p.grad)
+            # Update lambda
+            lambda_.add_(torch.abs(p.grad))
+            # Update prior
