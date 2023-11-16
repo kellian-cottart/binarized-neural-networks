@@ -56,6 +56,6 @@ networks
         """
         for layer in self.layers:
             x = layer(x)
-            if layer is not self.layers[-1] and not isinstance(layer, BinarizedLinear):
+            if layer is not self.layers[-1] and isinstance(layer, torch.nn.BatchNorm1d):
                 x = Sign.apply(x)
         return x
