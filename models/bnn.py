@@ -28,36 +28,34 @@ networks
         self.layers = torch.nn.ModuleList()
         self.device = device
         self.latent_weights = latent_weights
-        self.dropout = dropout
 
         ### LAYER INITIALIZATION ###
         for i in range(self.n_layers+1):
-            # Linear layers with BatchNorm
+            if dropout:
+                self.layers.append(torch.nn.Dropout(p=0.2))
             self.layers.append(BinarizedLinear(
                 layers[i], layers[i+1], bias=False, device=device, latent_weights=latent_weights))
             self.layers.append(torch.nn.BatchNorm1d(
                 layers[i+1], affine=True, track_running_stats=True, device=device))
-            if dropout:
-                self.layers.append(torch.nn.Dropout(p=0.2))
-        # Compute the number of different layers (binarized_linear or batchnorm or dropout)
-        self.n_diff_layers = len(self.layers) // len(layers) + 1
-        print(self.n_diff_layers)
 
         ### WEIGHT INITIALIZATION ###
-        for layer in self.layers[::self.n_diff_layers]:
-            if init == 'gauss':
-                torch.nn.init.normal_(
-                    layer.weight, mean=0.0, std=std)
-            elif init == 'uniform':
-                torch.nn.init.uniform_(
-                    layer.weight, a=-std/2, b=std/2)
-            elif init == 'xavier':
-                torch.nn.init.xavier_normal_(layer.weight)
+        for layer in self.layers:
+            if isinstance(layer, BinarizedLinear):
+                if init == 'gauss':
+                    torch.nn.init.normal_(
+                        layer.weight, mean=0.0, std=std)
+                elif init == 'uniform':
+                    torch.nn.init.uniform_(
+                        layer.weight, a=-std/2, b=std/2)
+                elif init == 'xavier':
+                    torch.nn.init.xavier_normal_(layer.weight)
 
     def forward(self, x):
-        """Forward propagation of the binarized neural network"""
+        """Forward propagation of the binarized neural network
+        Uses Sign activation function for binarization
+        """
         for layer in self.layers:
             x = layer(x)
-            if layer != self.layers[-1]:
+            if layer is not self.layers[-1]:
                 x = Sign.apply(x)
         return x

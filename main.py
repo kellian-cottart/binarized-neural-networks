@@ -36,7 +36,7 @@ if __name__ == "__main__":
                 init='uniform',
                 std=STD,
                 device=DEVICE,
-                dropout=True),
+                dropout=False),
             "optimizer": BayesBiNN,
             "criterion": torch.nn.CrossEntropyLoss(),
             "optimizer_parameters": {
@@ -60,6 +60,7 @@ if __name__ == "__main__":
             network = trainer.Trainer(**data, device=DEVICE)
 
         print(f"Training {name}...")
+        print(network.model)
         for train_dataset in training_pipeline:
             network.fit(
                 train_dataset, **data['parameters'], test_loader=testing_pipeline, verbose=True)
