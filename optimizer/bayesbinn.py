@@ -125,11 +125,10 @@ class BayesBiNN(torch.optim.Optimizer):
         """
         self._cuda_graph_capture_health_check()
 
-        ### INITIALIZE GRADIENTS ###
-        loss = None
-        if closure is not None:
-            with torch.enable_grad():
-                loss = closure()
+        if closure is None:
+            raise RuntimeError(
+                'BayesBiNN optimization step requires a closure function')
+        loss = closure()
 
         ### INITIALIZE GROUPS ###
         # Groups are the iterable of parameters to optimize or dicts defining parameter groups
@@ -216,13 +215,14 @@ def bayes_optimization(params: List[torch.Tensor],
         if num_mcmc_samples <= 0:
             # Point estimate
             relaxed_w = torch.tanh(lambda_)
-            g = torch.autograd.grad(closure, param)
+            g = ...
         else:
             for _ in range(num_mcmc_samples):
                 epsilon = torch.rand_like(mu)
                 delta = torch.log(epsilon / (1 - epsilon)) / 2
                 relaxed_w = torch.tanh((lambda_ + delta) / temperature)
-                g = torch.autograd.grad(closure, param)
+                loss, pred = closure()
+                g = torch.autograd.grad(loss, param)
                 s = ((1 - relaxed_w * relaxed_w + eps) / temperature /
                      (1 - mu * mu + eps))
                 grad.add_(s * g)

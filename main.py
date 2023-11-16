@@ -53,10 +53,10 @@ if __name__ == "__main__":
 
     for name, data in networks_data.items():
 
-        # if data["optimizer"] == BayesBiNN:
-        #     network = trainer.BayesTrainer(**data, device=DEVICE)
-        # else:
-        network = trainer.Trainer(**data, device=DEVICE)
+        if data["optimizer"] == BayesBiNN:
+            network = trainer.BayesTrainer(**data, device=DEVICE)
+        else:
+            network = trainer.Trainer(**data, device=DEVICE)
 
         print(f"Training {name}...")
         for train_dataset in training_pipeline:

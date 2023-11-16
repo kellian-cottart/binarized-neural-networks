@@ -17,12 +17,6 @@ class Trainer:
     def batch_step(self, inputs, targets):
         """Perform the training of a single sample of the batch
         """
-        def closure():
-            # Closure for the optimizer sending the loss to the optimizer
-            output = self.model.forward(inputs)
-            loss = self.criterion(output, targets)
-            return loss, output
-
         ### FORWARD PASS ###
         inputs = inputs.view(inputs.shape[0], -1).to(self.device)
         targets = targets.to(self.device)
@@ -34,7 +28,7 @@ class Trainer:
         ### BACKWARD PASS ###
         self.optimizer.zero_grad()
         self.loss.backward()
-        self.optimizer.step(closure=closure)
+        self.optimizer.step()
 
     def epoch_step(self, train_loader, test_loader=None):
         """Perform the training of a single epoch
