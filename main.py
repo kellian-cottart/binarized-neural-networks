@@ -40,11 +40,11 @@ if __name__ == "__main__":
             "criterion": torch.nn.CrossEntropyLoss(),
             "optimizer_parameters": {
                 "lr": 1e-4,
-                "beta": 0.15,
+                "beta": 0.2,
                 "num_mcmc_samples": 1,
-                "temperature": 1e-10,
+                "temperature": 1e-12,
             },
-            "parameters": {'n_epochs': 100},
+            "parameters": {'n_epochs': 50},
         }
     }
 

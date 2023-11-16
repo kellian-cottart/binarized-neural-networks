@@ -60,16 +60,11 @@ class BayesBiNN(torch.optim.Optimizer):
         if prior_lambda is None:
             self.state['prior_lambda'] = torch.zeros_like(param)
 
-    def update_prior_lambda(self, prior_lambda: torch.Tensor):
+    def update_prior_lambda(self):
         """ Update the prior lambda
-
-        Args: 
-            prior_lambda (torch.Tensor): Prior lambda
         """
-        if not isinstance(prior_lambda, torch.Tensor):
-            raise ValueError(
-                f"Invalid prior lambda: {prior_lambda}, must be a tensor")
-        self.state['prior_lambda'] = prior_lambda
+        self.state['prior_lambda'] = self.state['lambda']
+        self.state['mu'] = torch.tanh(self.state['lambda'])
 
     def step(self, closure=None):
         """ Perform a single optimization step 
