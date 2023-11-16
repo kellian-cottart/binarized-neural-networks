@@ -36,7 +36,7 @@ if __name__ == "__main__":
                 init='uniform',
                 std=STD,
                 device=DEVICE,
-                dropout=False),
+                dropout=True),
             "optimizer": BayesBiNN,
             "criterion": torch.nn.CrossEntropyLoss(),
             "optimizer_parameters": {

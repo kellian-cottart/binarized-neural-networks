@@ -32,7 +32,7 @@ networks
         ### LAYER INITIALIZATION ###
         for i in range(self.n_layers+1):
             if dropout:
-                self.layers.append(torch.nn.Dropout(p=0.2, device=device))
+                self.layers.append(torch.nn.Dropout(p=0.2))
             self.layers.append(BinarizedLinear(
                 layers[i], layers[i+1], bias=False, device=device, latent_weights=latent_weights))
             self.layers.append(torch.nn.BatchNorm1d(
