@@ -4,7 +4,7 @@ from .layers import *
 
 
 class BNN(torch.nn.Module):
-    """ Binarized Neural Network (BNN) 
+    """ Binarized Neural Network (BNN)
 
     Neural Network with binary weights and activations, using hidden weights called "degrees of certainty" (DOCs) to approximate real-valued weights.
 
@@ -15,7 +15,7 @@ networks
     def __init__(self, layers=[512], init='gauss', std=0.01, device='cuda', latent_weights=True, dropout=False):
         """ Initialize BNN
 
-        Args: 
+        Args:
             layers (list): List of layer sizes (including input and output layers)
             init (str): Initialization method for weights
             std (float): Standard deviation for initialization
@@ -32,7 +32,7 @@ networks
         ### LAYER INITIALIZATION ###
         for i in range(self.n_layers+1):
             if dropout:
-                self.layers.append(torch.nn.Dropout(p=0.2))
+                self.layers.append(torch.nn.Dropout(p=0.2, device=device))
             self.layers.append(BinarizedLinear(
                 layers[i], layers[i+1], bias=False, device=device, latent_weights=latent_weights))
             self.layers.append(torch.nn.BatchNorm1d(
@@ -40,7 +40,7 @@ networks
 
         ### WEIGHT INITIALIZATION ###
         for layer in self.layers:
-            if isinstance(layer, BinarizedLinear):
+            if hasattr(layer, 'weight'):
                 if init == 'gauss':
                     torch.nn.init.normal_(
                         layer.weight, mean=0.0, std=std)
@@ -56,6 +56,6 @@ networks
         """
         for layer in self.layers:
             x = layer(x)
-            if layer is not self.layers[-1]:
+            if layer is not self.layers[-1] and not isinstance(layer, BinarizedLinear):
                 x = Sign.apply(x)
         return x
