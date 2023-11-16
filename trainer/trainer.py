@@ -7,7 +7,8 @@ class Trainer:
 
     def __init__(self, model, optimizer, optimizer_parameters, criterion, device, *args, **kwargs):
         self.model = model
-        self.optimizer = optimizer(model.parameters(), **optimizer_parameters)
+        self.optimizer = optimizer(
+            self.model.parameters(), **optimizer_parameters)
         self.criterion = criterion
         self.device = device
         self.training_accuracy = []
@@ -18,7 +19,6 @@ class Trainer:
         """
         def closure():
             # Closure for the optimizer sending the loss to the optimizer
-            self.optimizer.zero_grad()
             output = self.model.forward(inputs)
             loss = self.criterion(output, targets)
             return loss, output
@@ -55,7 +55,8 @@ class Trainer:
             print(f"Training on {train_loader.dataset}...")
             pbar = trange(
                 n_epochs, desc='Initialization')
-        pbar = range(n_epochs)
+        else:
+            pbar = range(n_epochs)
         for epoch in pbar:
             self.epoch_step(train_loader, test_loader)
             if verbose:

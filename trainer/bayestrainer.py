@@ -10,7 +10,7 @@ class BayesTrainer(Trainer):
 
     def __init__(self, model, optimizer, optimizer_parameters, criterion, device, *args, **kwargs):
         self.model = model
-        self.optimizer = optimizer(model, **optimizer_parameters)
+        self.optimizer = optimizer(model.parameters(), **optimizer_parameters)
         self.criterion = criterion
         self.device = device
         self.training_accuracy = []
@@ -18,3 +18,8 @@ class BayesTrainer(Trainer):
 
     def epoch_step(self, train_loader, test_loader=None):
         super().epoch_step(train_loader, test_loader)
+
+    def fit(self, *args, **kwargs):
+        super().fit(*args, **kwargs)
+        self.optimizer.update_prior_lambda(
+            self.optimizer.lambda_)

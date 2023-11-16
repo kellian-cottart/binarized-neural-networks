@@ -8,13 +8,7 @@ import os
 ### GLOBAL VARIABLES ###
 SEED = 2506
 BATCH_SIZE = 100
-LEARNING_RATE = 0.01
-WEIGHT_DECAY = 1e-8
-METAPLASTICITY = 1.5
-N_EPOCHS = 10
 STD = 0.1
-GAMMA = 1e-2
-THRESHOLD = 1e-6
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 ### PATHS ###
@@ -36,19 +30,22 @@ if __name__ == "__main__":
 
     ### NETWORKS ###
     networks_data = {
-        "BNN Meta": {
-            "model": models.BNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE),
-            "optimizer": BiNNOptimizer,
+        "BNN BiNN": {
+            "model": models.BNN(
+                [input_size, 2048, 2048, 10],
+                init='uniform',
+                std=STD,
+                device=DEVICE),
+            "optimizer": BayesBiNN,
             "criterion": torch.nn.CrossEntropyLoss(),
-            "optimizer_parameters": {"lr": LEARNING_RATE, "train_set_size": len(mnist_train.dataset), "N": 5, "temperature": 1e-08, "beta": 0.0},
-            "parameters": {'n_epochs': N_EPOCHS},
+            "optimizer_parameters": {
+                "lr": 1e-4,
+                "beta": 0.15,
+                "num_mcmc_samples": 1,
+                "temperature": 1e-10,
+            },
+            "parameters": {'n_epochs': 100},
         }
-        # "BNN Bayes": {
-        #     "model": models.BNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE, latent_weights=True),
-        #     "parameters": {'n_epochs': N_EPOCHS, "optimizer": "bayesbinn", **all_test},
-        #     "optimizer_parameters": {"lr": LEARNING_RATE, "beta": 0.0, "temperature": 1e-08, "num_mcmc_samples": 1},
-        #     "accuracy": []
-        # },
     }
 
     training_pipeline = [mnist_train, fashion_mnist_train]
@@ -56,10 +53,10 @@ if __name__ == "__main__":
 
     for name, data in networks_data.items():
 
-        if data["optimizer"] == BiNNOptimizer:
-            network = trainer.BayesTrainer(**data, device=DEVICE)
-        else:
-            network = trainer.Trainer(**data, device=DEVICE)
+        # if data["optimizer"] == BayesBiNN:
+        #     network = trainer.BayesTrainer(**data, device=DEVICE)
+        # else:
+        network = trainer.Trainer(**data, device=DEVICE)
 
         print(f"Training {name}...")
         for train_dataset in training_pipeline:
