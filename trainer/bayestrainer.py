@@ -32,7 +32,7 @@ class BayesTrainer(Trainer):
             self.optimizer.zero_grad()
             output = self.model.forward(inputs)
             loss = self.criterion(output, targets)
-            return loss, output
+            return loss
 
         ### FORWARD PASS ###
         inputs = inputs.view(inputs.shape[0], -1).to(self.device)
