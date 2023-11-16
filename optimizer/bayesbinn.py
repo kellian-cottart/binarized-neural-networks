@@ -61,10 +61,9 @@ class BayesBiNN(torch.optim.Optimizer):
             self.state['prior_lambda'] = torch.zeros_like(param)
 
     def update_prior_lambda(self):
-        """ Update the prior lambda
+        """ Update the prior lambda for continual learning
         """
         self.state['prior_lambda'] = self.state['lambda']
-        self.state['mu'] = torch.tanh(self.state['lambda'])
 
     def step(self, closure=None):
         """ Perform a single optimization step 

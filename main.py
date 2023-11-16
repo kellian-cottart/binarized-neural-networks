@@ -32,10 +32,11 @@ if __name__ == "__main__":
     networks_data = {
         "BNN BiNN": {
             "model": models.BNN(
-                [input_size, 2048, 2048, 10],
+                [input_size, 2048, 2048, 2048, 2048, 10],
                 init='uniform',
                 std=STD,
-                device=DEVICE),
+                device=DEVICE,
+                dropout=True),
             "optimizer": BayesBiNN,
             "criterion": torch.nn.CrossEntropyLoss(),
             "optimizer_parameters": {

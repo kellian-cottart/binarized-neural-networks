@@ -12,7 +12,7 @@ class BNN(torch.nn.Module):
 networks
     """
 
-    def __init__(self, layers=[512], init='gauss', std=0.01, device='cuda', latent_weights=True):
+    def __init__(self, layers=[512], init='gauss', std=0.01, device='cuda', latent_weights=True, dropout=False):
         """ Initialize BNN
 
         Args: 
@@ -28,6 +28,7 @@ networks
         self.layers = torch.nn.ModuleList()
         self.device = device
         self.latent_weights = latent_weights
+        self.dropout = dropout
 
         ### LAYER INITIALIZATION ###
         for i in range(self.n_layers+1):
@@ -36,9 +37,14 @@ networks
                 layers[i], layers[i+1], bias=False, device=device, latent_weights=latent_weights))
             self.layers.append(torch.nn.BatchNorm1d(
                 layers[i+1], affine=True, track_running_stats=True, device=device))
+            if dropout:
+                self.layers.append(torch.nn.Dropout(p=0.2))
+        # Compute the number of different layers (binarized_linear or batchnorm or dropout)
+        self.n_diff_layers = len(self.layers) // len(layers) + 1
+        print(self.n_diff_layers)
 
         ### WEIGHT INITIALIZATION ###
-        for layer in self.layers[::2]:
+        for layer in self.layers[::self.n_diff_layers]:
             if init == 'gauss':
                 torch.nn.init.normal_(
                     layer.weight, mean=0.0, std=std)
@@ -50,11 +56,8 @@ networks
 
     def forward(self, x):
         """Forward propagation of the binarized neural network"""
-        # For each pair of layers (binarized_linear + batchnorm)
-        for binarized_linear, batchnorm in zip(self.layers[::2], self.layers[1::2]):
-            x = binarized_linear(x)
-            x = batchnorm(x)
-            if batchnorm != self.layers[-1]:
-                # Apply the sign function to the output of the batchnorm layer
+        for layer in self.layers:
+            x = layer(x)
+            if layer != self.layers[-1]:
                 x = Sign.apply(x)
         return x
