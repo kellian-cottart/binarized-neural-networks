@@ -1,4 +1,5 @@
 from utils import *
+from dataloader import *
 import models
 import torch
 import trainer
@@ -6,11 +7,14 @@ from optimizer import *
 import os
 
 ### GLOBAL VARIABLES ###
-SEED = 2506  # Random seed
+SEED = 1  # Random seed
 BATCH_SIZE = 100  # Batch size
 STD = 0.1  # Standard deviation for the initialization of the weights
 N_TASKS = 3  # Number of tasks to train on when comparing with EWC
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+N_EPOCHS = 100  # Number of epochs to train on each task
+LEARNING_RATE = 1e-3  # Learning rate
+MIN_LEARNING_RATE = 1e-16
 
 ### PATHS ###
 SAVE_FOLDER = "saved"
@@ -33,21 +37,26 @@ if __name__ == "__main__":
     networks_data = {
         "BNN BiNN": {
             "model": models.BNN(
-                [input_size, 2048, 2048, 2048, 2048, 10],
+                [input_size, 100, 100, 10],
                 init='uniform',
                 std=STD,
                 device=DEVICE,
                 dropout=False),
             "optimizer": BayesBiNN,
             "criterion": torch.nn.CrossEntropyLoss(),
+            "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR,
+            "scheduler_parameters": {
+                "T_max": N_EPOCHS * N_TASKS,
+                "eta_min": MIN_LEARNING_RATE
+            },
             "optimizer_parameters": {
-                "lr": 1e-4,
+                "lr": LEARNING_RATE,
                 "beta": 0.15,
                 "num_mcmc_samples": 1,
-                "temperature": 1e-12,
-                "scale": 5
+                "temperature": 1e-02,
+                "scale": 1
             },
-            "parameters": {'n_epochs': 10},
+            "parameters": {'n_epochs': N_EPOCHS},
         }
     }
 
@@ -96,5 +105,5 @@ if __name__ == "__main__":
             folder, accuracy_name, ".pt"))
 
         print(f"Exporting visualisation of {name} accuracy...")
-        title = name + "-MNIST-FashionMNIST-accuracy"
+        title = name + "-tasks-accuracy"
         visualize_sequential(title, accuracy, folder=folder)

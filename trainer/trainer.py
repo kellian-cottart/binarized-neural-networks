@@ -13,6 +13,12 @@ class Trainer:
         self.device = device
         self.training_accuracy = []
         self.testing_accuracy = []
+        # Scheduler addition
+        if "scheduler" in kwargs:
+            scheduler = kwargs["scheduler"]
+            scheduler_parameters = kwargs["scheduler_parameters"]
+            self.scheduler = scheduler(
+                self.optimizer, **scheduler_parameters)
 
     def batch_step(self, inputs, targets):
         """Perform the training of a single sample of the batch
@@ -37,6 +43,10 @@ class Trainer:
         for i, (inputs, targets) in enumerate(train_loader):
             self.batch_step(inputs, targets)
 
+        ### SCHEDULER ###
+        if self.scheduler is not None:
+            self.scheduler.step()
+
         ### EVALUATE ###
         if test_loader is not None:
             self.testing_accuracy.append(
@@ -59,7 +69,8 @@ class Trainer:
                 kwargs = {
                     f"task {i+1}": f"{accuracy:.2%}" for i, accuracy in enumerate(self.testing_accuracy[-1]) if accuracy is not None
                 }
-                pbar.set_postfix(current_loss=self.loss.item(), **kwargs)
+                pbar.set_postfix(current_loss=self.loss.item(
+                ), **kwargs, lr=self.optimizer.param_groups[0]['lr'])
 
     def save(self, path):
         """Save the model
