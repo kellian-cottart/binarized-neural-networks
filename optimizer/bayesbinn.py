@@ -16,6 +16,7 @@ class BayesBiNN(torch.optim.Optimizer):
         temperature (float): temperature value of the Gumbel soft-max trick (Maddison et al., 2017)
         num_mcmc_samples (int): number of MCMC samples to compute the gradient (default: 1, if 0: computes the point estimate)
         prior_lambda (FloatTensor): lambda of the prior distribution (for continual learning, input the previously found distribution) (default: None)
+        scale (float): scale of the prior distribution (default: 1)
     """
 
     def __init__(self,
@@ -26,6 +27,7 @@ class BayesBiNN(torch.optim.Optimizer):
                  num_mcmc_samples: int = 1,
                  prior_lambda: Optional[torch.Tensor] = None,
                  init_lambda: int = 10,
+                 scale: float = 1.0
                  ):
         if not 0.0 <= lr:
             raise ValueError(f"Invalid learning rate: {lr}")
@@ -41,7 +43,7 @@ class BayesBiNN(torch.optim.Optimizer):
                 f"Invalid number of MCMC samples: {num_mcmc_samples}")
 
         defaults = dict(lr=lr, beta=beta, temperature=temperature,
-                        prior_lambda=prior_lambda, num_mcmc_samples=num_mcmc_samples)
+                        prior_lambda=prior_lambda, num_mcmc_samples=num_mcmc_samples, scale=scale)
         super().__init__(params, defaults)
 
         ### LAMBDA INIT ###
@@ -94,6 +96,7 @@ class BayesBiNN(torch.optim.Optimizer):
             lr = group['lr']
             temperature = group['temperature']
             num_mcmc_samples = group['num_mcmc_samples']
+            scale = group['scale']
 
             # State of the optimizer
             step = self.state['step']
@@ -130,7 +133,7 @@ class BayesBiNN(torch.optim.Optimizer):
 
             # Update all parameters
             self.state['momentum'] = momentum * \
-                beta + grad + lambda_ - prior_lambda
+                beta + grad + scale*(lambda_ - prior_lambda)
             bias_correction = 1 - beta ** step
             step_size = lr / bias_correction
             self.state['lambda'] = lambda_ - step_size * momentum

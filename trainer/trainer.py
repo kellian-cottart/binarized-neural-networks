@@ -55,8 +55,11 @@ class Trainer:
             self.epoch_step(train_loader, test_loader)
             if verbose:
                 pbar.set_description(f"Epoch {epoch+1}/{n_epochs}")
-                pbar.set_postfix(current_loss=self.loss.item(
-                ), mnist_test=self.testing_accuracy[-1][0], fashion_mnist_test=self.testing_accuracy[-1][1])
+                # creation of a dictionnary with the name of the test set and the accuracy
+                kwargs = {
+                    f"task {i+1}": f"{accuracy:.2%}" for i, accuracy in enumerate(self.testing_accuracy[-1]) if accuracy is not None
+                }
+                pbar.set_postfix(current_loss=self.loss.item(), **kwargs)
 
     def save(self, path):
         """Save the model

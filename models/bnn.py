@@ -21,13 +21,13 @@ networks
             std (float): Standard deviation for initialization
             device (str): Device to use for computation (e.g. 'cuda' or 'cpu')
             latent_weights (bool): Whether to use latent weights or not
+            dropout (bool): Whether to use dropouts layers before each layer
 
         """
         super(BNN, self).__init__()
         self.n_layers = len(layers)-2
         self.layers = torch.nn.ModuleList()
         self.device = device
-        self.latent_weights = latent_weights
 
         ### LAYER INITIALIZATION ###
         for i in range(self.n_layers+1):

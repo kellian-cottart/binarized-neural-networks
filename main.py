@@ -6,9 +6,10 @@ from optimizer import *
 import os
 
 ### GLOBAL VARIABLES ###
-SEED = 2506
-BATCH_SIZE = 100
-STD = 0.1
+SEED = 2506  # Random seed
+BATCH_SIZE = 100  # Batch size
+STD = 0.1  # Standard deviation for the initialization of the weights
+N_TASKS = 3  # Number of tasks to train on when comparing with EWC
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 ### PATHS ###
@@ -36,36 +37,50 @@ if __name__ == "__main__":
                 init='uniform',
                 std=STD,
                 device=DEVICE,
-                dropout=True),
+                dropout=False),
             "optimizer": BayesBiNN,
             "criterion": torch.nn.CrossEntropyLoss(),
             "optimizer_parameters": {
                 "lr": 1e-4,
-                "beta": 0.2,
+                "beta": 0.15,
                 "num_mcmc_samples": 1,
                 "temperature": 1e-12,
+                "scale": 5
             },
-            "parameters": {'n_epochs': 50},
+            "parameters": {'n_epochs': 10},
         }
     }
 
-    training_pipeline = [mnist_train, fashion_mnist_train]
-    testing_pipeline = [mnist_test, fashion_mnist_test]
+    training_pipeline = []
+    testing_pipeline = []
+
+    if N_TASKS > 1:
+        for i in range(N_TASKS):
+            permuted_mnist_train, permuted_mnist_test = permuted_mnist(
+                DATASETS_PATH, BATCH_SIZE)
+            training_pipeline.append(permuted_mnist_train)
+            testing_pipeline.append(permuted_mnist_test)
+
+    else:
+        training_pipeline = [mnist_train, fashion_mnist_train]
+        testing_pipeline = [mnist_test, fashion_mnist_test]
 
     for name, data in networks_data.items():
 
+        ### INSTANTIATE THE TRAINER ###
         if data["optimizer"] == BayesBiNN:
             network = trainer.BayesTrainer(**data, device=DEVICE)
         else:
             network = trainer.Trainer(**data, device=DEVICE)
 
+        ### TRAINING ###
         print(f"Training {name}...")
         print(network.model)
         for train_dataset in training_pipeline:
             network.fit(
                 train_dataset, **data['parameters'], test_loader=testing_pipeline, verbose=True)
 
-        # Creating folders
+        ### SAVING DATA ###
         full_name = os.path.join(SAVE_FOLDER, name)
         folder = versionning(full_name, name)
         os.makedirs(folder, exist_ok=True)
