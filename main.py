@@ -5,6 +5,8 @@ import torch
 import trainer
 from optimizer import *
 import os
+import wandb
+
 
 ### GLOBAL VARIABLES ###
 SEED = 1  # Random seed
@@ -42,23 +44,28 @@ if __name__ == "__main__":
                 std=STD,
                 device=DEVICE,
                 dropout=False),
+            "training_parameters": {
+                'n_epochs': N_EPOCHS
+            },
             "optimizer": BayesBiNN,
             "criterion": torch.nn.CrossEntropyLoss(),
-            "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR,
-            "scheduler_parameters": {
-                "T_max": N_EPOCHS * N_TASKS,
-                "eta_min": MIN_LEARNING_RATE
-            },
+            # "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR,
+            # "scheduler_parameters": {
+            #     "T_max": N_EPOCHS * N_TASKS,
+            #     "eta_min": MIN_LEARNING_RATE
+            # },
             "optimizer_parameters": {
                 "lr": LEARNING_RATE,
                 "beta": 0.15,
                 "num_mcmc_samples": 1,
                 "temperature": 1e-02,
                 "scale": 1
-            },
-            "parameters": {'n_epochs': N_EPOCHS},
+            }
         }
     }
+
+    wandb.init(project="binarized-neural-networks", entity="kellian-cottart",
+               config=networks_data["BNN BiNN"], name="BNN BiNN - 3 tasks - no scheduler")
 
     training_pipeline = []
     testing_pipeline = []
@@ -87,7 +94,7 @@ if __name__ == "__main__":
         print(network.model)
         for train_dataset in training_pipeline:
             network.fit(
-                train_dataset, **data['parameters'], test_loader=testing_pipeline, verbose=True)
+                train_dataset, **data['training_parameters'], test_loader=testing_pipeline, verbose=True)
 
         ### SAVING DATA ###
         full_name = os.path.join(SAVE_FOLDER, name)
@@ -107,3 +114,4 @@ if __name__ == "__main__":
         print(f"Exporting visualisation of {name} accuracy...")
         title = name + "-tasks-accuracy"
         visualize_sequential(title, accuracy, folder=folder)
+    wandb.finish()
