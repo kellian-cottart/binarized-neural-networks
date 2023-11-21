@@ -12,12 +12,12 @@ import wandb
 SEED = 1  # Random seed
 BATCH_SIZE = 100  # Batch size
 STD = 0.1  # Standard deviation for the initialization of the weights
-N_TASKS = 3  # Number of tasks to train on when comparing with EWC
+N_TASKS = 0  # Number of tasks to train on when comparing with EWC
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 N_EPOCHS = 100  # Number of epochs to train on each task
 LEARNING_RATE = 1e-3  # Learning rate
 MIN_LEARNING_RATE = 1e-16
-
+NAME = "BNN BiNN - MNIST FMNIST - 4096-4096-scheduler"
 ### PATHS ###
 SAVE_FOLDER = "saved"
 DATASETS_PATH = "datasets"
@@ -35,38 +35,7 @@ if __name__ == "__main__":
     input_size = mnist_train.dataset.data.shape[1] * \
         mnist_train.dataset.data.shape[2]
 
-    ### NETWORKS ###
-    networks_data = {
-        "BNN BiNN": {
-            "model": models.BNN(
-                [input_size, 100, 100, 10],
-                init='uniform',
-                std=STD,
-                device=DEVICE,
-                dropout=False),
-            "training_parameters": {
-                'n_epochs': N_EPOCHS
-            },
-            "optimizer": BayesBiNN,
-            "criterion": torch.nn.CrossEntropyLoss(),
-            # "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR,
-            # "scheduler_parameters": {
-            #     "T_max": N_EPOCHS * N_TASKS,
-            #     "eta_min": MIN_LEARNING_RATE
-            # },
-            "optimizer_parameters": {
-                "lr": LEARNING_RATE,
-                "beta": 0.15,
-                "num_mcmc_samples": 1,
-                "temperature": 1e-02,
-                "scale": 1
-            }
-        }
-    }
-
-    wandb.init(project="binarized-neural-networks", entity="kellian-cottart",
-               config=networks_data["BNN BiNN"], name="BNN BiNN - 3 tasks - no scheduler")
-
+    ### PIPELINE ###
     training_pipeline = []
     testing_pipeline = []
 
@@ -80,6 +49,40 @@ if __name__ == "__main__":
     else:
         training_pipeline = [mnist_train, fashion_mnist_train]
         testing_pipeline = [mnist_test, fashion_mnist_test]
+
+        N_TASKS = len(training_pipeline)
+
+    ### NETWORK CONFIGURATION ###
+    networks_data = {
+        "BNN BiNN": {
+            "model": models.BNN(
+                [input_size, 2048, 2048, 10],
+                init='uniform',
+                std=STD,
+                device=DEVICE,
+                dropout=False),
+            "training_parameters": {
+                'n_epochs': N_EPOCHS
+            },
+            "optimizer": BayesBiNN,
+            "criterion": torch.nn.CrossEntropyLoss(),
+            "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR,
+            "scheduler_parameters": {
+                "T_max": N_EPOCHS * N_TASKS,
+                "eta_min": MIN_LEARNING_RATE
+            },
+            "optimizer_parameters": {
+                "lr": LEARNING_RATE,
+                "beta": 0.15,
+                "num_mcmc_samples": 1,
+                "temperature": 1e-02,
+                "scale": 1
+            }
+        }
+    }
+
+    wandb.init(project="binarized-neural-networks", entity="kellian-cottart",
+               config=networks_data["BNN BiNN"], name=NAME)
 
     for name, data in networks_data.items():
 

@@ -27,5 +27,6 @@ def visualize_sequential(title, t_accuracy, folder):
         plt.axvline(x=i*n_epochs_task, color='k',
                     linestyle='--', linewidth=0.5)
     os.makedirs(folder, exist_ok=True)
+    plt.ylim(0, 1)
     versionned = versionning(folder, title)
     plt.savefig(versionned, bbox_inches='tight')

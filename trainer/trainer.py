@@ -56,14 +56,26 @@ class Trainer:
 
         ### LOGGING ###
         if self.logging:
-            # loss
-            wandb.log({"loss": self.loss.item()})
-            for task in range(len(self.testing_accuracy[-1])):
-                wandb.log(
-                    {f"task {task+1} test accuracy": self.testing_accuracy[-1][task]})
-            # learning rate
-            wandb.log({"lr": self.optimizer.param_groups[0]['lr']})
-            # training accuracy on each task
+            self.log()
+
+    def log(self):
+        """Log the training and testing results for monitoring
+        This function is called at the end of each epoch"""
+        # loss
+        wandb.log({"Loss": self.loss.item()})
+
+        # training accuracy
+        for task in range(len(self.testing_accuracy[-1])):
+            wandb.log(
+                {f"Task {task+1} - Test accuracy": self.testing_accuracy[-1][task]})
+
+        # learning rate
+        wandb.log({"Learning rate": self.optimizer.param_groups[0]['lr']})
+
+        # weights
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                wandb.log({name: param})
 
     def fit(self, train_loader, n_epochs, test_loader=None, verbose=True, **kwargs):
         """Train the model for n_epochs
