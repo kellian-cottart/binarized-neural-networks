@@ -1,13 +1,17 @@
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
+import PIL.Image as Image
+import torch
+# change get item in mnist to convert first to cpu then to cuda
 
 
-def mnist(path, batch_size):
+def mnist(path, batch_size, num_workers=0):
     """ Load MNIST dataset
 
     Args:
         path (str): Path to save/load dataset
         batch_size (int): Batch size for training
+        num_workers (int): Number of workers for data loading
 
     Returns:
         torch.utils.data.DataLoader: MNIST training dataset
@@ -28,8 +32,8 @@ def mnist(path, batch_size):
 
     ### DATA LOADER ###
     mnist_train = DataLoader(
-        mnist_train, batch_size=batch_size, shuffle=True)
+        mnist_train, batch_size=batch_size, shuffle=True, num_workers=num_workers)
     mnist_test = DataLoader(
-        mnist_test, batch_size=batch_size, shuffle=False)
+        mnist_test, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
     return mnist_train, mnist_test

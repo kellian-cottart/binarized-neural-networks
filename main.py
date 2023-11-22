@@ -9,28 +9,32 @@ import wandb
 
 
 ### GLOBAL VARIABLES ###
-SEED = 1  # Random seed
 BATCH_SIZE = 100  # Batch size
-STD = 0.1  # Standard deviation for the initialization of the weights
-N_TASKS = 0  # Number of tasks to train on when comparing with EWC
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 N_EPOCHS = 100  # Number of epochs to train on each task
 LEARNING_RATE = 1e-3  # Learning rate
 MIN_LEARNING_RATE = 1e-16
-NAME = "BNN BiNN - MNIST FMNIST - 4096-4096-scheduler"
+NAME = "BNN BiNN - Test"
+
+
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+NUM_WORKERS = 4  # Number of workers for data loading
+N_TASKS = 0  # Number of tasks to train on (permutations of MNIST)
+SEED = 1  # Random seed
+STD = 0.1  # Standard deviation for the initialization of the weights
+
+
 ### PATHS ###
 SAVE_FOLDER = "saved"
 DATASETS_PATH = "datasets"
-
 
 if __name__ == "__main__":
     ### SEED ###
     torch.manual_seed(SEED)
 
     ### LOAD DATASETS ###
-    mnist_train, mnist_test = mnist(DATASETS_PATH, BATCH_SIZE)
+    mnist_train, mnist_test = mnist(DATASETS_PATH, BATCH_SIZE, NUM_WORKERS)
     fashion_mnist_train, fashion_mnist_test = fashion_mnist(
-        DATASETS_PATH, BATCH_SIZE)
+        DATASETS_PATH, BATCH_SIZE, NUM_WORKERS)
 
     input_size = mnist_train.dataset.data.shape[1] * \
         mnist_train.dataset.data.shape[2]
@@ -56,7 +60,7 @@ if __name__ == "__main__":
     networks_data = {
         "BNN BiNN": {
             "model": models.BNN(
-                [input_size, 2048, 2048, 10],
+                [input_size, 100, 100, 10],
                 init='uniform',
                 std=STD,
                 device=DEVICE,
@@ -88,9 +92,10 @@ if __name__ == "__main__":
 
         ### INSTANTIATE THE TRAINER ###
         if data["optimizer"] == BayesBiNN:
-            network = trainer.BayesTrainer(**data, device=DEVICE)
+            network = trainer.BayesTrainer(
+                **data, device=DEVICE,)
         else:
-            network = trainer.Trainer(**data, device=DEVICE)
+            network = trainer.Trainer(**data, device=DEVICE,)
 
         ### TRAINING ###
         print(f"Training {name}...")

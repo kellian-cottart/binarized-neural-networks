@@ -25,6 +25,9 @@ class Trainer:
     def batch_step(self, inputs, targets):
         """Perform the training of a single sample of the batch
         """
+        self.model.train()
+        torch.set_grad_enabled(True)
+
         ### FORWARD PASS ###
         inputs = inputs.view(inputs.shape[0], -1).to(self.device)
         targets = targets.to(self.device)
@@ -71,11 +74,6 @@ class Trainer:
 
         # learning rate
         wandb.log({"Learning rate": self.optimizer.param_groups[0]['lr']})
-
-        # weights
-        for name, param in self.model.named_parameters():
-            if param.requires_grad:
-                wandb.log({name: param})
 
     def fit(self, train_loader, n_epochs, test_loader=None, verbose=True, **kwargs):
         """Train the model for n_epochs
