@@ -1,7 +1,7 @@
 
 import torch
 from .layers import *
-from .dnn import *
+from .deepNeuralNetwork import *
 
 
 class BNN(DNN):

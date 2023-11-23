@@ -1,2 +1,2 @@
-from .bnn import *
-from .dnn import *
+from .binaryNeuralNetwork import *
+from .deepNeuralNetwork import *
