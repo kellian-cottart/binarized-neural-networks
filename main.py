@@ -68,7 +68,7 @@ if __name__ == "__main__":
             "training_parameters": {
                 'n_epochs': N_EPOCHS
             },
-            "criterion": torch.nn.NLLLoss,
+            "criterion": torch.nn.NLLLoss(),
             "optimizer": MESU,
             "optimizer_parameters": {
                 "coeff_likeli_mu": 1,
