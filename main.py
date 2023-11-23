@@ -10,10 +10,10 @@ import wandb
 
 ### GLOBAL VARIABLES ###
 BATCH_SIZE = 100  # Batch size
-N_EPOCHS = 100  # Number of epochs to train on each task
-LEARNING_RATE = 1e-3  # Learning rate
+N_EPOCHS = 50  # Number of epochs to train on each task
+LEARNING_RATE = 5e-3  # Learning rate
 MIN_LEARNING_RATE = 1e-16
-NAME = "BNN BiNN - Test"
+NAME = "Djohan - Test"
 
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -57,38 +57,40 @@ if __name__ == "__main__":
         N_TASKS = len(training_pipeline)
 
     ### NETWORK CONFIGURATION ###
-    networks_data = {
-        "BNN BiNN": {
-            "model": models.BNN(
-                [input_size, 100, 100, 10],
-                init='uniform',
-                std=STD,
+    networks_data = [
+        {
+            "name": "BayesianNN - 100 - 100",
+            "model": models.BayesianNN(
+                layers=[input_size, 100, 100, 10],
+                init="uniform",
                 device=DEVICE,
                 dropout=False),
             "training_parameters": {
                 'n_epochs': N_EPOCHS
             },
-            "optimizer": BayesBiNN,
-            "criterion": torch.nn.CrossEntropyLoss(),
-            "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR,
-            "scheduler_parameters": {
-                "T_max": N_EPOCHS * N_TASKS,
-                "eta_min": MIN_LEARNING_RATE
-            },
+            "criterion": torch.nn.NLLLoss,
+            "optimizer": MESU,
             "optimizer_parameters": {
-                "lr": LEARNING_RATE,
-                "beta": 0.15,
-                "num_mcmc_samples": 1,
-                "temperature": 1e-02,
-                "scale": 1
-            }
-        }
-    }
+                "coeff_likeli_mu": 1,
+                "coeff_likeli_sigma": 1,
+                "sigma_p": 4e-2,
+                "sigma_b": 15,
+                "update": 3,
+                "keep_prior": True
+            },
+            # "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR,
+            # "scheduler_parameters": {
+            #     "T_max": N_EPOCHS * N_TASKS,
+            #     "eta_min": MIN_LEARNING_RATE
+            # },
+        },
+    ]
 
-    wandb.init(project="binarized-neural-networks", entity="kellian-cottart",
-               config=networks_data["BNN BiNN"], name=NAME)
-
-    for name, data in networks_data.items():
+    for index, data in enumerate(networks_data):
+        ### W&B INITIALIZATION ###
+        ident = NAME + f" - {data['name']} - {index}"
+        wandb.init(project="binarized-neural-networks", entity="kellian-cottart",
+                   config=networks_data[index], name=NAME)
 
         ### INSTANTIATE THE TRAINER ###
         if data["optimizer"] == BayesBiNN:
@@ -98,28 +100,28 @@ if __name__ == "__main__":
             network = trainer.Trainer(**data, device=DEVICE,)
 
         ### TRAINING ###
-        print(f"Training {name}...")
+        print(f"Training {data['name']}...")
         print(network.model)
         for train_dataset in training_pipeline:
             network.fit(
                 train_dataset, **data['training_parameters'], test_loader=testing_pipeline, verbose=True)
 
         ### SAVING DATA ###
-        full_name = os.path.join(SAVE_FOLDER, name)
-        folder = versionning(full_name, name)
+        full_name = os.path.join(SAVE_FOLDER, data['name'])
+        folder = versionning(full_name, data['name'])
         os.makedirs(folder, exist_ok=True)
 
-        print(f"Saving {name} weights, accuracy and figure...")
-        weights_name = name + "-weights"
+        print(f"Saving {data['name']} weights, accuracy and figure...")
+        weights_name = data['name'] + "-weights"
         network.save(versionning(folder, weights_name, ".pt"))
 
-        print(f"Saving {name} accuracy...")
-        accuracy_name = name + "-accuracy"
+        print(f"Saving {data['name']} accuracy...")
+        accuracy_name = data['name'] + "-accuracy"
         accuracy = network.testing_accuracy
         torch.save(accuracy, versionning(
             folder, accuracy_name, ".pt"))
 
-        print(f"Exporting visualisation of {name} accuracy...")
-        title = name + "-tasks-accuracy"
+        print(f"Exporting visualisation of {data['name']} accuracy...")
+        title = data['name'] + "-tasks-accuracy"
         visualize_sequential(title, accuracy, folder=folder)
     wandb.finish()

@@ -73,7 +73,8 @@ class Trainer:
                 {f"Task {task+1} - Test accuracy": self.testing_accuracy[-1][task]})
 
         # learning rate
-        wandb.log({"Learning rate": self.optimizer.param_groups[0]['lr']})
+        if "lr" in self.optimizer.param_groups[0]:
+            wandb.log({"Learning rate": self.optimizer.param_groups[0]['lr']})
 
     def fit(self, train_loader, n_epochs, test_loader=None, verbose=True, **kwargs):
         """Train the model for n_epochs
@@ -93,7 +94,7 @@ class Trainer:
                     f"task {i+1}": f"{accuracy:.2%}" for i, accuracy in enumerate(self.testing_accuracy[-1]) if accuracy is not None
                 }
                 pbar.set_postfix(current_loss=self.loss.item(
-                ), **kwargs, lr=self.optimizer.param_groups[0]['lr'])
+                ), **kwargs, lr=self.optimizer.param_groups[0]['lr'] if "lr" in self.optimizer.param_groups[0] else None)
 
     def save(self, path):
         """Save the model
@@ -114,13 +115,17 @@ class Trainer:
 
         Returns: 
             torch.Tensor: Predicted labels
+            torch.Tensor: Probability of predicted labels
 
         """
         tensor = tensor.view(1, -1).to(self.device)
         y_pred = self.model.forward(tensor).to(self.device)
-        # Retrieve the most likely class
+        # Retrieve the most likely class from the softmax output
         _, predicted = torch.max(y_pred.data, 1)
-        return predicted
+        # Retrieve the probability of the most likely class
+        probability = torch.nn.functional.softmax(
+            y_pred.data, dim=1)[0][predicted]
+        return predicted, probability
 
     @torch.no_grad()
     def test(self, dataloader):

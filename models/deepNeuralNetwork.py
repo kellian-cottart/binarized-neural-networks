@@ -34,8 +34,8 @@ class DNN(torch.nn.Module):
         """
         for i in range(self.n_layers+1):
             # Linear layers with BatchNorm
-            if dropout:
-                layers.append(torch.nn.Dropout(p=0.2))
+            if dropout and i != 0:
+                self.layers.append(torch.nn.Dropout(p=0.2))
             self.layers.append(torch.nn.Linear(
                 layers[i], layers[i+1], bias=bias, device=self.device))
             self.layers.append(torch.nn.BatchNorm1d(
@@ -74,4 +74,4 @@ class DNN(torch.nn.Module):
             x = layer(x)
             if layer is not self.layers[-1] and isinstance(layer, torch.nn.BatchNorm1d):
                 x = torch.nn.functional.relu(x)
-        return x
+        return torch.nn.functional.log_softmax(x, dim=1)

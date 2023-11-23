@@ -11,6 +11,14 @@ class BNN(DNN):
 
     Axel Laborieux et al., Synaptic metaplasticity in binarized neural
 networks
+
+    Args:
+        layers (list): List of layer sizes (including input and output layers)
+        init (str): Initialization method for weights
+        std (float): Standard deviation for initialization
+        device (str): Device to use for computation (e.g. 'cuda' or 'cpu')
+        dropout (bool): Whether to use dropout
+        latent_weights (bool): Whether to use latent weights or not
     """
 
     def __init__(self, *args, **kwargs):
@@ -20,7 +28,7 @@ networks
     def _layer_init(self, layers, dropout=False, bias=False):
         for i in range(self.n_layers+1):
             # Linear layers with BatchNorm
-            if dropout:
+            if dropout and i != 0:
                 layers.append(torch.nn.Dropout(p=0.2))
             self.layers.append(BinarizedLinear(
                 layers[i], layers[i+1], bias=bias, device=self.device, latent_weights=self.latent_weights))
@@ -35,4 +43,4 @@ networks
             x = layer(x)
             if layer is not self.layers[-1] and isinstance(layer, torch.nn.BatchNorm1d):
                 x = Sign.apply(x)
-        return x
+        return torch.nn.functional.log_softmax(x, dim=1)
