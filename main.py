@@ -13,8 +13,8 @@ BATCH_SIZE = 100  # Batch size
 N_EPOCHS = 25  # Number of epochs to train on each task
 LEARNING_RATE = 1e-3  # Learning rate
 MIN_LEARNING_RATE = 1e-16
-NAME = "Djohan - Test"
-N_NETWORKS = 5  # Number of networks to train
+NAME = "BiNNBayes-metaplasticity"
+N_NETWORKS = 1  # Number of networks to train
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 8  # Number of workers for data loading
@@ -59,10 +59,10 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "name": "BayesianNN - 100 - 100",
-            "nn_type": models.BayesianNN,
+            "name": "BinaryNN-1024-1024",
+            "nn_type": models.BNN,
             "nn_parameters": {
-                "layers": [input_size, 100, 100, 10],
+                "layers": [input_size, 1024, 1024, 10],
                 "init": "uniform",
                 "device": DEVICE,
                 "dropout": False
@@ -71,14 +71,13 @@ if __name__ == "__main__":
                 'n_epochs': N_EPOCHS
             },
             "criterion": torch.nn.NLLLoss(),
-            "optimizer": MESU,
+            "optimizer": BinarySynapticUncertainty,
             "optimizer_parameters": {
-                "coeff_likeli_mu": 1,
-                "coeff_likeli_sigma": 1,
-                "sigma_p": 4e-2,
-                "sigma_b": 15,
-                "update": 3,
-                "keep_prior": True
+                "lr": LEARNING_RATE,
+                "beta": 0.15,
+                "temperature": 1e-8,
+                "num_mcmc_samples": 1,
+                "keep_prior": True,
             },
             # "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR,
             # "scheduler_parameters": {
@@ -110,7 +109,7 @@ if __name__ == "__main__":
                        config=networks_data[index], name=NAME)
 
             ### INSTANTIATE THE TRAINER ###
-            if data["optimizer"] == BayesBiNN:
+            if data["optimizer"] in [BinarySynapticUncertainty, BayesBiNN]:
                 network = trainer.BayesTrainer(
                     model=model, **data, device=DEVICE,)
             else:

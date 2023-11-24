@@ -1,21 +1,14 @@
 from .trainer import Trainer
-import torch
 
 
-class BayesTrainer(Trainer):
-    """Extended Trainer class to cover the special case of BayesBiNN
-
-    Necessity to have a different training function to implement mu and lambda properly 
+class ClosureTrainer(Trainer):
+    """Trainer but with a closure for the optimizer
 
     Args:
         Trainer (Trainer): Trainer class to extend
         *args: Variable length argument list (for the Trainer class)
         **kwargs: Arbitrary keyword arguments (most likely optimizer or scheduler parameters)
     """
-
-    def fit(self, *args, **kwargs):
-        super().fit(*args, **kwargs)
-        self.optimizer.update_prior_lambda()
 
     def batch_step(self, inputs, targets):
         """Perform the training of a single sample of the batch

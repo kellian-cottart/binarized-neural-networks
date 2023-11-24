@@ -1,2 +1,3 @@
 from .trainer import *
-from .bayestrainer import *
+from .bayesTrainer import *
+from .closureTrainer import *

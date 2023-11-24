@@ -61,5 +61,9 @@ def visualize_sequential(title, l_accuracies, folder):
         [f"Task {i+1}" for i in range(len(l_accuracies[0][0]))] + ["Task change"])
 
     ### SAVE ###
-    versionned = versionning(folder, title)
+    # PDF
+    versionned = versionning(folder, title, ".pdf")
+    plt.savefig(versionned, bbox_inches='tight')
+    # SVG
+    versionned = versionning(folder, title, ".svg")
     plt.savefig(versionned, bbox_inches='tight')
