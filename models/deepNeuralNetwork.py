@@ -20,12 +20,13 @@ class DNN(torch.nn.Module):
         self.n_layers = len(layers)-2
         self.device = device
         self.layers = torch.nn.ModuleList()
+        self.dropout = dropout
         ### LAYER INITIALIZATION ###
-        self._layer_init(layers, dropout, bias)
+        self._layer_init(layers, bias)
         ### WEIGHT INITIALIZATION ###
         self._weight_init(init, std)
 
-    def _layer_init(self, layers, dropout=False, bias=False):
+    def _layer_init(self, layers, bias=False):
         """ Initialize layers of NN
 
         Args:
@@ -34,7 +35,7 @@ class DNN(torch.nn.Module):
         """
         for i in range(self.n_layers+1):
             # Linear layers with BatchNorm
-            if dropout and i != 0:
+            if self.dropout and i != 0:
                 self.layers.append(torch.nn.Dropout(p=0.2))
             self.layers.append(torch.nn.Linear(
                 layers[i], layers[i+1], bias=bias, device=self.device))

@@ -25,10 +25,10 @@ networks
         self.latent_weights = kwargs['latent_weights'] if 'latent_weights' in kwargs else True
         super().__init__(*args, **kwargs)
 
-    def _layer_init(self, layers, dropout=False, bias=False):
+    def _layer_init(self, layers, bias=False):
         for i in range(self.n_layers+1):
             # Linear layers with BatchNorm
-            if dropout and i != 0:
+            if self.dropout and i != 0:
                 layers.append(torch.nn.Dropout(p=0.2))
             self.layers.append(BinarizedLinear(
                 layers[i], layers[i+1], bias=bias, device=self.device, latent_weights=self.latent_weights))

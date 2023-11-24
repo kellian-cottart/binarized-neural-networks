@@ -9,8 +9,8 @@ import wandb
 
 
 ### GLOBAL VARIABLES ###
-BATCH_SIZE = 100  # Batch size
-N_EPOCHS = 25  # Number of epochs to train on each task
+BATCH_SIZE = 128  # Batch size
+N_EPOCHS = 100  # Number of epochs to train on each task
 LEARNING_RATE = 1e-3  # Learning rate
 MIN_LEARNING_RATE = 1e-16
 NAME = "BiNNBayes-metaplasticity"
@@ -22,6 +22,10 @@ N_TASKS = 0  # Number of tasks to train on (permutations of MNIST)
 SEED = 1  # Random seed
 STD = 0.1  # Standard deviation for the initialization of the weights
 
+# FOR NORMALIZATION
+MEAN = 0
+STD = 1
+PADDING = 2  # from 28x28 to 32x32
 
 ### PATHS ###
 SAVE_FOLDER = "saved"
@@ -32,9 +36,28 @@ if __name__ == "__main__":
     torch.manual_seed(SEED)
 
     ### LOAD DATASETS ###
-    mnist_train, mnist_test = mnist(DATASETS_PATH, BATCH_SIZE, NUM_WORKERS)
-    fashion_mnist_train, fashion_mnist_test = fashion_mnist(
-        DATASETS_PATH, BATCH_SIZE, NUM_WORKERS)
+    if "cpu" in DEVICE.type:
+        loader = CPULoading(DATASETS_PATH, BATCH_SIZE, mean=MEAN, std=STD,
+                            padding=PADDING, num_workers=NUM_WORKERS)
+        mnist_train, mnist_test = loader(datasets.MNIST)
+        fashion_mnist_train, fashion_mnist_test = loader(
+            datasets.FashionMNIST)
+    else:
+        gpu_loader = GPULoading(BATCH_SIZE, mean=MEAN, std=STD,
+                                padding=PADDING, device=DEVICE)
+        mnist_train, mnist_test = gpu_loader(
+            path_train_x="datasets/MNIST/raw/train-images-idx3-ubyte",
+            path_train_y="datasets/MNIST/raw/train-labels-idx1-ubyte",
+            path_test_x="datasets/MNIST/raw/t10k-images-idx3-ubyte",
+            path_test_y="datasets/MNIST/raw/t10k-labels-idx1-ubyte",
+        )
+
+        fashion_mnist_train, fashion_mnist_test = gpu_loader(
+            path_train_x="datasets/FashionMNIST/raw/train-images-idx3-ubyte",
+            path_train_y="datasets/FashionMNIST/raw/train-labels-idx1-ubyte",
+            path_test_x="datasets/FashionMNIST/raw/t10k-images-idx3-ubyte",
+            path_test_y="datasets/FashionMNIST/raw/t10k-labels-idx1-ubyte",
+        )
 
     input_size = mnist_train.dataset.data.shape[1] * \
         mnist_train.dataset.data.shape[2]
@@ -45,8 +68,8 @@ if __name__ == "__main__":
 
     if N_TASKS > 1:
         for i in range(N_TASKS):
-            permuted_mnist_train, permuted_mnist_test = permuted_mnist(
-                DATASETS_PATH, BATCH_SIZE)
+            permuted_mnist_train, permuted_mnist_test = loader(
+                PermutedMNIST, permute_idx=torch.randperm(input_size))
             training_pipeline.append(permuted_mnist_train)
             testing_pipeline.append(permuted_mnist_test)
 
@@ -58,25 +81,53 @@ if __name__ == "__main__":
 
     ### NETWORK CONFIGURATION ###
     networks_data = [
+        # {
+        #     "name": "BinaryNN-1024-1024",
+        #     "nn_type": models.BNN,
+        #     "nn_parameters": {
+        #         "layers": [input_size, 1024, 1024, 10],
+        #         "init": "uniform",
+        #         "device": DEVICE,
+        #         "dropout": False
+        #     },
+        #     "training_parameters": {
+        #         'n_epochs': N_EPOCHS
+        #     },
+        #     "criterion": torch.nn.NLLLoss(),
+        #     "optimizer": BinarySynapticUncertainty,
+        #     "optimizer_parameters": {
+        #         "lr": LEARNING_RATE,
+        #         "beta": 0.15,
+        #         "temperature": 1e-7,
+        #         "num_mcmc_samples": 1,
+        #     },
+        #     # "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR,
+        #     # "scheduler_parameters": {
+        #     #     "T_max": N_EPOCHS * N_TASKS,
+        #     #     "eta_min": MIN_LEARNING_RATE
+        #     # },
+        # },
         {
-            "name": "BinaryNN-1024-1024",
-            "nn_type": models.BNN,
+            "name": "BayesianNN-200-200",
+            "nn_type": models.BayesianNN,
             "nn_parameters": {
-                "layers": [input_size, 1024, 1024, 10],
-                "init": "uniform",
+                "layers": [input_size, 200, 200, 10],
                 "device": DEVICE,
-                "dropout": False
+                "dropout": False,
+                "sigma_init": 0.04,
+                "n_samples": 5
             },
             "training_parameters": {
                 'n_epochs': N_EPOCHS
             },
             "criterion": torch.nn.NLLLoss(),
-            "optimizer": BinarySynapticUncertainty,
+            "optimizer": MESU,
             "optimizer_parameters": {
-                "lr": LEARNING_RATE,
-                "beta": 0.15,
-                "temperature": 1e-8,
-                "num_mcmc_samples": 1,
+                "coeff_likeli_mu": 1,
+                "coeff_likeli_sigma": 1,
+                "sigma_p": 4e-2,
+                "sigma_b": 10,
+                "update": 3,
                 "keep_prior": True,
             },
             # "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR,

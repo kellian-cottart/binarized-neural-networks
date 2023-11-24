@@ -44,7 +44,7 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
                 f"Invalid number of MCMC samples: {num_mcmc_samples}")
 
         defaults = dict(lr=lr, beta=beta, temperature=temperature,
-                        prior_lambda=prior_lambda, num_mcmc_samples=num_mcmc_samples, scale=scale, keep_prior=keep_prior)
+                        prior_lambda=prior_lambda, num_mcmc_samples=num_mcmc_samples, scale=scale)
         super().__init__(params, defaults)
 
         ### LAMBDA INIT ###
@@ -130,13 +130,17 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
                     s = ((1 - relaxed_w * relaxed_w + eps) / temperature /
                          (1 - mu * mu + eps))
                     grad.add_(s * g)
-                grad.mul_(1 / num_mcmc_samples)
+                grad.div_(num_mcmc_samples)
 
             # Update all parameters
-            self.state['momentum'] = momentum * \
-                beta + grad + scale*(lambda_ - prior_lambda)
             bias_correction = 1 - beta ** step
             step_size = lr / bias_correction
-            self.state['lambda'] = lambda_ - step_size * momentum
+
+            momentum = momentum*beta + (1-beta)*grad
+            lambda_ += step_size * \
+                (scale*(prior_lambda - lambda_) - momentum)
+
+            self.state['lambda'] = lambda_
+            self.state['momentum'] = momentum
             self.state['mu'] = torch.tanh(lambda_)
         return loss

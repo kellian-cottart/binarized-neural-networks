@@ -95,7 +95,6 @@ class MetaBayesLinearParallel(Module):
         super(MetaBayesLinearParallel, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
-
         # Initialize weight parameters
         self.weight_sigma = Parameter(torch.empty(
             (out_features, in_features), **factory_kwargs))

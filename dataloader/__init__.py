@@ -1,3 +1,2 @@
-from .fmnist import *
-from .mnist import *
-from .permutedmnist import *
+from .cpuLoading import *
+from .gpuLoading import *

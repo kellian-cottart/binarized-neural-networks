@@ -132,10 +132,14 @@ class BayesBiNN(torch.optim.Optimizer):
                 grad.mul_(1 / num_mcmc_samples)
 
             # Update all parameters
-            self.state['momentum'] = momentum * \
-                beta + grad + scale*(lambda_ - prior_lambda)
             bias_correction = 1 - beta ** step
             step_size = lr / bias_correction
-            self.state['lambda'] = lambda_ - step_size * momentum
+
+            momentum = momentum*beta + (1-beta)*grad
+            lambda_ += step_size * \
+                (scale*(prior_lambda - lambda_) - momentum)
+
+            self.state['lambda'] = lambda_
+            self.state['momentum'] = momentum
             self.state['mu'] = torch.tanh(lambda_)
         return loss
