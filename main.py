@@ -1,79 +1,144 @@
 from utils import *
+from dataloader import *
 import models
 import torch
+import trainer
+from optimizer import *
 import os
+import wandb
+
 
 ### GLOBAL VARIABLES ###
-SEED = 2506
-BATCH_SIZE = 100
-LEARNING_RATE = 0.005
-WEIGHT_DECAY = 1e-8
-METAPLASTICITY = 1.5
-N_EPOCHS = 10
-STD = 0.1
+BATCH_SIZE = 100  # Batch size
+N_EPOCHS = 25  # Number of epochs to train on each task
+LEARNING_RATE = 1e-3  # Learning rate
+MIN_LEARNING_RATE = 1e-16
+NAME = "BiNNBayes-metaplasticity"
+N_NETWORKS = 1  # Number of networks to train
+
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-# For bnno
-GAMMA = 1e-2
-THRESHOLD = 1e-6
+NUM_WORKERS = 8  # Number of workers for data loading
+N_TASKS = 0  # Number of tasks to train on (permutations of MNIST)
+SEED = 1  # Random seed
+STD = 0.1  # Standard deviation for the initialization of the weights
+
 
 ### PATHS ###
 SAVE_FOLDER = "saved"
 DATASETS_PATH = "datasets"
-
 
 if __name__ == "__main__":
     ### SEED ###
     torch.manual_seed(SEED)
 
     ### LOAD DATASETS ###
-    mnist_train, mnist_test = mnist(DATASETS_PATH, BATCH_SIZE)
+    mnist_train, mnist_test = mnist(DATASETS_PATH, BATCH_SIZE, NUM_WORKERS)
     fashion_mnist_train, fashion_mnist_test = fashion_mnist(
-        DATASETS_PATH, BATCH_SIZE)
-
-    all_test = {'mnist_test': mnist_test,
-                'fashion_mnist_test': fashion_mnist_test}
+        DATASETS_PATH, BATCH_SIZE, NUM_WORKERS)
 
     input_size = mnist_train.dataset.data.shape[1] * \
         mnist_train.dataset.data.shape[2]
 
-    ### NETWORKS ###
-    networks_data = {
-        "BNN Binary Optimizer": {
-            "model": models.BNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE, latent_weights=False),
-            "parameters": {'n_epochs': N_EPOCHS, 'learning_rate': LEARNING_RATE,
-                           'weight_decay': WEIGHT_DECAY, 'metaplasticity': METAPLASTICITY, 'gamma': GAMMA, 'threshold': THRESHOLD, **all_test},
-            "accuracy": []
+    ### PIPELINE ###
+    training_pipeline = []
+    testing_pipeline = []
+
+    if N_TASKS > 1:
+        for i in range(N_TASKS):
+            permuted_mnist_train, permuted_mnist_test = permuted_mnist(
+                DATASETS_PATH, BATCH_SIZE)
+            training_pipeline.append(permuted_mnist_train)
+            testing_pipeline.append(permuted_mnist_test)
+
+    else:
+        training_pipeline = [mnist_train, fashion_mnist_train]
+        testing_pipeline = [mnist_test, fashion_mnist_test]
+
+        N_TASKS = len(training_pipeline)
+
+    ### NETWORK CONFIGURATION ###
+    networks_data = [
+        {
+            "name": "BinaryNN-1024-1024",
+            "nn_type": models.BNN,
+            "nn_parameters": {
+                "layers": [input_size, 1024, 1024, 10],
+                "init": "uniform",
+                "device": DEVICE,
+                "dropout": False
+            },
+            "training_parameters": {
+                'n_epochs': N_EPOCHS
+            },
+            "criterion": torch.nn.NLLLoss(),
+            "optimizer": BinarySynapticUncertainty,
+            "optimizer_parameters": {
+                "lr": LEARNING_RATE,
+                "beta": 0.15,
+                "temperature": 1e-8,
+                "num_mcmc_samples": 1,
+                "keep_prior": True,
+            },
+            # "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR,
+            # "scheduler_parameters": {
+            #     "T_max": N_EPOCHS * N_TASKS,
+            #     "eta_min": MIN_LEARNING_RATE
+            # },
         },
-        # "BNN wout Meta": {
-        #     "model": models.BNN([input_size, 4096, 4096, 10], init='uniform', std=STD, device=DEVICE),
-        #     "parameters": {'n_epochs': N_EPOCHS, 'learning_rate': LEARNING_RATE,
-        #                    'weight_decay': WEIGHT_DECAY, 'metaplasticity': 0, **all_test},
-        #     "accuracy": []
-        # },
-    }
+    ]
 
-    for name, data in networks_data.items():
-        print(f"Training {name}...")
-        for train_dataset in [mnist_train, fashion_mnist_train]:
-            data['accuracy'].append(data['model'].train_network(
-                train_dataset, **data['parameters']))
+    for index, data in enumerate(networks_data):
 
-        # Creating folders
-        full_name = os.path.join(SAVE_FOLDER, name)
-        folder = versionning(full_name, name)
-        os.makedirs(folder, exist_ok=True)
+        ### FOLDER INITIALIZATION ###
+        main_folder = os.path.join(SAVE_FOLDER, data['name'])
+        os.makedirs(main_folder, exist_ok=True)
 
-        print(f"Saving {name} weights, accuracy and figure...")
-        weights_name = name + "-weights"
-        data['model'].save_state(versionning(
-            folder, weights_name, ".pt"))
+        ### ACCURACY INITIALIZATION ###
+        accuracies = []
+        for iteration in range(N_NETWORKS):
 
-        print(f"Saving {name} accuracy...")
-        accuracy_name = name + "-accuracy"
-        accuracy = torch.tensor(data['accuracy'][0] + data['accuracy'][1])
-        torch.save(accuracy, versionning(
-            folder, accuracy_name, ".pt"))
+            ### SEED ###
+            torch.manual_seed(SEED + iteration)
 
-        print(f"Exporting visualisation of {name} accuracy...")
-        title = name + "-MNIST-FashionMNIST-accuracy"
-        visualize_sequential(title, accuracy, folder=folder)
+            ### NETWORK INITIALIZATION ###
+            model = data['nn_type'](**data['nn_parameters'])
+
+            ### W&B INITIALIZATION ###
+            ident = NAME + f" - {data['name']} - {index}"
+            wandb.init(project="binarized-neural-networks", entity="kellian-cottart",
+                       config=networks_data[index], name=NAME)
+
+            ### INSTANTIATE THE TRAINER ###
+            if data["optimizer"] in [BinarySynapticUncertainty, BayesBiNN]:
+                network = trainer.BayesTrainer(
+                    model=model, **data, device=DEVICE,)
+            else:
+                network = trainer.Trainer(model=model, **data, device=DEVICE,)
+
+            ### TRAINING ###
+            print(f"Training {data['name']}...")
+            print(network.model)
+            for train_dataset in training_pipeline:
+                network.fit(
+                    train_dataset, **data['training_parameters'], test_loader=testing_pipeline, verbose=True)
+
+            ### SAVING DATA ###
+            sub_folder = versionning(
+                main_folder, f"{iteration}-"+data['name'], "")
+            os.makedirs(sub_folder, exist_ok=True)
+
+            print(f"Saving {data['name']} weights, accuracy and figure...")
+            weights_name = data['name'] + "-weights"
+            network.save(versionning(sub_folder, weights_name, ".pt"))
+
+            print(f"Saving {data['name']} accuracy...")
+            accuracy_name = data['name'] + "-accuracy"
+            accuracy = network.testing_accuracy
+            torch.save(accuracy, versionning(
+                sub_folder, accuracy_name, ".pt"))
+            accuracies.append(accuracy)
+
+        print(f"Exporting visualisation of {data['name']} accuracy...")
+        title = data['name'] + "-tasks"
+        visualize_sequential(title, accuracies, folder=main_folder)
+    wandb.finish()

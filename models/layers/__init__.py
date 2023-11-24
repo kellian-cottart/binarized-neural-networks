@@ -1,1 +1,2 @@
-from .binarizedlinear import *
+from .binarizedLinear import *
+from .bayesianLinearSynaptic import *

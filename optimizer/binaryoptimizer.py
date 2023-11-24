@@ -202,13 +202,6 @@ def binary_optimizer(params: List[torch.Tensor],
         if weight_decay != 0:
             grad = grad.add(param.data, alpha=weight_decay)
 
-        # Decay the first and second moment running average coefficient
-        # .mul_(gamma).add_(grad, alpha=1 - gamma)
-        # exp_avg_sq.mul_(gamma).addcmul_(grad, grad, value=1 - gamma)
-
-        # Get the local learning rate
-        # step = _get_value(step_t)
-
         # Decay momentum running average coefficient
         momentum.mul_(1-gamma).add_(grad.data, alpha=gamma)
 

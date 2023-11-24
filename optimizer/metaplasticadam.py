@@ -3,7 +3,7 @@ from torch.optim.optimizer import params_t, _get_value, _dispatch_sqrt
 from typing import List, Optional, Union, Tuple
 
 
-class SurrogateAdam(torch.optim.Optimizer):
+class MetaplasticAdam(torch.optim.Optimizer):
     """ Surrogate Adam optimizer w/ hardtanh surrogate gradient
     Adding Metaplasticity to BNNs
     Directly taken from the definition of Adam in PyTorch
