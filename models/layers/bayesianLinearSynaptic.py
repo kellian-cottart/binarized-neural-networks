@@ -2,11 +2,9 @@
 """
 Created on Fri Jan 27 12:02:27 2023
 
-@author: DB262466
+@author: Djohan Bonnet
 """
 
-
-import math
 import torch
 from torch import Tensor
 import torch.nn.functional as F
@@ -17,18 +15,29 @@ from torch.nn.parameter import Parameter
 __all__ = ['MetaBayesLinearParallel']
 
 
-class GaussianWeightParallel(object):
-    """Represents the Gaussian distribution for weights in the Bayesian neural network."""
+class GaussianWeightParallel:
+    """Represents the Gaussian distribution for weights in the Bayesian neural network.
+
+    Args:
+        mu (torch.Tensor): Mean of the distribution
+        sigma (torch.Tensor): Standard deviation of the distribution
+    """
 
     def __init__(self, mu, sigma):
-        super().__init__()
         self.mu = mu  # Mean of the distribution
         self.sigma = sigma  # Standard deviation of the distribution
         self.normal = torch.distributions.Normal(
             0, 1)  # Standard normal distribution
 
     def sample(self, samples=1):
-        """Sample from the Gaussian distribution using the reparameterization trick."""
+        """Sample from the Gaussian distribution using the reparameterization trick
+
+        Args:
+            samples (int, optional): Number of samples to draw. Defaults to 1.
+
+        Returns:
+            torch.Tensor: Sampled weights
+        """
         if samples == 0:
             # Use the mean value for inference
             return torch.stack((self.mu.T,) * 1)
@@ -39,17 +48,23 @@ class GaussianWeightParallel(object):
         return torch.stack((self.mu.T,) * samples) + torch.stack((self.sigma.T,) * samples) * epsilon
 
 
-class GaussianBiasParallel(object):
-    """Represents the Gaussian distribution for biases in the Bayesian neural network."""
+class GaussianBiasParallel(GaussianWeightParallel):
+    """Represents the Gaussian distribution for biases in the Bayesian neural network
 
-    def __init__(self, mu, sigma):
-        super().__init__()
-        self.mu = mu
-        self.sigma = sigma
-        self.normal = torch.distributions.Normal(0, 1)
+    Args:
+        mu (torch.Tensor): Mean of the distribution
+        sigma (torch.Tensor): Standard deviation of the distribution
+    """
 
     def sample(self, samples=1):
-        """Sample from the Gaussian distribution using the reparameterization trick."""
+        """Sample from the Gaussian distribution using the reparameterization trick
+
+        Args:
+            samples (int, optional): Number of samples to draw. Defaults to 1.
+
+        Returns:
+            torch.Tensor: Sampled biases
+        """
         if samples == 0:
             return torch.stack((self.mu,) * 1)
         else:
@@ -59,7 +74,17 @@ class GaussianBiasParallel(object):
 
 
 class MetaBayesLinearParallel(Module):
-    """Bayesian linear layer using parallelized Gaussian distributions for weights and biases."""
+    """Bayesian linear layer using parallelized Gaussian distributions for weights and biases.
+
+    Args:
+        in_features (int): Number of input features
+        out_features (int): Number of output features
+        sigma_init (float, optional): Standard deviation for the initialization of the weights. Defaults to 0.01.
+        bias (bool, optional): Whether to use a bias term. Defaults to True.
+        zeroMean (bool, optional): Whether to initialize the weights with zero mean. Defaults to False.
+        device ([type], optional): Device to use for the weights. Defaults to None.
+        dtype ([type], optional): Data type to use for the weights. Defaults to None.
+    """
     __constants__ = ['in_features', 'out_features',
                      'SNR', 'MaxMean', 'MinSigma']
 
@@ -76,7 +101,6 @@ class MetaBayesLinearParallel(Module):
             (out_features, in_features), **factory_kwargs))
         self.weight_mu = Parameter(torch.empty(
             (out_features, in_features), **factory_kwargs))
-        self.sigma0 = 1 / math.sqrt(in_features)
         self.weight = GaussianWeightParallel(self.weight_mu, self.weight_sigma)
 
         # Control for zero mean initialization
@@ -96,19 +120,27 @@ class MetaBayesLinearParallel(Module):
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
-        """Initialize the parameters."""
+        """Initialize the parameters"""
         if not self.zeroMean:
-            init.uniform_(self.weight_mu, -self.sigma0, self.sigma0)
+            init.kaiming_uniform_(self.weight_mu, a=5**0.5)
         if self.zeroMean:
             init.constant_(self.weight_mu, 0)
         init.constant_(self.weight_sigma, self.sigma_init)
 
         if self.bias is not None:
-            init.uniform_(self.bias_mu, -self.sigma0, self.sigma0)
+            init.kaiming_uniform_(self.weight_mu, a=5**0.5)
             init.constant_(self.bias_sigma, self.sigma_init)
 
     def forward(self, input: Tensor, samples: int) -> Tensor:
-        """Forward pass using sampled weights and biases."""
+        """Forward pass using sampled weights and biases.
+
+        Args:
+            input (torch.Tensor): Input tensor
+            samples (int): Number of samples to draw
+
+        Returns:
+            torch.Tensor: Output tensor
+        """
         W = self.weight.sample(samples)
         if self.bias:
             B = self.bias.sample(samples)
@@ -117,6 +149,6 @@ class MetaBayesLinearParallel(Module):
             return torch.matmul(input, W)
 
     def extra_repr(self) -> str:
-        """Representation for pretty print and debugging."""
+        """Representation for debugging."""
         return 'in_features={}, out_features={}, sigma_init={}, bias={}'.format(
             self.in_features, self.out_features, self.sigma_init, self.bias is not None)

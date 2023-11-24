@@ -10,14 +10,14 @@ import wandb
 
 ### GLOBAL VARIABLES ###
 BATCH_SIZE = 100  # Batch size
-N_EPOCHS = 50  # Number of epochs to train on each task
-LEARNING_RATE = 5e-3  # Learning rate
+N_EPOCHS = 25  # Number of epochs to train on each task
+LEARNING_RATE = 1e-3  # Learning rate
 MIN_LEARNING_RATE = 1e-16
 NAME = "Djohan - Test"
-
+N_NETWORKS = 5  # Number of networks to train
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-NUM_WORKERS = 4  # Number of workers for data loading
+NUM_WORKERS = 8  # Number of workers for data loading
 N_TASKS = 0  # Number of tasks to train on (permutations of MNIST)
 SEED = 1  # Random seed
 STD = 0.1  # Standard deviation for the initialization of the weights
@@ -60,11 +60,13 @@ if __name__ == "__main__":
     networks_data = [
         {
             "name": "BayesianNN - 100 - 100",
-            "model": models.BayesianNN(
-                layers=[input_size, 100, 100, 10],
-                init="uniform",
-                device=DEVICE,
-                dropout=False),
+            "nn_type": models.BayesianNN,
+            "nn_parameters": {
+                "layers": [input_size, 100, 100, 10],
+                "init": "uniform",
+                "device": DEVICE,
+                "dropout": False
+            },
             "training_parameters": {
                 'n_epochs': N_EPOCHS
             },
@@ -87,41 +89,57 @@ if __name__ == "__main__":
     ]
 
     for index, data in enumerate(networks_data):
-        ### W&B INITIALIZATION ###
-        ident = NAME + f" - {data['name']} - {index}"
-        wandb.init(project="binarized-neural-networks", entity="kellian-cottart",
-                   config=networks_data[index], name=NAME)
 
-        ### INSTANTIATE THE TRAINER ###
-        if data["optimizer"] == BayesBiNN:
-            network = trainer.BayesTrainer(
-                **data, device=DEVICE,)
-        else:
-            network = trainer.Trainer(**data, device=DEVICE,)
+        ### FOLDER INITIALIZATION ###
+        main_folder = os.path.join(SAVE_FOLDER, data['name'])
+        os.makedirs(main_folder, exist_ok=True)
 
-        ### TRAINING ###
-        print(f"Training {data['name']}...")
-        print(network.model)
-        for train_dataset in training_pipeline:
-            network.fit(
-                train_dataset, **data['training_parameters'], test_loader=testing_pipeline, verbose=True)
+        ### ACCURACY INITIALIZATION ###
+        accuracies = []
+        for iteration in range(N_NETWORKS):
 
-        ### SAVING DATA ###
-        full_name = os.path.join(SAVE_FOLDER, data['name'])
-        folder = versionning(full_name, data['name'])
-        os.makedirs(folder, exist_ok=True)
+            ### SEED ###
+            torch.manual_seed(SEED + iteration)
 
-        print(f"Saving {data['name']} weights, accuracy and figure...")
-        weights_name = data['name'] + "-weights"
-        network.save(versionning(folder, weights_name, ".pt"))
+            ### NETWORK INITIALIZATION ###
+            model = data['nn_type'](**data['nn_parameters'])
 
-        print(f"Saving {data['name']} accuracy...")
-        accuracy_name = data['name'] + "-accuracy"
-        accuracy = network.testing_accuracy
-        torch.save(accuracy, versionning(
-            folder, accuracy_name, ".pt"))
+            ### W&B INITIALIZATION ###
+            ident = NAME + f" - {data['name']} - {index}"
+            wandb.init(project="binarized-neural-networks", entity="kellian-cottart",
+                       config=networks_data[index], name=NAME)
+
+            ### INSTANTIATE THE TRAINER ###
+            if data["optimizer"] == BayesBiNN:
+                network = trainer.BayesTrainer(
+                    model=model, **data, device=DEVICE,)
+            else:
+                network = trainer.Trainer(model=model, **data, device=DEVICE,)
+
+            ### TRAINING ###
+            print(f"Training {data['name']}...")
+            print(network.model)
+            for train_dataset in training_pipeline:
+                network.fit(
+                    train_dataset, **data['training_parameters'], test_loader=testing_pipeline, verbose=True)
+
+            ### SAVING DATA ###
+            sub_folder = versionning(
+                main_folder, f"{iteration}-"+data['name'], "")
+            os.makedirs(sub_folder, exist_ok=True)
+
+            print(f"Saving {data['name']} weights, accuracy and figure...")
+            weights_name = data['name'] + "-weights"
+            network.save(versionning(sub_folder, weights_name, ".pt"))
+
+            print(f"Saving {data['name']} accuracy...")
+            accuracy_name = data['name'] + "-accuracy"
+            accuracy = network.testing_accuracy
+            torch.save(accuracy, versionning(
+                sub_folder, accuracy_name, ".pt"))
+            accuracies.append(accuracy)
 
         print(f"Exporting visualisation of {data['name']} accuracy...")
-        title = data['name'] + "-tasks-accuracy"
-        visualize_sequential(title, accuracy, folder=folder)
+        title = data['name'] + "-tasks"
+        visualize_sequential(title, accuracies, folder=main_folder)
     wandb.finish()
