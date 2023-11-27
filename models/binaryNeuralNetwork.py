@@ -32,15 +32,12 @@ networks
                 layers.append(torch.nn.Dropout(p=0.2))
             self.layers.append(BinarizedLinear(
                 layers[i], layers[i+1], bias=bias, device=self.device, latent_weights=self.latent_weights))
-            self.layers.append(torch.nn.BatchNorm1d(
-                layers[i+1], affine=not bias, track_running_stats=True, device=self.device))
+            if self.batchnorm:
+                self.layers.append(torch.nn.BatchNorm1d(
+                    layers[i+1], affine=not bias, track_running_stats=True, device=self.device))
 
     def forward(self, x):
         """Forward propagation of the binarized neural network
         Uses Sign activation function for binarization
         """
-        for layer in self.layers:
-            x = layer(x)
-            if layer is not self.layers[-1] and isinstance(layer, torch.nn.BatchNorm1d):
-                x = Sign.apply(x)
-        return torch.nn.functional.log_softmax(x, dim=1)
+        super().forward(x, activation=Sign.apply)

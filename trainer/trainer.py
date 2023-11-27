@@ -23,7 +23,7 @@ class Trainer:
                 self.optimizer, **scheduler_parameters)
 
     def batch_step(self, inputs, targets):
-        """Perform the training of a single sample of the batch
+        """Perform the training of a single batch
         """
         self.model.train()
         torch.set_grad_enabled(True)
@@ -44,8 +44,8 @@ class Trainer:
     def epoch_step(self, train_loader, test_loader=None):
         """Perform the training of a single epoch
         """
-        ### TRAIN WITH THE WHOLE BATCH ###
-        for i, (inputs, targets) in enumerate(train_loader):
+        ### SEND BATCH ###
+        for inputs, targets in train_loader:
             self.batch_step(inputs, targets)
 
         ### SCHEDULER ###
@@ -54,8 +54,16 @@ class Trainer:
 
         ### EVALUATE ###
         if test_loader is not None:
-            self.testing_accuracy.append(
-                [self.test(data) for data in test_loader])
+            # if we are testing with permuted MNIST, we need to assess all permutations
+            if "test_permutations" in dir(self):
+                self.testing_accuracy.append(self.test_continual(
+                    test_loader[0]))
+            # else, we just test the model on the testloader
+            else:
+                test = []
+                for dataset in test_loader:
+                    test.append(self.test(dataset))
+                self.testing_accuracy.append(test)
 
         ### LOGGING ###
         if self.logging:
@@ -68,9 +76,10 @@ class Trainer:
         wandb.log({"Loss": self.loss.item()})
 
         # training accuracy
-        for task in range(len(self.testing_accuracy[-1])):
-            wandb.log(
-                {f"Task {task+1} - Test accuracy": self.testing_accuracy[-1][task]})
+        if len(self.training_accuracy) > 0:
+            for task in range(len(self.testing_accuracy[-1])):
+                wandb.log(
+                    {f"Task {task+1} - Test accuracy": self.testing_accuracy[-1][task]})
 
         # learning rate
         if "lr" in self.optimizer.param_groups[0]:
@@ -85,16 +94,34 @@ class Trainer:
                 n_epochs, desc='Initialization')
         else:
             pbar = range(n_epochs)
+
+        if "test_permutations" in kwargs:
+            self.test_permutations = kwargs["test_permutations"]
+
         for epoch in pbar:
             self.epoch_step(train_loader, test_loader)
+
+            ### PROGRESS BAR ###
             if verbose:
                 pbar.set_description(f"Epoch {epoch+1}/{n_epochs}")
                 # creation of a dictionnary with the name of the test set and the accuracy
-                kwargs = {
-                    f"task {i+1}": f"{accuracy:.2%}" for i, accuracy in enumerate(self.testing_accuracy[-1]) if accuracy is not None
-                }
-                pbar.set_postfix(current_loss=self.loss.item(
-                ), **kwargs, lr=self.optimizer.param_groups[0]['lr'] if "lr" in self.optimizer.param_groups[0] else None)
+                kwargs = {}
+                if len(self.testing_accuracy) > 0:
+                    kwargs = {
+                        f"task {i+1}": f"{accuracy:.2%}" for i, accuracy in enumerate(self.testing_accuracy[-1])
+                    }
+                    # if number of task cannot fit in one line, print it in a new line
+                if len(kwargs) > 4:
+                    pbar.set_postfix(current_loss=self.loss.item(
+                    ), lr=self.optimizer.param_groups[0]['lr'] if "lr" in self.optimizer.param_groups[0] else None)
+                    # Do a pretty print of our results
+                    pbar.write("=================")
+                    pbar.write("Testing accuracy: ")
+                    for key, value in kwargs.items():
+                        pbar.write(f"\t{key}: {value}")
+                else:
+                    pbar.set_postfix(current_loss=self.loss.item(
+                    ), **kwargs, lr=self.optimizer.param_groups[0]['lr'] if "lr" in self.optimizer.param_groups[0] else None)
 
     def save(self, path):
         """Save the model
@@ -108,7 +135,7 @@ class Trainer:
 
     @torch.no_grad()
     def predict(self, tensor):
-        """ Predict labels for data
+        """ Predict labels for a single sample
 
         Args: 
             data (torch.Tensor): Data to predict labels for
@@ -129,7 +156,7 @@ class Trainer:
 
     @torch.no_grad()
     def test(self, dataloader):
-        """ Test DNN
+        """ Predict labels for a full dataset and retrieve accuracy
 
         Args: 
             data (torch.utils.data.DataLoader): Testing data containing (data, labels) pairs 
@@ -139,13 +166,37 @@ class Trainer:
 
         """
         ### ACCURACY COMPUTATION ###
-        correct = 0
-        total = 0
-        for x, y in dataloader:
-            x = x.view(x.shape[0], -1).to(self.device)
-            y = y.to(self.device)
-            y_pred = self.model.forward(x)
-            _, predicted = torch.max(y_pred.data, 1)
-            total += y.size(0)
-            correct += (predicted == y).sum().item()
-        return correct/total
+        self.model.eval()
+        x = dataloader.dataset.data.view(
+            len(dataloader.dataset.data), -1).to(self.device)
+        labels = dataloader.dataset.targets.to(self.device)
+        # Forward pass
+        predictions = self.model.forward(x)
+        # Retrieve the most likely class from the softmax output
+        _, predicted = torch.max(predictions.data, 1)
+        # Retrieve the probability of the most likely class
+        correct = torch.sum(predicted == labels, dtype=torch.float32)
+        return correct / len(dataloader.dataset.data)
+
+    @torch.no_grad()
+    def test_continual(self, dataloader):
+        """ Test DNN with Permuted MNIST
+
+        Args: 
+            dataloader (torch.utils.data.DataLoader): Testing data containing (data, labels) pairs 
+        """
+        self.model.eval()
+        accuracies = []
+        labels = dataloader.dataset.targets.to(self.device)
+        for permutation in self.test_permutations:
+            # Permute the pixels of the images according to permutation
+            x = dataloader.dataset.data.view(
+                len(dataloader.dataset.data), -1)[:, permutation].to(self.device)
+            # Forward pass
+            predictions = self.model.forward(x)
+            # Retrieve the most likely class from the softmax output
+            _, predicted = torch.max(predictions.data, 1)
+            # Retrieve the probability of the most likely class
+            correct = torch.sum(predicted == labels, dtype=torch.float32)
+            accuracies.append(correct / len(dataloader.dataset.data))
+        return accuracies

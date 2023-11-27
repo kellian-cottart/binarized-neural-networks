@@ -6,20 +6,21 @@ import trainer
 from optimizer import *
 import os
 import wandb
-
+import numpy as np
 
 ### GLOBAL VARIABLES ###
 BATCH_SIZE = 128  # Batch size
-N_EPOCHS = 100  # Number of epochs to train on each task
+N_EPOCHS = 20  # Number of epochs to train on each task
 LEARNING_RATE = 1e-3  # Learning rate
 MIN_LEARNING_RATE = 1e-16
 NAME = "BiNNBayes-metaplasticity"
 N_NETWORKS = 1  # Number of networks to train
+TASK = "PermutedMNIST"  # Task to train on (Sequential or PermutedMNIST)
 
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-NUM_WORKERS = 8  # Number of workers for data loading
-N_TASKS = 0  # Number of tasks to train on (permutations of MNIST)
-SEED = 1  # Random seed
+NUM_WORKERS = 4  # Number of workers for data loading when using CPU
+N_TASKS = 10  # Number of tasks to train on (permutations of MNIST)
+SEED = 7  # Random seed
 STD = 0.1  # Standard deviation for the initialization of the weights
 
 # FOR NORMALIZATION
@@ -35,49 +36,14 @@ if __name__ == "__main__":
     ### SEED ###
     torch.manual_seed(SEED)
 
-    ### LOAD DATASETS ###
     if "cpu" in DEVICE.type:
         loader = CPULoading(DATASETS_PATH, BATCH_SIZE, mean=MEAN, std=STD,
                             padding=PADDING, num_workers=NUM_WORKERS)
-        mnist_train, mnist_test = loader(datasets.MNIST)
-        fashion_mnist_train, fashion_mnist_test = loader(
-            datasets.FashionMNIST)
     else:
-        gpu_loader = GPULoading(BATCH_SIZE, mean=MEAN, std=STD,
-                                padding=PADDING, device=DEVICE)
-        mnist_train, mnist_test = gpu_loader(
-            path_train_x="datasets/MNIST/raw/train-images-idx3-ubyte",
-            path_train_y="datasets/MNIST/raw/train-labels-idx1-ubyte",
-            path_test_x="datasets/MNIST/raw/t10k-images-idx3-ubyte",
-            path_test_y="datasets/MNIST/raw/t10k-labels-idx1-ubyte",
-        )
+        loader = GPULoading(BATCH_SIZE, mean=MEAN, std=STD,
+                            padding=PADDING, device=DEVICE)
 
-        fashion_mnist_train, fashion_mnist_test = gpu_loader(
-            path_train_x="datasets/FashionMNIST/raw/train-images-idx3-ubyte",
-            path_train_y="datasets/FashionMNIST/raw/train-labels-idx1-ubyte",
-            path_test_x="datasets/FashionMNIST/raw/t10k-images-idx3-ubyte",
-            path_test_y="datasets/FashionMNIST/raw/t10k-labels-idx1-ubyte",
-        )
-
-    input_size = mnist_train.dataset.data.shape[1] * \
-        mnist_train.dataset.data.shape[2]
-
-    ### PIPELINE ###
-    training_pipeline = []
-    testing_pipeline = []
-
-    if N_TASKS > 1:
-        for i in range(N_TASKS):
-            permuted_mnist_train, permuted_mnist_test = loader(
-                PermutedMNIST, permute_idx=torch.randperm(input_size))
-            training_pipeline.append(permuted_mnist_train)
-            testing_pipeline.append(permuted_mnist_test)
-
-    else:
-        training_pipeline = [mnist_train, fashion_mnist_train]
-        testing_pipeline = [mnist_test, fashion_mnist_test]
-
-        N_TASKS = len(training_pipeline)
+    input_size = (28+PADDING*2)**2
 
     ### NETWORK CONFIGURATION ###
     networks_data = [
@@ -108,15 +74,17 @@ if __name__ == "__main__":
         #     # },
         # },
         {
-            "name": "BayesianNN-200-200",
+            "name": "BayesianNN-200-200-PermutedMNIST",
             "nn_type": models.BayesianNN,
             "nn_parameters": {
                 "layers": [input_size, 200, 200, 10],
                 "device": DEVICE,
                 "dropout": False,
-                "sigma_init": 0.04,
-                "n_samples": 5
+                "batchnorm": False,
+                "sigma_init": 4e-2,
+                "n_samples": 10,
             },
+
             "training_parameters": {
                 'n_epochs': N_EPOCHS
             },
@@ -126,9 +94,8 @@ if __name__ == "__main__":
                 "coeff_likeli_mu": 1,
                 "coeff_likeli_sigma": 1,
                 "sigma_p": 4e-2,
-                "sigma_b": 10,
+                "sigma_b": 15,
                 "update": 3,
-                "keep_prior": True,
             },
             # "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR,
             # "scheduler_parameters": {
@@ -147,7 +114,6 @@ if __name__ == "__main__":
         ### ACCURACY INITIALIZATION ###
         accuracies = []
         for iteration in range(N_NETWORKS):
-
             ### SEED ###
             torch.manual_seed(SEED + iteration)
 
@@ -166,12 +132,26 @@ if __name__ == "__main__":
             else:
                 network = trainer.Trainer(model=model, **data, device=DEVICE,)
 
-            ### TRAINING ###
-            print(f"Training {data['name']}...")
+            # print architecture
             print(network.model)
-            for train_dataset in training_pipeline:
+
+            ### TRAINING ###
+            if TASK == "Sequential":
+                mnist_train, mnist_test = mnist(loader)
+                fashion_mnist_train, fashion_mnist_test = fashion_mnist(loader)
+                test_loader = [mnist_test, fashion_mnist_test]
                 network.fit(
-                    train_dataset, **data['training_parameters'], test_loader=testing_pipeline, verbose=True)
+                    mnist_train, **data['training_parameters'], test_loader=test_loader, verbose=True)
+            elif TASK == "PermutedMNIST":
+                permutations = [torch.randperm(input_size)
+                                for _ in range(N_TASKS)]
+                for i in range(N_TASKS):
+                    # N task and N+1 task to slowly shift the distribution
+                    _, mnist_test = mnist(loader)
+                    train_dataset, _ = mnist(
+                        loader, permute_idx=permutations[i])
+                    network.fit(
+                        train_dataset, **data['training_parameters'], test_loader=[mnist_test], verbose=True, test_permutations=permutations)
 
             ### SAVING DATA ###
             sub_folder = versionning(

@@ -24,22 +24,25 @@ class BayesianNN(DNN):
                 layers.append(torch.nn.Dropout(p=0.2))
             self.layers.append(MetaBayesLinearParallel(
                 layers[i], layers[i+1], bias=bias, device=self.device, sigma_init=self.sigma_init))
-            self.layers.append(torch.nn.BatchNorm1d(
-                layers[i+1], affine=not bias, track_running_stats=True, device=self.device))
+            if self.batchnorm:
+                self.layers.append(torch.nn.BatchNorm1d(
+                    layers[i+1], affine=not bias, track_running_stats=True, device=self.device))
 
     def _weight_init(self, init='normal', std=0.01):
         pass
 
     def forward(self, x):
-        """Forward propagation of the binarized neural network
-        Uses Sign activation function for binarization
-        """
-        for layer in self.layers:
+        ### FORWARD PASS ###
+        unique_layers = set(type(layer) for layer in self.layers)
+        for i, layer in enumerate(self.layers):
             if isinstance(layer, MetaBayesLinearParallel):
                 x = layer(x, self.n_samples)
+            # if its batchnorm, we need to average over n_samples
             else:
-                # transform the output of the previous layer [samples, n_neurons, n_features] to [n_neurons, n_features] by averaging over the samples
-                x = torch.mean(x, dim=0)
-            if layer is not self.layers[-1] and isinstance(layer, torch.nn.BatchNorm1d):
+                x = layer(torch.mean(x, dim=0))
+            if layer is not self.layers[-1] and (i+1) % len(unique_layers) == 0:
                 x = torch.nn.functional.relu(x)
+        # Average over samples if the last layer is a MetaBayesLinearParallel layer
+        if isinstance(layer, MetaBayesLinearParallel):
+            x = torch.mean(x, dim=0)
         return torch.nn.functional.log_softmax(x, dim=1)

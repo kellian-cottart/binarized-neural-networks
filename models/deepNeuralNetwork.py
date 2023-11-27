@@ -6,7 +6,7 @@ class DNN(torch.nn.Module):
     """ Neural Network Base Class
     """
 
-    def __init__(self, layers=[512], init='normal', std=0.01, device='cuda', dropout=False, bias=False, *args, **kwargs):
+    def __init__(self, layers=[512], init='normal', std=0.01, device='cuda', dropout=False, batchnorm=True, bias=False, *args, **kwargs):
         """ NN initialization
 
         Args: 
@@ -21,6 +21,7 @@ class DNN(torch.nn.Module):
         self.device = device
         self.layers = torch.nn.ModuleList()
         self.dropout = dropout
+        self.batchnorm = batchnorm
         ### LAYER INITIALIZATION ###
         self._layer_init(layers, bias)
         ### WEIGHT INITIALIZATION ###
@@ -39,8 +40,9 @@ class DNN(torch.nn.Module):
                 self.layers.append(torch.nn.Dropout(p=0.2))
             self.layers.append(torch.nn.Linear(
                 layers[i], layers[i+1], bias=bias, device=self.device))
-            self.layers.append(torch.nn.BatchNorm1d(
-                layers[i+1], affine=not bias, track_running_stats=True, device=self.device))
+            if self.batchnorm:
+                self.layers.append(torch.nn.BatchNorm1d(
+                    layers[i+1], affine=not bias, track_running_stats=True, device=self.device))
 
     def _weight_init(self, init='normal', std=0.01):
         """ Initialize weights of each layer
@@ -60,7 +62,7 @@ class DNN(torch.nn.Module):
                 elif init == 'xavier':
                     torch.nn.init.xavier_normal_(layer.weight)
 
-    def forward(self, x):
+    def forward(self, x, activation=torch.nn.functional.relu):
         """ Forward pass of DNN
 
         Args: 
@@ -70,9 +72,10 @@ class DNN(torch.nn.Module):
             torch.Tensor: Output tensor
 
         """
+        unique_layers = set(type(layer) for layer in self.layers)
         ### FORWARD PASS ###
-        for layer in self.layers:
+        for i, layer in enumerate(self.layers):
             x = layer(x)
-            if layer is not self.layers[-1] and isinstance(layer, torch.nn.BatchNorm1d):
-                x = torch.nn.functional.relu(x)
+            if layer is not self.layers[-1] and (i+1) % len(unique_layers) == 0:
+                x = activation(x)
         return torch.nn.functional.log_softmax(x, dim=1)

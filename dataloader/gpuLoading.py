@@ -64,6 +64,16 @@ class GPULoading:
                                    (self.padding, self.padding)), 'constant')
         test_x = np.pad(test_x, ((0, 0), (self.padding, self.padding),
                                  (self.padding, self.padding)), 'constant')
+        # if permute_idx is given, permute the dataset as for PermutedMNIST
+        if "permute_idx" in kwargs:
+            # permute_idx is the permutation to apply to the pixels of the images
+            permute_idx = kwargs["permute_idx"]
+            # Permute the pixels of the training examples
+            train_x = train_x.reshape(
+                train_x.shape[0], -1)[:, permute_idx].reshape(train_x.shape)
+            # Permute the pixels of the test examples
+            test_x = test_x.reshape(
+                test_x.shape[0], -1)[:, permute_idx].reshape(test_x.shape)
 
         # apply normalisation
         train_x = (train_x - self.mean) / self.std

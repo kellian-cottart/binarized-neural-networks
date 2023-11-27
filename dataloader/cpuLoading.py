@@ -1,8 +1,6 @@
-from torchvision import datasets, transforms
+from torchvision import transforms
 from torch.utils.data import DataLoader
 import torch
-import random
-import numpy as np
 
 
 class CPULoading:
@@ -38,53 +36,30 @@ class CPULoading:
             torch.utils.data.DataLoader: Testing dataset
         """
         train = dataset(
-            root=self.path, download=True, transform=self.normalisation, target_transform=None, train=True, *args, **kwargs)
+            root=self.path, download=True, transform=self.normalisation, target_transform=None, train=True)
         test = dataset(
-            root=self.path, download=True, transform=self.normalisation, target_transform=None, train=False, *args, **kwargs)
+            root=self.path, download=True, transform=self.normalisation, target_transform=None, train=False)
+
+        train.data = train.data.to(torch.float32)
+        test.data = test.data.to(torch.float32)
 
         # add padding
         padding = self.padding
-        train.data = torch.from_numpy(np.pad(train.data, ((0, 0), (padding, padding),
-                                                          (padding, padding)), 'constant'))
-        test.data = torch.from_numpy(np.pad(test.data, ((0, 0), (padding, padding),
-                                                        (padding, padding)), 'constant'))
+        train.data = torch.nn.functional.pad(
+            train.data, (padding, padding, padding, padding))
+        test.data = torch.nn.functional.pad(
+            test.data, (padding, padding, padding, padding))
 
+        # if permute_idx is given, permute the dataset
+        if "permute_idx" in kwargs:
+            permute_idx = kwargs["permute_idx"]
+            # Permute the pixels of the test examples
+            train.data = train.data.reshape(
+                train.data.shape[0], -1)[:, permute_idx].reshape(train.data.shape)
+            test.data = test.data.reshape(
+                test.data.shape[0], -1)[:, permute_idx].reshape(test.data.shape)
         train = DataLoader(
             train, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
         test = DataLoader(
             test, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
         return train, test
-
-
-class PermutedMNIST(datasets.MNIST):
-    """ Permuted MNIST dataset
-
-    Extension of the MNIST dataset where the pixels are permuted according to a random permutation
-    Used for the Continual Learning experiments
-    """
-
-    def __init__(self, root="~/.torch/data/mnist", train=True, permute_idx=None):
-        super(PermutedMNIST, self).__init__(root, train, download=True)
-        assert len(permute_idx) == 28 * 28
-        # Set the permutation
-        self.data = torch.stack([img.float().view(-1)[permute_idx] / 255
-                                 for img in self.data])
-
-    def __getitem__(self, index):
-        """ Get an item from the dataset
-
-        Args:
-            index (int): Index of the sample to return
-        """
-        # Return the image and the label
-        img, target = self.data[index], self.targets[index]
-        return img, target
-
-    def get_sample(self, sample_size):
-        """ Get a sample of the dataset
-
-        Args:
-            sample_size (int): Number of samples to return
-        """
-        sample_idx = random.sample(range(len(self)), sample_size)
-        return [img for img in self.data[sample_idx]]
