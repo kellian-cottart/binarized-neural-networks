@@ -36,8 +36,20 @@ networks
                 self.layers.append(torch.nn.BatchNorm1d(
                     layers[i+1], affine=not bias, track_running_stats=True, device=self.device))
 
-    def forward(self, x):
-        """Forward propagation of the binarized neural network
-        Uses Sign activation function for binarization
+    def forward(self, x, activation=Sign.apply):
+        """ Forward pass of DNN
+
+        Args: 
+            x (torch.Tensor): Input tensor
+
+        Returns: 
+            torch.Tensor: Output tensor
+
         """
-        super().forward(x, activation=Sign.apply)
+        unique_layers = set(type(layer) for layer in self.layers)
+        ### FORWARD PASS ###
+        for i, layer in enumerate(self.layers):
+            x = layer(x)
+            if layer is not self.layers[-1] and (i+1) % len(unique_layers) == 0:
+                x = activation(x)
+        return torch.nn.functional.log_softmax(x, dim=1)

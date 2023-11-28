@@ -7,6 +7,7 @@ from optimizer import *
 import os
 import wandb
 import numpy as np
+import matplotlib.pyplot as plt
 
 ### GLOBAL VARIABLES ###
 BATCH_SIZE = 128  # Batch size
@@ -43,6 +44,9 @@ if __name__ == "__main__":
         loader = GPULoading(BATCH_SIZE, mean=MEAN, std=STD,
                             padding=PADDING, device=DEVICE)
 
+    if torch.cuda.is_available():
+        torch.set_default_tensor_type('torch.cuda.FloatTensor')
+
     input_size = (28+PADDING*2)**2
 
     ### NETWORK CONFIGURATION ###
@@ -54,24 +58,21 @@ if __name__ == "__main__":
         #         "layers": [input_size, 1024, 1024, 10],
         #         "init": "uniform",
         #         "device": DEVICE,
-        #         "dropout": False
+        #         "dropout": False,
+        #         "batchnorm": True,
         #     },
         #     "training_parameters": {
         #         'n_epochs': N_EPOCHS
         #     },
-        #     "criterion": torch.nn.NLLLoss(),
-        #     "optimizer": BinarySynapticUncertainty,
+        #     "criterion": torch.functional.F.nll_loss,
+        #     "reduction": "sum",
+        #     "optimizer": BayesBiNN,
         #     "optimizer_parameters": {
         #         "lr": LEARNING_RATE,
         #         "beta": 0.15,
-        #         "temperature": 1e-7,
+        #         "temperature": 1e-4,
         #         "num_mcmc_samples": 1,
         #     },
-        #     # "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR,
-        #     # "scheduler_parameters": {
-        #     #     "T_max": N_EPOCHS * N_TASKS,
-        #     #     "eta_min": MIN_LEARNING_RATE
-        #     # },
         # },
         {
             "name": "BayesianNN-200-200-PermutedMNIST",
@@ -81,14 +82,15 @@ if __name__ == "__main__":
                 "device": DEVICE,
                 "dropout": False,
                 "batchnorm": False,
+                "bias": True,
                 "sigma_init": 4e-2,
                 "n_samples": 10,
             },
-
             "training_parameters": {
                 'n_epochs': N_EPOCHS
             },
-            "criterion": torch.nn.NLLLoss(),
+            "criterion": torch.nn.functional.nll_loss,
+            "reduction": 'sum',
             "optimizer": MESU,
             "optimizer_parameters": {
                 "coeff_likeli_mu": 1,
@@ -97,11 +99,6 @@ if __name__ == "__main__":
                 "sigma_b": 15,
                 "update": 3,
             },
-            # "scheduler": torch.optim.lr_scheduler.CosineAnnealingLR,
-            # "scheduler_parameters": {
-            #     "T_max": N_EPOCHS * N_TASKS,
-            #     "eta_min": MIN_LEARNING_RATE
-            # },
         },
     ]
 
@@ -130,26 +127,30 @@ if __name__ == "__main__":
                 network = trainer.BayesTrainer(
                     model=model, **data, device=DEVICE,)
             else:
-                network = trainer.Trainer(model=model, **data, device=DEVICE,)
+                network = trainer.GPUTrainer(batch_size=BATCH_SIZE,
+                                             model=model, **data, device=DEVICE,)
 
             # print architecture
             print(network.model)
 
             ### TRAINING ###
             if TASK == "Sequential":
-                mnist_train, mnist_test = mnist(loader)
+                mnist_train, mnist_test = mnist(loader, permute_idx=None)
                 fashion_mnist_train, fashion_mnist_test = fashion_mnist(loader)
                 test_loader = [mnist_test, fashion_mnist_test]
-                network.fit(
-                    mnist_train, **data['training_parameters'], test_loader=test_loader, verbose=True)
+                train_loader = [mnist_train, fashion_mnist_train]
+                for dataset in train_loader:
+                    network.fit(
+                        dataset, **data['training_parameters'], test_loader=test_loader, verbose=True)
             elif TASK == "PermutedMNIST":
                 permutations = [torch.randperm(input_size)
                                 for _ in range(N_TASKS)]
                 for i in range(N_TASKS):
                     # N task and N+1 task to slowly shift the distribution
-                    _, mnist_test = mnist(loader)
+                    _, mnist_test = mnist(
+                        loader, permute_idx=permutations[i], as_dataset=False)
                     train_dataset, _ = mnist(
-                        loader, permute_idx=permutations[i])
+                        loader, permute_idx=permutations[i], as_dataset=False)
                     network.fit(
                         train_dataset, **data['training_parameters'], test_loader=[mnist_test], verbose=True, test_permutations=permutations)
 

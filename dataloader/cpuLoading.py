@@ -20,10 +20,8 @@ class CPULoading:
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.padding = padding
-        self.normalisation = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(mean, std)
-        ])
+        self.mean = mean
+        self.std = std
 
     def __call__(self, dataset, *args, **kwargs):
         """ Load any dataset
@@ -35,31 +33,42 @@ class CPULoading:
             torch.utils.data.DataLoader: Training dataset
             torch.utils.data.DataLoader: Testing dataset
         """
-        train = dataset(
-            root=self.path, download=True, transform=self.normalisation, target_transform=None, train=True)
-        test = dataset(
-            root=self.path, download=True, transform=self.normalisation, target_transform=None, train=False)
+        normalisation = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((self.mean,), (self.std,)),
+        ])
 
-        train.data = train.data.to(torch.float32)
-        test.data = test.data.to(torch.float32)
+        train = dataset(root=self.path,
+                        train=True,
+                        download=True,
+                        transform=normalisation,
+                        target_transform=None)
+        test = dataset(root=self.path,
+                       train=False,
+                       download=True,
+                       transform=normalisation,
+                       target_transform=None)
 
-        # add padding
-        padding = self.padding
-        train.data = torch.nn.functional.pad(
-            train.data, (padding, padding, padding, padding))
-        test.data = torch.nn.functional.pad(
-            test.data, (padding, padding, padding, padding))
+        train = DataLoader(train, batch_size=self.batch_size,
+                           shuffle=True, num_workers=self.num_workers, drop_last=True)
+        max_test = len(test.data)
+        test = DataLoader(test, batch_size=max_test,
+                          shuffle=False, num_workers=self.num_workers)
+
+        # pad the dataset to (28+padding*2)x(28+padding*2)
+        if self.padding != 0:
+            train.dataset.data = torch.nn.functional.pad(
+                train.dataset.data, (self.padding, self.padding, self.padding, self.padding))
+            test.dataset.data = torch.nn.functional.pad(
+                test.dataset.data, (self.padding, self.padding, self.padding, self.padding))
 
         # if permute_idx is given, permute the dataset
-        if "permute_idx" in kwargs:
+        if "permute_idx" in kwargs and kwargs["permute_idx"] is not None:
             permute_idx = kwargs["permute_idx"]
             # Permute the pixels of the test examples
-            train.data = train.data.reshape(
-                train.data.shape[0], -1)[:, permute_idx].reshape(train.data.shape)
-            test.data = test.data.reshape(
-                test.data.shape[0], -1)[:, permute_idx].reshape(test.data.shape)
-        train = DataLoader(
-            train, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
-        test = DataLoader(
-            test, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+            train.dataset.data = train.dataset.data.reshape(
+                train.dataset.data.shape[0], -1)[:, permute_idx].reshape(train.dataset.data.shape)
+            test.dataset.data = test.dataset.data.reshape(
+                test.dataset.data.shape[0], -1)[:, permute_idx].reshape(test.dataset.data.shape)
+
         return train, test

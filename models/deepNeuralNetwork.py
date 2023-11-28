@@ -15,11 +15,13 @@ class DNN(torch.nn.Module):
             std (float): Standard deviation for initialization
             device (str): Device to use for computation (e.g. 'cuda' or 'cpu')
             dropout (bool): Whether to use dropout
+            batchnorm (bool): Whether to use batchnorm
+            bias (bool): Whether to use bias
         """
         super(DNN, self).__init__()
         self.n_layers = len(layers)-2
         self.device = device
-        self.layers = torch.nn.ModuleList()
+        self.layers = torch.nn.ModuleList().to(self.device)
         self.dropout = dropout
         self.batchnorm = batchnorm
         ### LAYER INITIALIZATION ###

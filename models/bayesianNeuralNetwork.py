@@ -44,5 +44,7 @@ class BayesianNN(DNN):
                 x = torch.nn.functional.relu(x)
         # Average over samples if the last layer is a MetaBayesLinearParallel layer
         if isinstance(layer, MetaBayesLinearParallel):
-            x = torch.mean(x, dim=0)
-        return torch.nn.functional.log_softmax(x, dim=1)
+            x = torch.nn.functional.log_softmax(x, dim=2)
+            return torch.mean(x, dim=0)
+        else:
+            return torch.nn.functional.log_softmax(x, dim=1)

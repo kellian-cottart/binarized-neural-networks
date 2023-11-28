@@ -6,11 +6,12 @@ import wandb
 class Trainer:
     """Base class for all trainers."""
 
-    def __init__(self, model, optimizer, optimizer_parameters, criterion, device, logging=True, *args, **kwargs):
+    def __init__(self, model, optimizer, optimizer_parameters, criterion, device, logging=True, reduction="mean", *args, **kwargs):
         self.model = model
         self.optimizer = optimizer(
             self.model.parameters(), **optimizer_parameters)
         self.criterion = criterion
+        self.reduction = reduction
         self.device = device
         self.training_accuracy = []
         self.testing_accuracy = []
@@ -26,15 +27,11 @@ class Trainer:
         """Perform the training of a single batch
         """
         self.model.train()
-        torch.set_grad_enabled(True)
-
-        ### FORWARD PASS ###
-        inputs = inputs.view(inputs.shape[0], -1).to(self.device)
-        targets = targets.to(self.device)
-        prediction = self.model.forward(inputs)
-
         ### LOSS ###
-        self.loss = self.criterion(prediction, targets)
+        self.loss = self.criterion(
+            self.model.forward(inputs.view(inputs.shape[0], -1)),
+            targets,
+            reduction=self.reduction)
 
         ### BACKWARD PASS ###
         self.optimizer.zero_grad()
@@ -45,6 +42,7 @@ class Trainer:
         """Perform the training of a single epoch
         """
         ### SEND BATCH ###
+
         for inputs, targets in train_loader:
             self.batch_step(inputs, targets)
 
@@ -89,7 +87,6 @@ class Trainer:
         """Train the model for n_epochs
         """
         if verbose:
-            print(f"Training on {train_loader.dataset}...")
             pbar = trange(
                 n_epochs, desc='Initialization')
         else:
@@ -167,16 +164,24 @@ class Trainer:
         """
         ### ACCURACY COMPUTATION ###
         self.model.eval()
-        x = dataloader.dataset.data.view(
-            len(dataloader.dataset.data), -1).to(self.device)
-        labels = dataloader.dataset.targets.to(self.device)
-        # Forward pass
-        predictions = self.model.forward(x)
-        # Retrieve the most likely class from the softmax output
-        _, predicted = torch.max(predictions.data, 1)
-        # Retrieve the probability of the most likely class
-        correct = torch.sum(predicted == labels, dtype=torch.float32)
-        return correct / len(dataloader.dataset.data)
+        # The test can be computed faster if the dataset is already in the right format
+        if dataloader.dataset.data.dtype == torch.float32:
+            x = dataloader.dataset.data.view(
+                dataloader.dataset.data.shape[0], -1).to(self.device)
+            predictions = self.model.forward(x).to(self.device)
+            _, predicted = torch.max(predictions, dim=1)
+        else:
+            # For each batch of test (we only have one batch)
+            for data, labels in dataloader:
+                # Change according to the permutation
+                x = data.view(data.shape[0], -1).squeeze().to(self.device)
+                labels = labels.to(self.device)
+                # Forward pass
+                predictions = self.model.forward(x).to(self.device)
+                # Retrieve the most likely class from the softmax output
+                _, predicted = torch.max(predictions, dim=1)
+                # Retrieve the probability of the most likely class
+        return torch.sum(predicted == labels) / len(dataloader.dataset.data)
 
     @torch.no_grad()
     def test_continual(self, dataloader):
@@ -189,14 +194,23 @@ class Trainer:
         accuracies = []
         labels = dataloader.dataset.targets.to(self.device)
         for permutation in self.test_permutations:
-            # Permute the pixels of the images according to permutation
-            x = dataloader.dataset.data.view(
-                len(dataloader.dataset.data), -1)[:, permutation].to(self.device)
-            # Forward pass
-            predictions = self.model.forward(x)
-            # Retrieve the most likely class from the softmax output
-            _, predicted = torch.max(predictions.data, 1)
-            # Retrieve the probability of the most likely class
-            correct = torch.sum(predicted == labels, dtype=torch.float32)
-            accuracies.append(correct / len(dataloader.dataset.data))
+            if dataloader.dataset.data.dtype == torch.float32:
+                x = dataloader.dataset.data.view(
+                    dataloader.dataset.data.shape[0], -1)[:, permutation].to(self.device)
+                predictions = self.model.forward(x).to(self.device)
+                _, predicted = torch.max(predictions, dim=1)
+            else:
+                # For each batch of test (we only have one batch)
+                for data, labels in dataloader:
+                    # Change according to the permutation
+                    x = data.view(data.shape[0], -1)[:,
+                                                     permutation].squeeze().to(self.device)
+                    labels = labels.to(self.device)
+                    # Forward pass
+                    predictions = self.model.forward(x).to(self.device)
+                    # Retrieve the most likely class from the softmax output
+                    _, predicted = torch.max(predictions, dim=1)
+                    # Retrieve the probability of the most likely class
+            accuracies.append(torch.sum(predicted == labels) /
+                              len(dataloader.dataset.data))
         return accuracies

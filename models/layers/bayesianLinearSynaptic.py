@@ -11,7 +11,7 @@ import torch.nn.functional as F
 import torch.nn.init as init
 from torch.nn.modules import Module
 from torch.nn.parameter import Parameter
-
+from math import sqrt
 __all__ = ['MetaBayesLinearParallel']
 
 
@@ -105,6 +105,7 @@ class MetaBayesLinearParallel(Module):
         # Control for zero mean initialization
         self.zeroMean = zeroMean
         self.sigma_init = sigma_init
+        self.sigma0 = 1 / sqrt(in_features)
 
         # Initialize bias if applicable
         if bias:
@@ -119,15 +120,15 @@ class MetaBayesLinearParallel(Module):
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
-        """Initialize the parameters"""
+        """Initialize the parameters."""
         if not self.zeroMean:
-            init.kaiming_uniform_(self.weight_mu, a=5**0.5)
+            init.uniform_(self.weight_mu, -self.sigma0, self.sigma0)
         if self.zeroMean:
             init.constant_(self.weight_mu, 0)
         init.constant_(self.weight_sigma, self.sigma_init)
 
         if self.bias is not None:
-            init.kaiming_uniform_(self.weight_mu, a=5**0.5)
+            init.uniform_(self.bias_mu, -self.sigma0, self.sigma0)
             init.constant_(self.bias_sigma, self.sigma_init)
 
     def forward(self, input: Tensor, samples: int) -> Tensor:
