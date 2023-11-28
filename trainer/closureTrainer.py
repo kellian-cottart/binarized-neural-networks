@@ -16,14 +16,14 @@ class ClosureTrainer(GPUTrainer):
         def closure():
             # Closure for the optimizer sending the loss to the optimizer
             self.optimizer.zero_grad()
-            output = self.model.forward(inputs.view(inputs.shape[0], -1))
+            output = self.model.forward(inputs)
             loss = self.criterion(output, targets)
             return loss
 
         self.model.train()
         ### LOSS ###
         self.loss = self.criterion(
-            self.model.forward(inputs.view(inputs.shape[0], -1)),
+            self.model.forward(inputs),
             targets,
             reduction=self.reduction)
 

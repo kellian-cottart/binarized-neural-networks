@@ -32,7 +32,7 @@ def visualize_sequential(title, l_accuracies, folder):
 
     ### COMPUTE MEAN AND STD ###
     # Transform the list of list of accuracies into a tensor of tensor of accuracies
-    l_accuracies = torch.tensor(l_accuracies)
+    l_accuracies = torch.tensor(l_accuracies).detach().cpu()
     mean_accuracies = l_accuracies.mean(dim=0)
     std_accuracies = l_accuracies.std(dim=0)
 

@@ -29,7 +29,7 @@ class Trainer:
         self.model.train()
         ### LOSS ###
         self.loss = self.criterion(
-            self.model.forward(inputs.view(inputs.shape[0], -1)),
+            self.model.forward(inputs),
             targets,
             reduction=self.reduction)
 
@@ -44,7 +44,7 @@ class Trainer:
         ### SEND BATCH ###
 
         for inputs, targets in train_loader:
-            self.batch_step(inputs, targets)
+            self.batch_step(inputs.view(inputs.shape[0], -1), targets)
 
         ### SCHEDULER ###
         if "scheduler" in dir(self):

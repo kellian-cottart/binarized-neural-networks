@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import idx2numpy
+from torchvision import transforms
 
 
 class GPUTensorDataset(torch.utils.data.Dataset):
@@ -8,7 +9,7 @@ class GPUTensorDataset(torch.utils.data.Dataset):
 
     def __init__(self, data, targets, device="cuda:0"):
         self.data = data.to(device)
-        self.targets = targets.type(torch.LongTensor).to(device)
+        self.targets = targets.to(torch.long).to(device)
 
     def __getitem__(self, index):
         """ Return a (data, target) pair """
@@ -55,54 +56,47 @@ class GPULoading:
             path_test_x).astype(np.float32)
         test_y = idx2numpy.convert_from_file(
             path_test_y).astype(np.float32)
-        # add padding
-        train_x = np.pad(train_x, ((0, 0), (self.padding, self.padding),
-                                   (self.padding, self.padding)), 'constant')
-        test_x = np.pad(test_x, ((0, 0), (self.padding, self.padding),
-                                 (self.padding, self.padding)), 'constant')
+
+        current_size = train_x.shape[1]
+        # Flatten the images
+        train_x = train_x.reshape(train_x.shape[0], -1)
+        test_x = test_x.reshape(test_x.shape[0], -1)
+
+        # Normalize the pixels in train_x and test_x using transform
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((self.mean,), (self.std,))
+        ])
+
+        train_x = transform(train_x).squeeze(0).to(
+            self.device)
+        test_x = transform(test_x).squeeze(0).to(
+            self.device)
+
+        # Add padding (Ref: Chen Zeno - Task Agnostic Continual Learning Using Online Variational Bayes)
+        target_size = (current_size+self.padding*2)
+        train_x = torch.cat(
+            (train_x, torch.zeros(len(train_x), target_size**2-current_size**2).to(self.device)), dim=1)
+        test_x = torch.cat(
+            (test_x, torch.zeros(len(test_x), target_size**2-current_size**2).to(self.device)), dim=1)
+
+        # if permute_idx is given, permute the dataset as for PermutedMNIST
+        if "permute_idx" in kwargs and kwargs["permute_idx"] is not None:
+            # permute_idx is the permutation to apply to the pixels of the images
+            permute_idx = kwargs["permute_idx"]
+            # Permute the pixels of the training examples using torch
+            train_x = train_x[:, permute_idx]
+            # Permute the pixels of the test examples
+            test_x = test_x[:, permute_idx]
+
+        # create a tensor which has self.data as data and self.targets as targets
+        train_dataset = GPUTensorDataset(train_x, torch.from_numpy(train_y))
+        test_dataset = GPUTensorDataset(test_x, torch.from_numpy(test_y))
+
+        # if we are using the turbo mode, we do not need to create a DataLoader
         if turbo:
-            train_x = torch.from_numpy(train_x).to(self.device)
-            train_y = torch.from_numpy(train_y).to(self.device)
-            test_x = torch.from_numpy(test_x).to(self.device)
-            test_y = torch.from_numpy(test_y).to(self.device)
-            # if permute_idx is given, permute the dataset as for PermutedMNIST
-            if "permute_idx" in kwargs and kwargs["permute_idx"] is not None:
-                # permute_idx is the permutation to apply to the pixels of the images
-                permute_idx = kwargs["permute_idx"]
-                # Permute the pixels of the training examples using torch
-                train_x = train_x.view(train_x.shape[0], -1)[:, permute_idx].view(
-                    train_x.shape).to(self.device)
-                # Permute the pixels of the test examples
-                test_x = test_x.view(test_x.shape[0], -1)[:, permute_idx].view(
-                    test_x.shape).to(self.device)
-            # apply normalisation
-            train_x = (train_x - self.mean) / self.std
-            test_x = (test_x - self.mean) / self.std
-            train_dataset = GPUTensorDataset(train_x, train_y)
-            test_dataset = GPUTensorDataset(test_x, test_y)
-
+            return train_dataset, test_dataset
         else:
-            # if permute_idx is given, permute the dataset as for PermutedMNIST
-            if "permute_idx" in kwargs and kwargs["permute_idx"] is not None:
-                # permute_idx is the permutation to apply to the pixels of the images
-                permute_idx = kwargs["permute_idx"]
-                # Permute the pixels of the training examples
-                train_x = train_x.reshape(
-                    train_x.shape[0], -1)[:, permute_idx].reshape(train_x.shape)
-                # Permute the pixels of the test examples
-                test_x = test_x.reshape(
-                    test_x.shape[0], -1)[:, permute_idx].reshape(test_x.shape)
-
-            # apply normalisation
-            train_x = (train_x - self.mean) / self.std
-            test_x = (test_x - self.mean) / self.std
-
-            # create a tensor which has self.data as data and self.targets as labels using the add_ids function
-            train_dataset = GPUTensorDataset(torch.from_numpy(
-                train_x), torch.from_numpy(train_y))
-            test_dataset = GPUTensorDataset(torch.from_numpy(
-                test_x), torch.from_numpy(test_y))
-
             # create a DataLoader to load the data in batches
             train_dataset = torch.utils.data.DataLoader(
                 train_dataset, batch_size=self.batch_size, shuffle=True, drop_last=True)
@@ -111,4 +105,4 @@ class GPULoading:
             test_dataset = torch.utils.data.DataLoader(
                 test_dataset, batch_size=max_test, shuffle=False)
 
-        return train_dataset, test_dataset
+            return train_dataset, test_dataset

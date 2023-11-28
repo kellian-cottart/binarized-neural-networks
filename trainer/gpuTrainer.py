@@ -16,8 +16,10 @@ class GPUTrainer(Trainer):
         ### SEND BATCH ###
         n_batches = len(train_dataset) // self.batch_size
         for batch in range(n_batches):
-            inputs, targets = train_dataset[batch *
-                                            self.batch_size:(batch+1)*self.batch_size]
+            inputs = train_dataset[batch *
+                                   self.batch_size:(batch+1)*self.batch_size][0]
+            targets = train_dataset[batch *
+                                    self.batch_size:(batch+1)*self.batch_size][1]
             self.batch_step(inputs, targets)
 
         ### SCHEDULER ###
@@ -34,12 +36,31 @@ class GPUTrainer(Trainer):
             else:
                 test = []
                 for dataset in test_loader:
-                    test.append(self.test(dataset))
+                    inputs = dataset.data
+                    labels = dataset.targets
+                    test.append(self.test(inputs, labels))
                 self.testing_accuracy.append(test)
 
         ### LOGGING ###
         if self.logging:
             self.log()
+
+    def test(self, inputs, labels):
+        """ Predict labels for a full dataset and retrieve accuracy
+
+        Args: 
+            data (torch.utils.data.DataLoader): Testing data containing (data, labels) pairs 
+
+        Returns: 
+            float: Accuracy of DNN on data
+
+        """
+        ### ACCURACY COMPUTATION ###
+        self.model.eval()
+        # The test can be computed faster if the dataset is already in the right format
+        predictions = self.model.forward(inputs).to(self.device)
+        _, predicted = torch.max(predictions, dim=1)
+        return torch.sum(predicted == labels) / len(inputs)
 
     def test_continual(self, inputs, labels):
         """Test the model on the test set of the PermutedMNIST task
@@ -50,8 +71,7 @@ class GPUTrainer(Trainer):
         self.model.eval()
         accuracies = []
         for permutation in self.test_permutations:
-            x = inputs.view(inputs.shape[0], -1)[:,
-                                                 permutation].to(self.device)
+            x = inputs[:, permutation].to(self.device)
             predictions = self.model.forward(x).to(self.device)
             _, predicted = torch.max(predictions, dim=1)
             accuracies.append(torch.sum(predicted == labels) /
