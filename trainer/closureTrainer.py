@@ -1,7 +1,7 @@
-from .trainer import Trainer
+from .gpuTrainer import GPUTrainer
 
 
-class ClosureTrainer(Trainer):
+class ClosureTrainer(GPUTrainer):
     """Trainer but with a closure for the optimizer
 
     Args:
@@ -16,19 +16,18 @@ class ClosureTrainer(Trainer):
         def closure():
             # Closure for the optimizer sending the loss to the optimizer
             self.optimizer.zero_grad()
-            output = self.model.forward(inputs)
+            output = self.model.forward(inputs.view(inputs.shape[0], -1))
             loss = self.criterion(output, targets)
             return loss
 
-        ### FORWARD PASS ###
-        inputs = inputs.view(inputs.shape[0], -1).to(self.device)
-        targets = targets.to(self.device)
-        prediction = self.model.forward(inputs)
-
+        self.model.train()
         ### LOSS ###
-        self.loss = self.criterion(prediction, targets)
+        self.loss = self.criterion(
+            self.model.forward(inputs.view(inputs.shape[0], -1)),
+            targets,
+            reduction=self.reduction)
 
         ### BACKWARD PASS ###
         self.optimizer.zero_grad()
         self.loss.backward()
-        self.optimizer.step(closure=closure)
+        self.optimizer.step(closure)

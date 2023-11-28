@@ -41,16 +41,37 @@ if __name__ == "__main__":
         loader = CPULoading(DATASETS_PATH, BATCH_SIZE, mean=MEAN, std=STD,
                             padding=PADDING, num_workers=NUM_WORKERS)
     else:
+        if torch.cuda.is_available():
+            # torch.set_default_tensor_type('torch.cuda.FloatTensor')
+            torch.set_default_dtype(torch.float32)
+            torch.set_default_device(DEVICE)
         loader = GPULoading(BATCH_SIZE, mean=MEAN, std=STD,
-                            padding=PADDING, device=DEVICE)
-
-    if torch.cuda.is_available():
-        torch.set_default_tensor_type('torch.cuda.FloatTensor')
+                            padding=PADDING, device=DEVICE, turbo=torch.cuda.is_available())
 
     input_size = (28+PADDING*2)**2
 
     ### NETWORK CONFIGURATION ###
     networks_data = [
+        {
+            "name": "DNN-1024-1024",
+            "nn_type": models.BNN,
+            "nn_parameters": {
+                "layers": [input_size, 1024, 1024, 10],
+                "init": "uniform",
+                "device": DEVICE,
+                "dropout": False,
+                "batchnorm": True,
+            },
+            "training_parameters": {
+                'n_epochs': N_EPOCHS
+            },
+            "criterion": torch.functional.F.nll_loss,
+            "reduction": "mean",
+            "optimizer": torch.optim.Adam,
+            "optimizer_parameters": {
+                "lr": LEARNING_RATE,
+            },
+        },
         # {
         #     "name": "BinaryNN-1024-1024",
         #     "nn_type": models.BNN,
@@ -74,32 +95,32 @@ if __name__ == "__main__":
         #         "num_mcmc_samples": 1,
         #     },
         # },
-        {
-            "name": "BayesianNN-200-200-PermutedMNIST",
-            "nn_type": models.BayesianNN,
-            "nn_parameters": {
-                "layers": [input_size, 200, 200, 10],
-                "device": DEVICE,
-                "dropout": False,
-                "batchnorm": False,
-                "bias": True,
-                "sigma_init": 4e-2,
-                "n_samples": 10,
-            },
-            "training_parameters": {
-                'n_epochs': N_EPOCHS
-            },
-            "criterion": torch.nn.functional.nll_loss,
-            "reduction": 'sum',
-            "optimizer": MESU,
-            "optimizer_parameters": {
-                "coeff_likeli_mu": 1,
-                "coeff_likeli_sigma": 1,
-                "sigma_p": 4e-2,
-                "sigma_b": 15,
-                "update": 3,
-            },
-        },
+        # {
+        #     "name": "BayesianNN-200-200-PermutedMNIST",
+        #     "nn_type": models.BayesianNN,
+        #     "nn_parameters": {
+        #         "layers": [input_size, 200, 200, 10],
+        #         "device": DEVICE,
+        #         "dropout": False,
+        #         "batchnorm": False,
+        #         "bias": True,
+        #         "sigma_init": 4e-2,
+        #         "n_samples": 10,
+        #     },
+        #     "training_parameters": {
+        #         'n_epochs': N_EPOCHS
+        #     },
+        #     "criterion": torch.nn.functional.nll_loss,
+        #     "reduction": 'mean',
+        #     "optimizer": MESU,
+        #     "optimizer_parameters": {
+        #         "coeff_likeli_mu": 1,
+        #         "coeff_likeli_sigma": 1,
+        #         "sigma_p": 4e-2,
+        #         "sigma_b": 15,
+        #         "update": 3,
+        #     },
+        # },
     ]
 
     for index, data in enumerate(networks_data):
@@ -124,8 +145,8 @@ if __name__ == "__main__":
 
             ### INSTANTIATE THE TRAINER ###
             if data["optimizer"] in [BinarySynapticUncertainty, BayesBiNN]:
-                network = trainer.BayesTrainer(
-                    model=model, **data, device=DEVICE,)
+                network = trainer.BayesTrainer(batch_size=BATCH_SIZE,
+                                               model=model, **data, device=DEVICE)
             else:
                 network = trainer.GPUTrainer(batch_size=BATCH_SIZE,
                                              model=model, **data, device=DEVICE,)
@@ -148,9 +169,9 @@ if __name__ == "__main__":
                 for i in range(N_TASKS):
                     # N task and N+1 task to slowly shift the distribution
                     _, mnist_test = mnist(
-                        loader, permute_idx=permutations[i], as_dataset=False)
+                        loader, permute_idx=permutations[i])
                     train_dataset, _ = mnist(
-                        loader, permute_idx=permutations[i], as_dataset=False)
+                        loader, permute_idx=permutations[i])
                     network.fit(
                         train_dataset, **data['training_parameters'], test_loader=[mnist_test], verbose=True, test_permutations=permutations)
 
