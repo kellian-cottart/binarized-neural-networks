@@ -31,7 +31,7 @@ class BayesianNN(DNN):
     def _weight_init(self, init='normal', std=0.01):
         pass
 
-    def forward(self, x):
+    def forward(self, x, log=True):
         ### FORWARD PASS ###
         unique_layers = set(type(layer) for layer in self.layers)
         for i, layer in enumerate(self.layers):
@@ -45,6 +45,8 @@ class BayesianNN(DNN):
         # Average over samples if the last layer is a MetaBayesLinearParallel layer
         if isinstance(layer, MetaBayesLinearParallel):
             x = torch.nn.functional.log_softmax(x, dim=2)
-            return torch.mean(x, dim=0)
+            if not log:
+                x = torch.exp(x)
+            return x.mean(0)
         else:
             return torch.nn.functional.log_softmax(x, dim=1)

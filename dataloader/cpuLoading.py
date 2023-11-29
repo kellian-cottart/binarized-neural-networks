@@ -15,13 +15,11 @@ class CPULoading:
         num_workers (int, optional): Number of workers for data loading. Defaults to 0.
     """
 
-    def __init__(self, path, batch_size, mean=0.1307, std=0.3081, padding=0, num_workers=0, *args, **kwargs):
+    def __init__(self, path, batch_size, padding=0, num_workers=0, *args, **kwargs):
         self.path = path
         self.batch_size = batch_size
         self.num_workers = num_workers
         self.padding = padding
-        self.mean = mean
-        self.std = std
 
     def __call__(self, dataset, *args, **kwargs):
         """ Load any dataset
@@ -35,7 +33,7 @@ class CPULoading:
         """
         normalisation = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((self.mean,), (self.std,)),
+            transforms.Lambda(lambda x: x/255)
         ])
 
         train = dataset(root=self.path,

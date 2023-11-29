@@ -30,10 +30,8 @@ class GPULoading:
         padding (int, optional): Padding to add to the images. Defaults to 0.
     """
 
-    def __init__(self, batch_size, mean=0.1307, std=0.3081, padding=0, device="cuda:0", *args, **kwargs):
+    def __init__(self, batch_size, padding=0, device="cuda:0", *args, **kwargs):
         self.batch_size = batch_size
-        self.mean = mean
-        self.std = std
         self.padding = padding
         self.device = device
 
@@ -65,7 +63,7 @@ class GPULoading:
         # Normalize the pixels in train_x and test_x using transform
         transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((self.mean,), (self.std,))
+            transforms.Lambda(lambda x: x/255)
         ])
 
         train_x = transform(train_x).squeeze(0).to(
@@ -76,9 +74,9 @@ class GPULoading:
         # Add padding (Ref: Chen Zeno - Task Agnostic Continual Learning Using Online Variational Bayes)
         target_size = (current_size+self.padding*2)
         train_x = torch.cat(
-            (train_x, torch.zeros(len(train_x), target_size**2-current_size**2).to(self.device)), dim=1)
+            (train_x, torch.zeros(len(train_x), target_size**2-current_size**2).to(self.device)), axis=1)
         test_x = torch.cat(
-            (test_x, torch.zeros(len(test_x), target_size**2-current_size**2).to(self.device)), dim=1)
+            (test_x, torch.zeros(len(test_x), target_size**2-current_size**2).to(self.device)), axis=1)
 
         # if permute_idx is given, permute the dataset as for PermutedMNIST
         if "permute_idx" in kwargs and kwargs["permute_idx"] is not None:

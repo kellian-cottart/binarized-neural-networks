@@ -3,15 +3,29 @@ import torch
 
 
 class GPUTrainer(Trainer):
-    """Trainer that does not require the usage of DataLoaders"""
+    """Trainer that does not require the usage of DataLoaders
 
-    def __init__(self, batch_size, *args, **kwargs):
+    Args: 
+        batch_size (int): Batch size
+        logarithmic (bool, optional): If True, the model outputs log probabilities. Defaults to True.
+    """
+
+    def __init__(self, batch_size, logarithmic=True, *args, **kwargs):
         self.batch_size = batch_size
+        self.logarithmic = logarithmic
         super().__init__(*args, **kwargs)
 
     def epoch_step(self, train_dataset, test_loader=None):
         """Perform the training of a single epoch
+
+        Args: 
+            train_dataset (torch.Tensor): Training data
+            test_loader (torch.Tensor, optional): Testing data. Defaults to None.
         """
+        ### PERMUTE DATASET ###
+        perm = torch.randperm(len(train_dataset))
+        train_dataset.data = train_dataset.data[perm]
+        train_dataset.targets = train_dataset.targets[perm]
 
         ### SEND BATCH ###
         n_batches = len(train_dataset) // self.batch_size
@@ -49,31 +63,39 @@ class GPUTrainer(Trainer):
         """ Predict labels for a full dataset and retrieve accuracy
 
         Args: 
-            data (torch.utils.data.DataLoader): Testing data containing (data, labels) pairs 
+            inputs (torch.Tensor): Input data
+            labels (torch.Tensor): Labels of the data
+            log (bool, optional): If True, the model outputs log probabilities. Defaults to True.
 
         Returns: 
-            float: Accuracy of DNN on data
+            float: Accuracy of the model on the dataset
 
         """
         ### ACCURACY COMPUTATION ###
-        self.model.eval()
         # The test can be computed faster if the dataset is already in the right format
-        predictions = self.model.forward(inputs).to(self.device)
-        _, predicted = torch.max(predictions, dim=1)
-        return torch.sum(predicted == labels) / len(inputs)
+        with torch.no_grad():
+            # if self.forward can take log in its parameters
+            if "log" in self.model.forward.__code__.co_varnames:
+                predictions = self.model.forward(
+                    inputs, log=self.logarithmic).to(self.device)
+            else:
+                predictions = self.model.forward(
+                    inputs).to(self.device)
+            idx_pred = torch.argmax(predictions, dim=1)
+        return len(torch.where(idx_pred == labels)[0]) / len(labels)
 
     def test_continual(self, inputs, labels):
         """Test the model on the test set of the PermutedMNIST task
 
         Args:
-            test_loader (torch.utils.data.DataLoader): DataLoader of the test set
+            inputs (torch.Tensor): Input data
+            labels (torch.Tensor): Labels of the data
+
+        Returns:
+            list: List of accuracies for each permutation
         """
-        self.model.eval()
         accuracies = []
         for permutation in self.test_permutations:
             x = inputs[:, permutation].to(self.device)
-            predictions = self.model.forward(x).to(self.device)
-            _, predicted = torch.max(predictions, dim=1)
-            accuracies.append(torch.sum(predicted == labels) /
-                              len(inputs))
+            accuracies.append(self.test(x, labels))
         return accuracies

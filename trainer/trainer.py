@@ -27,6 +27,8 @@ class Trainer:
         """Perform the training of a single batch
         """
         self.model.train()
+        self.model.zero_grad()
+        self.optimizer.zero_grad()
         ### LOSS ###
         self.loss = self.criterion(
             self.model.forward(inputs),
@@ -34,7 +36,6 @@ class Trainer:
             reduction=self.reduction)
 
         ### BACKWARD PASS ###
-        self.optimizer.zero_grad()
         self.loss.backward()
         self.optimizer.step()
 

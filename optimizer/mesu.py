@@ -4,7 +4,7 @@ from torch.optim import Optimizer
 from typing import List, Optional
 from copy import deepcopy
 
-__all__ = ['MESU', 'hessian_meta_bayes', 'BGD', 'bgd']
+__all__ = ['MESU', 'mesu', 'BGD', 'bgd']
 
 
 def _use_grad_for_differentiable(func):
@@ -120,35 +120,35 @@ class MESU(Optimizer):
                         has_sparse_grad = True
                     state = self.state[p]
 
-            hessian_meta_bayes(params_with_grad,
-                               d_p_list,
-                               priors_with_grad,
-                               coeff_likeli_mu=group['coeff_likeli_mu'],
-                               coeff_likeli_sigma=group['coeff_likeli_sigma'],
-                               sigma_p=group['sigma_p'],
-                               sigma_b=group['sigma_b'],
-                               alpha=group['alpha'],
-                               update=group['update'],
-                               keep_prior=group['keep_prior'],
-                               clamp_grad=group['clamp_grad'],
-                               has_sparse_grad=has_sparse_grad)
+            mesu(params_with_grad,
+                 d_p_list,
+                 priors_with_grad,
+                 coeff_likeli_mu=group['coeff_likeli_mu'],
+                 coeff_likeli_sigma=group['coeff_likeli_sigma'],
+                 sigma_p=group['sigma_p'],
+                 sigma_b=group['sigma_b'],
+                 alpha=group['alpha'],
+                 update=group['update'],
+                 keep_prior=group['keep_prior'],
+                 clamp_grad=group['clamp_grad'],
+                 has_sparse_grad=has_sparse_grad)
 
         return loss
 
 
-def hessian_meta_bayes(params: List[Tensor],
-                       d_p_list: List[Tensor],
-                       prior: List[Optional[Tensor]],
-                       has_sparse_grad: bool = None,
-                       *,
-                       coeff_likeli_mu: float,
-                       coeff_likeli_sigma: float,
-                       sigma_p: float,
-                       sigma_b: float,
-                       alpha: float,
-                       update: int,
-                       keep_prior: bool,
-                       clamp_grad: bool):
+def mesu(params: List[Tensor],
+         d_p_list: List[Tensor],
+         prior: List[Optional[Tensor]],
+         has_sparse_grad: bool = None,
+         *,
+         coeff_likeli_mu: float,
+         coeff_likeli_sigma: float,
+         sigma_p: float,
+         sigma_b: float,
+         alpha: float,
+         update: int,
+         keep_prior: bool,
+         clamp_grad: bool):
 
     if not params:
         raise ValueError('Your parameters have no gradients!')
