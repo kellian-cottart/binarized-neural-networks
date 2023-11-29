@@ -141,6 +141,7 @@ class MetaBayesLinearParallel(Module):
         Returns:
             torch.Tensor: Output tensor
         """
+        print("STD: ", self.weight.sigma)
         W = self.weight.sample(samples)
         if self.bias:
             B = self.bias.sample(samples)

@@ -2,6 +2,7 @@ import os
 import matplotlib.pyplot as plt
 import datetime
 import torch
+from matplotlib.ticker import AutoMinorLocator
 
 
 def versionning(folder, title, format=".pdf"):
@@ -31,6 +32,13 @@ def visualize_sequential(title, l_accuracies, folder):
     plt.ylabel('Accuracy')
     plt.ylim(0, 1)
 
+    # Set minor ticks
+    ax = plt.gca()
+    ax.yaxis.set_minor_locator(AutoMinorLocator(5))
+    ax.tick_params(which='both', width=1)
+    ax.tick_params(which='major', length=6)
+    # major ticks every 0.1
+    ax.yaxis.set_major_locator(plt.MultipleLocator(0.1))
     ### COMPUTE MEAN AND STD ###
     # Transform the list of list of accuracies into a tensor of tensor of accuracies
     l_accuracies = torch.tensor(l_accuracies).detach().cpu()

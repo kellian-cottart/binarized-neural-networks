@@ -36,7 +36,7 @@ networks
                 self.layers.append(torch.nn.BatchNorm1d(
                     layers[i+1], affine=not bias, track_running_stats=True, device=self.device))
 
-    def forward(self, x, activation=Sign.apply):
+    def forward(self, x):
         """ Forward pass of DNN
 
         Args: 
@@ -51,5 +51,5 @@ networks
         for i, layer in enumerate(self.layers):
             x = layer(x)
             if layer is not self.layers[-1] and (i+1) % len(unique_layers) == 0:
-                x = activation(x)
+                x = Sign.apply(x)
         return torch.nn.functional.log_softmax(x, dim=1)

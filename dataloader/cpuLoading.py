@@ -33,7 +33,7 @@ class CPULoading:
         """
         normalisation = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Lambda(lambda x: x/255)
+            transforms.Lambda(lambda x: x/255),
         ])
 
         train = dataset(root=self.path,

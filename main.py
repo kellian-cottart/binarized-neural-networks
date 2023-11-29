@@ -9,7 +9,7 @@ import wandb
 import numpy as np
 import matplotlib.pyplot as plt
 
-SEED = 2506  # Random seed
+SEED = 0  # Random seed
 N_NETWORKS = 5  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 4  # Number of workers for data loading when using CPU
@@ -27,94 +27,70 @@ if __name__ == "__main__":
     torch.manual_seed(SEED)
     ### NETWORK CONFIGURATION ###
     networks_data = [
+
+        {
+            "name": "BinaryNN-200-200-PermutedMNIST",
+            "nn_type": models.BNN,
+            "nn_parameters": {
+                "layers": [INPUT_SIZE, 200, 200, 10],
+                "init": "uniform",
+                "device": DEVICE,
+                "std": STD,
+                "dropout": False,
+                "batchnorm": True,
+            },
+            "training_parameters": {
+                'n_epochs': 20,
+                'batch_size': 128,
+            },
+            "criterion": torch.functional.F.nll_loss,
+            "reduction": "mean",
+            "optimizer": BayesBiNN,
+            "optimizer_parameters": {
+                "lr": 1e-3,
+                "beta": 0.15,
+                "temperature": 1e-8,
+                "num_mcmc_samples": 5,
+            },
+            "task": "PermutedMNIST",
+            "n_tasks": 10,
+            "padding": PADDING,
+        },
+
         # {
-        #     "name": "BinaryNN-512-512"+TASK,
-        #     "nn_type": models.BNN,
+        #     "nn_type": models.BayesianNN,
         #     "nn_parameters": {
-        #         "layers": [input_size, 512, 512, 10],
-        #         "init": "uniform",
+        #         "layers": [INPUT_SIZE, 200, 200, 10],
         #         "device": DEVICE,
-        #         "std": STD,
         #         "dropout": False,
-        #         "batchnorm": True,
+        #         "batchnorm": False,
+        #         "bias": True,
+        #         "sigma_init": 4e-2,
+        #         "n_samples": 10,
         #     },
         #     "training_parameters": {
-        #         'n_epochs': N_EPOCHS
+        #         'n_epochs': 50,
+        #         'batch_size': 128,
+
         #     },
-        #     "criterion": torch.functional.F.nll_loss,
-        #     "reduction": "sum",
-        #     "optimizer": BayesBiNN,
+        #     "criterion": torch.nn.functional.nll_loss,
+        #     "reduction": 'sum',
+        #     "optimizer": MESU,
         #     "optimizer_parameters": {
-        #         "lr": LEARNING_RATE,
-        #         "beta": 0.12,
-        #         "temperature": 1e-6,
-        #         "scale": 5,
+        #         "coeff_likeli_mu": 1,
+        #         "coeff_likeli_sigma": 1,
+        #         "sigma_p": 4e-2,
+        #         "sigma_b": 15,
+        #         "update": 3,
+        #         "keep_prior": True,
         #     },
+        #     # Task to train on (Sequential or PermutedMNIST)
+        #     "task": "Sequential",
+        #     # Number of tasks to train on (permutations of MNIST)
+        #     "n_tasks": 10,
+        #     "name": "BayesianNN-200-200-Sequential",
+        #     "padding": PADDING,
         # },
-        {
-            "nn_type": models.BayesianNN,
-            "nn_parameters": {
-                "layers": [INPUT_SIZE, 200, 200, 10],
-                "device": DEVICE,
-                "dropout": False,
-                "batchnorm": False,
-                "bias": True,
-                "sigma_init": 4e-2,
-                "n_samples": 10,
-            },
-            "training_parameters": {
-                'n_epochs': 20,
-                'batch_size': 128,
-
-            },
-            "criterion": torch.nn.functional.nll_loss,
-            "reduction": 'sum',
-            "optimizer": MESU,
-            "optimizer_parameters": {
-                "coeff_likeli_mu": 1,
-                "coeff_likeli_sigma": 1,
-                "sigma_p": 4e-2,
-                "sigma_b": 15,
-                "update": 3,
-            },
-            # Task to train on (Sequential or PermutedMNIST)
-            "task": "PermutedMNIST",
-            # Number of tasks to train on (permutations of MNIST)
-            "n_tasks": 10,
-            "name": "BayesianNN-200-200-PermutedMNIST-10",
-        },
-        {
-            "nn_type": models.BayesianNN,
-            "nn_parameters": {
-                "layers": [INPUT_SIZE, 200, 200, 10],
-                "device": DEVICE,
-                "dropout": False,
-                "batchnorm": False,
-                "bias": True,
-                "sigma_init": 4e-2,
-                "n_samples": 10,
-            },
-            "training_parameters": {
-                'n_epochs': 20,
-                'batch_size': 128,
-
-            },
-            "criterion": torch.nn.functional.nll_loss,
-            "reduction": 'sum',
-            "optimizer": MESU,
-            "optimizer_parameters": {
-                "coeff_likeli_mu": 1,
-                "coeff_likeli_sigma": 1,
-                "sigma_p": 4e-2,
-                "sigma_b": 15,
-                "update": 3,
-            },
-            # Task to train on (Sequential or PermutedMNIST)
-            "task": "Sequential",
-            # Number of tasks to train on (permutations of MNIST)
-            "n_tasks": 10,
-            "name": "BayesianNN-200-200-Sequential",
-        },
     ]
 
     for index, data in enumerate(networks_data):
@@ -125,15 +101,15 @@ if __name__ == "__main__":
         ### ACCURACY INITIALIZATION ###
         accuracies = []
         batch_size = data['training_parameters']['batch_size']
-
+        padding = data['padding'] if 'padding' in data else 0
         ### DATASET LOADING ###
         if "cpu" in DEVICE.type:
             loader = CPULoading(DATASETS_PATH, batch_size,
-                                padding=PADDING, num_workers=NUM_WORKERS)
+                                padding=padding, num_workers=NUM_WORKERS)
         else:
             if torch.cuda.is_available():
                 torch.set_default_device(DEVICE)
-            loader = GPULoading(batch_size, padding=PADDING,
+            loader = GPULoading(batch_size, padding=padding,
                                 device=DEVICE, turbo=torch.cuda.is_available())
 
         ### FOR EACH NETWORK IN THE DICT ###

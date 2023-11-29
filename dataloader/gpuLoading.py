@@ -57,13 +57,13 @@ class GPULoading:
 
         current_size = train_x.shape[1]
         # Flatten the images
-        train_x = train_x.reshape(train_x.shape[0], -1)
-        test_x = test_x.reshape(test_x.shape[0], -1)
+        train_x = train_x.reshape(train_x.shape[0], -1) / 255
+        test_x = test_x.reshape(test_x.shape[0], -1) / 255
 
         # Normalize the pixels in train_x and test_x using transform
         transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Lambda(lambda x: x/255)
+            transforms.Normalize((0,), (1,))
         ])
 
         train_x = transform(train_x).squeeze(0).to(
@@ -80,6 +80,7 @@ class GPULoading:
 
         # if permute_idx is given, permute the dataset as for PermutedMNIST
         if "permute_idx" in kwargs and kwargs["permute_idx"] is not None:
+
             # permute_idx is the permutation to apply to the pixels of the images
             permute_idx = kwargs["permute_idx"]
             # Permute the pixels of the training examples using torch

@@ -87,8 +87,9 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
 
         ### INITIALIZE GROUPS ###
         # Groups are the iterable of parameters to optimize or dicts defining parameter groups
-        for group in self.param_groups:
-
+        for i, group in enumerate(self.param_groups):
+            if i != 0:
+                continue
             # Parameters to optimize
             parameters = group['params']
             # Parameters of the optimizer
@@ -101,11 +102,12 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
 
             # State of the optimizer
             step = self.state['step']
-            grad = self.state['grad']
             lambda_ = self.state['lambda']
             mu = self.state['mu']
             momentum = self.state['momentum']
             prior_lambda = self.state['prior_lambda']
+
+            gradient_estimate = torch.zeros_like(lambda_)
 
             ### OPTIMIZATION STEP ###
             if num_mcmc_samples <= 0:
@@ -129,14 +131,15 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
                         torch.autograd.grad(loss, parameters))
                     s = ((1 - relaxed_w * relaxed_w + eps) / temperature /
                          (1 - mu * mu + eps))
-                    grad.add_(s * g)
-                grad.div_(num_mcmc_samples)
+                    gradient_estimate.add_(s * g)
+                batch_size = parameters[0].size()[0]
+                gradient_estimate.div_(num_mcmc_samples/batch_size)
 
             # Update all parameters
             bias_correction = 1 - beta ** step
             step_size = lr / bias_correction
 
-            momentum = momentum*beta + (1-beta)*grad
+            momentum = momentum*beta + (1-beta)*gradient_estimate
             lambda_ += step_size * \
                 (scale*(prior_lambda - lambda_) - momentum)
 
