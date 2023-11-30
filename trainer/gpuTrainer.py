@@ -30,11 +30,8 @@ class GPUTrainer(Trainer):
         ### SEND BATCH ###
         n_batches = len(train_dataset) // self.batch_size
         for batch in range(n_batches):
-            inputs = train_dataset[batch *
-                                   self.batch_size:(batch+1)*self.batch_size][0]
-            targets = train_dataset[batch *
-                                    self.batch_size:(batch+1)*self.batch_size][1]
-            self.batch_step(inputs, targets)
+            self.batch_step(train_dataset[batch * self.batch_size:(batch+1)*self.batch_size][0],
+                            train_dataset[batch * self.batch_size:(batch+1)*self.batch_size][1])
 
         ### SCHEDULER ###
         if "scheduler" in dir(self):
@@ -50,14 +47,8 @@ class GPUTrainer(Trainer):
             else:
                 test = []
                 for dataset in test_loader:
-                    inputs = dataset.data
-                    labels = dataset.targets
-                    test.append(self.test(inputs, labels))
+                    test.append(self.test(dataset.data, dataset.targets))
                 self.testing_accuracy.append(test)
-
-        ### LOGGING ###
-        if self.logging:
-            self.log()
 
     def test(self, inputs, labels):
         """ Predict labels for a full dataset and retrieve accuracy
