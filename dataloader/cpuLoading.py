@@ -15,17 +15,18 @@ class CPULoading:
         num_workers (int, optional): Number of workers for data loading. Defaults to 0.
     """
 
-    def __init__(self, path, batch_size, padding=0, num_workers=0, *args, **kwargs):
+    def __init__(self, path, padding=0, num_workers=0, *args, **kwargs):
         self.path = path
-        self.batch_size = batch_size
         self.num_workers = num_workers
         self.padding = padding
 
-    def __call__(self, dataset, *args, **kwargs):
+    def __call__(self, batch_size, dataset, permute_idx=None, *args, **kwargs):
         """ Load any dataset
 
         Args:
+            batch_size (int): Batch size    
             dataset (torchvision.datasets): Dataset to load
+            permute_idx (list, optional): Permutation of the pixels. Defaults to None.
 
         Returns:
             torch.utils.data.DataLoader: Training dataset
@@ -34,39 +35,53 @@ class CPULoading:
         normalisation = transforms.Compose([
             transforms.ToTensor(),
             transforms.Lambda(lambda x: x/255),
+            transforms.Normalize((0,), (1,)),
         ])
 
         train = dataset(root=self.path,
                         train=True,
                         download=True,
-                        transform=normalisation,
-                        target_transform=None)
+                        target_transform=None,
+                        transform=normalisation)
         test = dataset(root=self.path,
                        train=False,
                        download=True,
-                       transform=normalisation,
-                       target_transform=None)
+                       target_transform=None,
+                       transform=normalisation)
 
-        train = DataLoader(train, batch_size=self.batch_size,
-                           shuffle=True, num_workers=self.num_workers, drop_last=True)
-        max_test = len(test.data)
-        test = DataLoader(test, batch_size=max_test,
-                          shuffle=False, num_workers=self.num_workers)
+        current_size = train.data.shape[1]
 
-        # pad the dataset to (28+padding*2)x(28+padding*2)
-        if self.padding != 0:
-            train.dataset.data = torch.nn.functional.pad(
-                train.dataset.data, (self.padding, self.padding, self.padding, self.padding))
-            test.dataset.data = torch.nn.functional.pad(
-                test.dataset.data, (self.padding, self.padding, self.padding, self.padding))
+        target_size = (current_size+self.padding*2)
 
-        # if permute_idx is given, permute the dataset
+        # if permute_idx is given, permute the dataset as for PermutedMNIST
         if "permute_idx" in kwargs and kwargs["permute_idx"] is not None:
+            # Flatten the images
+            train.data = train.data.reshape(train.data.shape[0], -1)
+            test.data = test.data.reshape(test.data.shape[0], -1)
+            # Add padding (Ref: Chen Zeno - Task Agnostic Continual Learning Using Online Variational Bayes)
+            train.data = torch.cat(
+                (train.data, torch.zeros(len(train.data), target_size**2-current_size**2)), axis=1)
+            test.data = torch.cat(
+                (test.data, torch.zeros(len(test.data), target_size**2-current_size**2)), axis=1)
+            # permute_idx is the permutation to apply to the pixels of the images
             permute_idx = kwargs["permute_idx"]
+            # Permute the pixels of the training examples using torch
+            train.data = train.data[:, permute_idx]
             # Permute the pixels of the test examples
-            train.dataset.data = train.dataset.data.reshape(
-                train.dataset.data.shape[0], -1)[:, permute_idx].reshape(train.dataset.data.shape)
-            test.dataset.data = test.dataset.data.reshape(
-                test.dataset.data.shape[0], -1)[:, permute_idx].reshape(test.dataset.data.shape)
+            test.data = test.data[:, permute_idx]
+        else:
+            # regular padding
+            train.data = torch.nn.functional.pad(
+                train.data, (self.padding, self.padding, self.padding, self.padding))
+            test.data = torch.nn.functional.pad(
+                test.data, (self.padding, self.padding, self.padding, self.padding))
+            # flatten the images
+            train.data = train.data.reshape(train.data.shape[0], -1)
+            test.data = test.data.reshape(test.data.shape[0], -1)
 
+        train = DataLoader(train, batch_size=batch_size,
+                           shuffle=True, num_workers=self.num_workers)
+        max_batch_size = len(test)
+        test = DataLoader(test, batch_size=max_batch_size,
+                          shuffle=False, num_workers=self.num_workers)
         return train, test

@@ -76,15 +76,15 @@ class BayesTrainer(GPUTrainer):
         def closure():
             # Closure for the optimizer sending the loss to the optimizer
             self.optimizer.zero_grad()
-            output = self.model.forward(inputs)
-            loss = self.criterion(output, targets)
+            output = self.model.forward(inputs).to(self.device)
+            loss = self.criterion(output.to(self.device),
+                                  targets.to(self.device))
             return loss
-
         self.model.train()
         ### LOSS ###
         self.loss = self.criterion(
-            self.model.forward(inputs),
-            targets,
+            self.model.forward(inputs).to(self.device),
+            targets.to(self.device),
             reduction=self.reduction)
 
         ### BACKWARD PASS ###

@@ -24,12 +24,14 @@ DATASETS_PATH = "datasets"
 if __name__ == "__main__":
     ### SEED ###
     torch.manual_seed(SEED)
-    torch.set_default_device(DEVICE)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(SEED)
+        torch.backends.cudnn.deterministic = True
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "name": "BinaryNN-100-100-PermutedMNIST",
-            "nn_type": models.BNN,
+            "name": "DNN-100-100-PermutedMNIST",
+            "nn_type": models.DNN,
             "nn_parameters": {
                 "layers": [INPUT_SIZE, 100, 100, 10],
                 "init": "uniform",
@@ -41,21 +43,46 @@ if __name__ == "__main__":
             "training_parameters": {
                 'n_epochs': 100,
                 'batch_size': 128,
-                'test_mcmc_samples': 100,
             },
             "criterion": torch.functional.F.nll_loss,
             "reduction": "mean",
-            "optimizer": BayesBiNN,
+            "optimizer": torch.optim.Adam,
             "optimizer_parameters": {
                 "lr": 1e-3,
-                "beta": 0,
-                "temperature": 1e-2,
-                "num_mcmc_samples": 1,
             },
-            "task": "PermutedMNIST",
+            "task": "Sequential",
             "n_tasks": 10,
             "padding": PADDING,
         },
+        # {
+        #     "name": "BinaryNN-100-100-PermutedMNIST",
+        #     "nn_type": models.BNN,
+        #     "nn_parameters": {
+        #         "layers": [INPUT_SIZE, 100, 100, 10],
+        #         "init": "uniform",
+        #         "device": DEVICE,
+        #         "std": STD,
+        #         "dropout": True,
+        #         "batchnorm": True,
+        #     },
+        #     "training_parameters": {
+        #         'n_epochs': 100,
+        #         'batch_size': 128,
+        #         'test_mcmc_samples': 100,
+        #     },
+        #     "criterion": torch.functional.F.nll_loss,
+        #     "reduction": "mean",
+        #     "optimizer": BayesBiNN,
+        #     "optimizer_parameters": {
+        #         "lr": 1e-3,
+        #         "beta": 0,
+        #         "temperature": 1e-2,
+        #         "num_mcmc_samples": 1,
+        #     },
+        #     "task": "PermutedMNIST",
+        #     "n_tasks": 10,
+        #     "padding": PADDING,
+        # },
         # {
         #     "nn_type": models.BayesianNN,
         #     "nn_parameters": {
@@ -102,8 +129,10 @@ if __name__ == "__main__":
         batch_size = data['training_parameters']['batch_size']
         padding = data['padding'] if 'padding' in data else 0
         ### DATASET LOADING ###
-        loader = GPULoading(batch_size, padding=padding,
-                            device=DEVICE)
+        # loader = GPULoading(padding=padding,
+        #                     device=DEVICE)
+        loader = CPULoading(DATASETS_PATH, padding=padding,
+                            num_workers=NUM_WORKERS)
 
         ### FOR EACH NETWORK IN THE DICT ###
         for iteration in range(N_NETWORKS):
@@ -130,8 +159,9 @@ if __name__ == "__main__":
             task = data["task"]
             n_tasks = data["n_tasks"]
             if task == "Sequential":
-                mnist_train, mnist_test = mnist(loader)
-                fashion_mnist_train, fashion_mnist_test = fashion_mnist(loader)
+                mnist_train, mnist_test = mnist(loader, batch_size)
+                fashion_mnist_train, fashion_mnist_test = fashion_mnist(
+                    loader, batch_size)
                 test_loader = [mnist_test, fashion_mnist_test]
                 train_loader = [mnist_train, fashion_mnist_train]
                 for dataset in train_loader:
@@ -141,11 +171,11 @@ if __name__ == "__main__":
                 permutations = [torch.randperm(INPUT_SIZE)
                                 for _ in range(n_tasks)]
                 # Normal MNIST to permute from
-                _, mnist_test = mnist(loader)
+                _, mnist_test = mnist(loader, batch_size)
                 for i in range(n_tasks):
                     # Permuted loader
                     train_dataset, _ = mnist(
-                        loader, permute_idx=permutations[i])
+                        loader, batch_size=batch_size, permute_idx=permutations[i])
                     network.fit(
                         train_dataset, **data['training_parameters'], test_loader=[mnist_test], verbose=True, test_permutations=permutations)
 
