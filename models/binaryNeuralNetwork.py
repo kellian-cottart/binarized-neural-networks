@@ -29,12 +29,20 @@ networks
         for i in range(self.n_layers+1):
             # Linear layers with BatchNorm
             if self.dropout and i != 0:
-                layers.append(torch.nn.Dropout(p=0.2))
+                self.layers.append(torch.nn.Dropout(p=0.2))
             self.layers.append(BinarizedLinear(
-                layers[i], layers[i+1], bias=bias, device=self.device, latent_weights=self.latent_weights))
+                layers[i],
+                layers[i+1],
+                bias=bias,
+                device=self.device,
+                latent_weights=self.latent_weights))
             if self.batchnorm:
                 self.layers.append(torch.nn.BatchNorm1d(
-                    layers[i+1], affine=not bias, track_running_stats=True, device=self.device))
+                    layers[i+1],
+                    affine=not bias,
+                    track_running_stats=True,
+                    device=self.device,
+                    eps=1e-4,))
 
     def forward(self, x):
         """ Forward pass of DNN

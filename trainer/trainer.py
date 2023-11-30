@@ -1,12 +1,11 @@
 from tqdm import trange
 import torch
-import wandb
 
 
 class Trainer:
     """Base class for all trainers."""
 
-    def __init__(self, model, optimizer, optimizer_parameters, criterion, device, logging=True, reduction="mean", *args, **kwargs):
+    def __init__(self, model, optimizer, optimizer_parameters, criterion, device, reduction="mean", *args, **kwargs):
         self.model = model
         self.optimizer = optimizer(
             self.model.parameters(), **optimizer_parameters)
@@ -15,7 +14,6 @@ class Trainer:
         self.device = device
         self.training_accuracy = []
         self.testing_accuracy = []
-        self.logging = logging
         # Scheduler addition
         if "scheduler" in kwargs:
             scheduler = kwargs["scheduler"]
@@ -63,26 +61,6 @@ class Trainer:
                 for dataset in test_loader:
                     test.append(self.test(dataset))
                 self.testing_accuracy.append(test)
-
-        ### LOGGING ###
-        if self.logging:
-            self.log()
-
-    def log(self):
-        """Log the training and testing results for monitoring
-        This function is called at the end of each epoch"""
-        # loss
-        wandb.log({"Loss": self.loss.item()})
-
-        # training accuracy
-        if len(self.training_accuracy) > 0:
-            for task in range(len(self.testing_accuracy[-1])):
-                wandb.log(
-                    {f"Task {task+1} - Test accuracy": self.testing_accuracy[-1][task]})
-
-        # learning rate
-        if "lr" in self.optimizer.param_groups[0]:
-            wandb.log({"Learning rate": self.optimizer.param_groups[0]['lr']})
 
     def fit(self, train_loader, n_epochs, test_loader=None, verbose=True, **kwargs):
         """Train the model for n_epochs

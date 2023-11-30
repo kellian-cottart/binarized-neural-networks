@@ -58,7 +58,6 @@ class BayesBiNN(torch.optim.Optimizer):
         self.state['mu'] = torch.tanh(self.state['lambda'])
         self.state['step'] = 0
         self.state['momentum'] = torch.zeros_like(param)
-        self.state['grad'] = torch.zeros_like(param)
         if prior_lambda is None:
             self.state['prior_lambda'] = torch.zeros_like(param)
 
@@ -67,12 +66,13 @@ class BayesBiNN(torch.optim.Optimizer):
         """
         self.state['prior_lambda'] = self.state['lambda']
 
-    def step(self, closure=None):
+    def step(self, input_size=60_000, closure=None):
         """ Perform a single optimization step 
         Taken from _single_tensor_adam in PyTorch
 
         Args: 
             closure (function): Function to evaluate loss
+            input_size (int): Size of the input data (default: 60_000)
         """
         self._cuda_graph_capture_health_check()
 
@@ -114,6 +114,7 @@ class BayesBiNN(torch.optim.Optimizer):
                 relaxed_w = torch.tanh(lambda_)
                 vector_to_parameters(relaxed_w, parameters)
                 g = parameters_to_vector(torch.autograd.grad(loss, parameters))
+                gradient_estimate = input_size * g
             else:
                 # MCMC estimate
                 for _ in range(num_mcmc_samples):
@@ -131,8 +132,7 @@ class BayesBiNN(torch.optim.Optimizer):
                     s = ((1 - relaxed_w * relaxed_w + eps) / temperature /
                          (1 - mu * mu + eps))
                     gradient_estimate.add_(s * g)
-                batch_size = parameters[0].size()[0]
-                gradient_estimate.div_(num_mcmc_samples/batch_size)
+                gradient_estimate.mul_(input_size / num_mcmc_samples)
 
             # Update all parameters
             bias_correction = 1 - beta ** step

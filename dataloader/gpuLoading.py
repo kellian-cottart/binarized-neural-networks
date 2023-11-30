@@ -35,7 +35,7 @@ class GPULoading:
         self.padding = padding
         self.device = device
 
-    def __call__(self, path_train_x, path_train_y, path_test_x, path_test_y, turbo=True, *args, **kwargs):
+    def __call__(self, path_train_x, path_train_y, path_test_x, path_test_y, *args, **kwargs):
         """ Load a local dataset
 
         Args:
@@ -57,13 +57,14 @@ class GPULoading:
 
         current_size = train_x.shape[1]
         # Flatten the images
-        train_x = train_x.reshape(train_x.shape[0], -1) / 255
-        test_x = test_x.reshape(test_x.shape[0], -1) / 255
+        train_x = train_x.reshape(train_x.shape[0], -1)
+        test_x = test_x.reshape(test_x.shape[0], -1)
 
         # Normalize the pixels in train_x and test_x using transform
         transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Normalize((0,), (1,))
+            transforms.Lambda(lambda x: x/255.),
+            transforms.Normalize((0.1307,), (0.3081,))
         ])
 
         train_x = transform(train_x).squeeze(0).to(
@@ -92,16 +93,4 @@ class GPULoading:
         train_dataset = GPUTensorDataset(train_x, torch.from_numpy(train_y))
         test_dataset = GPUTensorDataset(test_x, torch.from_numpy(test_y))
 
-        # if we are using the turbo mode, we do not need to create a DataLoader
-        if turbo:
-            return train_dataset, test_dataset
-        else:
-            # create a DataLoader to load the data in batches
-            train_dataset = torch.utils.data.DataLoader(
-                train_dataset, batch_size=self.batch_size, shuffle=True, drop_last=True)
-
-            max_test = len(test_dataset.data)
-            test_dataset = torch.utils.data.DataLoader(
-                test_dataset, batch_size=max_test, shuffle=False)
-
-            return train_dataset, test_dataset
+        return train_dataset, test_dataset

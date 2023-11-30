@@ -5,13 +5,12 @@ import torch
 import trainer
 from optimizer import *
 import os
-import wandb
-import numpy as np
-import matplotlib.pyplot as plt
 
 SEED = 0  # Random seed
 N_NETWORKS = 5  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+
 NUM_WORKERS = 4  # Number of workers for data loading when using CPU
 
 STD = 0.1  # Standard deviation for the initialization of the weights
@@ -25,38 +24,38 @@ DATASETS_PATH = "datasets"
 if __name__ == "__main__":
     ### SEED ###
     torch.manual_seed(SEED)
+    torch.set_default_device(DEVICE)
     ### NETWORK CONFIGURATION ###
     networks_data = [
-
         {
-            "name": "BinaryNN-200-200-PermutedMNIST",
+            "name": "BinaryNN-100-100-PermutedMNIST",
             "nn_type": models.BNN,
             "nn_parameters": {
-                "layers": [INPUT_SIZE, 200, 200, 10],
+                "layers": [INPUT_SIZE, 100, 100, 10],
                 "init": "uniform",
                 "device": DEVICE,
                 "std": STD,
-                "dropout": False,
+                "dropout": True,
                 "batchnorm": True,
             },
             "training_parameters": {
-                'n_epochs': 20,
+                'n_epochs': 100,
                 'batch_size': 128,
+                'test_mcmc_samples': 100,
             },
             "criterion": torch.functional.F.nll_loss,
             "reduction": "mean",
             "optimizer": BayesBiNN,
             "optimizer_parameters": {
                 "lr": 1e-3,
-                "beta": 0.15,
-                "temperature": 1e-8,
-                "num_mcmc_samples": 5,
+                "beta": 0,
+                "temperature": 1e-2,
+                "num_mcmc_samples": 1,
             },
             "task": "PermutedMNIST",
             "n_tasks": 10,
             "padding": PADDING,
         },
-
         # {
         #     "nn_type": models.BayesianNN,
         #     "nn_parameters": {
@@ -103,14 +102,8 @@ if __name__ == "__main__":
         batch_size = data['training_parameters']['batch_size']
         padding = data['padding'] if 'padding' in data else 0
         ### DATASET LOADING ###
-        if "cpu" in DEVICE.type:
-            loader = CPULoading(DATASETS_PATH, batch_size,
-                                padding=padding, num_workers=NUM_WORKERS)
-        else:
-            if torch.cuda.is_available():
-                torch.set_default_device(DEVICE)
-            loader = GPULoading(batch_size, padding=padding,
-                                device=DEVICE, turbo=torch.cuda.is_available())
+        loader = GPULoading(batch_size, padding=padding,
+                            device=DEVICE)
 
         ### FOR EACH NETWORK IN THE DICT ###
         for iteration in range(N_NETWORKS):
@@ -122,8 +115,6 @@ if __name__ == "__main__":
 
             ### W&B INITIALIZATION ###
             ident = f"{data['name']} - {index}"
-            wandb.init(project="binarized-neural-networks", entity="kellian-cottart",
-                       config=networks_data[index], name=ident)
 
             ### INSTANTIATE THE TRAINER ###
             if data["optimizer"] in [BinarySynapticUncertainty, BayesBiNN]:
@@ -178,4 +169,3 @@ if __name__ == "__main__":
         print(f"Exporting visualisation of {data['name']} accuracy...")
         title = data['name'] + "-tasks"
         visualize_sequential(title, accuracies, folder=main_folder)
-    wandb.finish()

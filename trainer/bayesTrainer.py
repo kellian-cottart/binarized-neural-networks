@@ -1,8 +1,8 @@
-from .closureTrainer import ClosureTrainer
+from trainer.gpuTrainer import GPUTrainer
 import torch
 
 
-class BayesTrainer(ClosureTrainer):
+class BayesTrainer(GPUTrainer):
     """Extended Trainer class to cover the special case of BayesBiNN
 
     Necessity to have a different training function to implement mu and lambda properly 
@@ -41,6 +41,9 @@ class BayesTrainer(ClosureTrainer):
             for _ in range(self.test_mcmc_samples):
                 noise.append(torch.bernoulli(
                     torch.sigmoid(2*self.optimizer.state["lambda"])))
+            if len(noise) == 0:
+                noise.append(torch.where(self.optimizer.state['mu'] <= 0, torch.zeros_like(
+                    self.optimizer.state['mu']), torch.ones_like(self.optimizer.state['mu'])))
             predictions = self.monte_carlo_prediction(inputs, noise)
             idx_pred = torch.argmax(predictions, dim=1)
         return len(torch.where(idx_pred == labels)[0]) / len(labels)
@@ -58,16 +61,33 @@ class BayesTrainer(ClosureTrainer):
         # Retrieve the parameters
         parameters = self.model.parameters()
         predictions = []
-
-        # If no noise is given, we generate a new one
-        if len(noise) == 0:
-            noise.append(torch.where(self.optimizer.state['mu'] <= 0, torch.zeros_like(
-                self.optimizer.state['mu']), torch.ones_like(self.optimizer.state['mu'])))
-
         # We iterate over the parameters
         for n in noise:
             # 2p - 1
             torch.nn.utils.vector_to_parameters(2*n-1, parameters)
-            predictions.append(self.model.forward(inputs).to(self.device))
+            prediction = self.model.forward(inputs).to(self.device)
+            predictions.append(prediction)
+        predictions = torch.stack(predictions, dim=2).to(self.device)
+        return torch.mean(predictions, dim=2).to(self.device)
 
-        return torch.stack(predictions, dim=2).mean(dim=2)
+    def batch_step(self, inputs, targets):
+        """Perform the training of a single sample of the batch
+        """
+        def closure():
+            # Closure for the optimizer sending the loss to the optimizer
+            self.optimizer.zero_grad()
+            output = self.model.forward(inputs)
+            loss = self.criterion(output, targets)
+            return loss
+
+        self.model.train()
+        ### LOSS ###
+        self.loss = self.criterion(
+            self.model.forward(inputs),
+            targets,
+            reduction=self.reduction)
+
+        ### BACKWARD PASS ###
+        self.optimizer.zero_grad()
+        self.loss.backward()
+        self.optimizer.step(input_size=60_000, closure=closure)
