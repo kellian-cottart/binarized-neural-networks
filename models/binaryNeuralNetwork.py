@@ -25,7 +25,7 @@ networks
         self.latent_weights = kwargs['latent_weights'] if 'latent_weights' in kwargs else True
         super().__init__(*args, **kwargs)
 
-    def _layer_init(self, layers, bias=False):
+    def _layer_init(self, layers, bias=False, eps=1e-5, momentum=0.1):
         for i in range(self.n_layers+1):
             # Linear layers with BatchNorm
             if self.dropout and i != 0:
@@ -42,7 +42,8 @@ networks
                     affine=not bias,
                     track_running_stats=True,
                     device=self.device,
-                    eps=1e-4,))
+                    eps=eps,
+                    momentum=momentum))
 
     def forward(self, x):
         """ Forward pass of DNN

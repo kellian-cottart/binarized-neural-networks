@@ -7,7 +7,7 @@ from optimizer import *
 import os
 
 SEED = 0  # Random seed
-N_NETWORKS = 5  # Number of networks to train
+N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
@@ -27,28 +27,32 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         torch.cuda.manual_seed(SEED)
         torch.backends.cudnn.deterministic = True
+        torch.set_default_device(DEVICE)
+        torch.set_default_tensor_type('torch.cuda.FloatTensor')
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "name": "DNN-100-100-PermutedMNIST",
-            "nn_type": models.DNN,
+            "name": "BinaryNN-1024-1024-Sequential-Metaplastic",
+            "nn_type": models.BNN,
             "nn_parameters": {
-                "layers": [INPUT_SIZE, 100, 100, 10],
+                "layers": [INPUT_SIZE, 1024, 1024, 10],
                 "init": "uniform",
                 "device": DEVICE,
                 "std": STD,
-                "dropout": True,
+                "dropout": False,
                 "batchnorm": True,
             },
             "training_parameters": {
-                'n_epochs': 100,
+                'n_epochs': 50,
                 'batch_size': 128,
             },
             "criterion": torch.functional.F.nll_loss,
             "reduction": "mean",
-            "optimizer": torch.optim.Adam,
+            "optimizer": MetaplasticAdam,
             "optimizer_parameters": {
                 "lr": 1e-3,
+                "metaplasticity": 15,
+                "weight_decay": 1e-8,
             },
             "task": "Sequential",
             "n_tasks": 10,
@@ -97,7 +101,6 @@ if __name__ == "__main__":
         #     "training_parameters": {
         #         'n_epochs': 50,
         #         'batch_size': 128,
-
         #     },
         #     "criterion": torch.nn.functional.nll_loss,
         #     "reduction": 'sum',
@@ -108,7 +111,7 @@ if __name__ == "__main__":
         #         "sigma_p": 4e-2,
         #         "sigma_b": 15,
         #         "update": 3,
-        #         "keep_prior": True,
+        #         "keep_prior": False,
         #     },
         #     # Task to train on (Sequential or PermutedMNIST)
         #     "task": "Sequential",
@@ -129,10 +132,10 @@ if __name__ == "__main__":
         batch_size = data['training_parameters']['batch_size']
         padding = data['padding'] if 'padding' in data else 0
         ### DATASET LOADING ###
-        # loader = GPULoading(padding=padding,
-        #                     device=DEVICE)
-        loader = CPULoading(DATASETS_PATH, padding=padding,
-                            num_workers=NUM_WORKERS)
+        loader = GPULoading(padding=padding,
+                            device=DEVICE, as_dataset=False)
+        # loader = CPULoading(DATASETS_PATH, padding=padding,
+        #                     num_workers=NUM_WORKERS)
 
         ### FOR EACH NETWORK IN THE DICT ###
         for iteration in range(N_NETWORKS):

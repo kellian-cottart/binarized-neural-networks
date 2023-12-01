@@ -43,8 +43,6 @@ class GPUTrainer:
             targets (torch.Tensor): Labels
         """
         self.model.train()
-        self.model.zero_grad()
-        self.optimizer.zero_grad()
         ### LOSS ###
         self.loss = self.criterion(
             self.model.forward(inputs).to(self.device),
@@ -52,6 +50,7 @@ class GPUTrainer:
             reduction=self.reduction)
 
         ### BACKWARD PASS ###
+        self.optimizer.zero_grad()
         self.loss.backward()
         self.optimizer.step()
 
@@ -80,6 +79,9 @@ class GPUTrainer:
             if "test_permutations" in dir(self):
                 for testset in test_loader:
                     for inputs, targets in testset:
+                        if len(inputs.shape) == 4:
+                            # remove all dimensions of size 1
+                            inputs = inputs.squeeze()
                         self.testing_accuracy.append(
                             self.test_continual(inputs.to(self.device),
                                                 targets.to(self.device)))
@@ -131,8 +133,9 @@ class GPUTrainer:
         """
         accuracies = []
         for permutation in self.test_permutations:
-            x = inputs[:, permutation].to(self.device)
-            accuracies.append(self.test(x, labels))
+            inputs = inputs[:, permutation].to(self.device)
+            accuracies.append(
+                self.test(inputs, labels))
         return accuracies
 
     def save(self, path):

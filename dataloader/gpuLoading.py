@@ -93,7 +93,7 @@ class GPULoading:
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Lambda(lambda x: x/255.),
-            transforms.Normalize((0.1307,), (0.3081,))
+            transforms.Normalize((0,), (1,)),
         ])
 
         train_x = transform(train_x).squeeze(0).to(

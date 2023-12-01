@@ -6,7 +6,7 @@ class DNN(torch.nn.Module):
     """ Neural Network Base Class
     """
 
-    def __init__(self, layers=[512], init='normal', std=0.01, device='cuda', dropout=False, batchnorm=True, bias=False, *args, **kwargs):
+    def __init__(self, layers=[512], init='normal', std=0.01, device='cuda', dropout=False, batchnorm=True, bias=False, bneps=1e-5, bnmomentum=0.1, *args, **kwargs):
         """ NN initialization
 
         Args: 
@@ -17,6 +17,8 @@ class DNN(torch.nn.Module):
             dropout (bool): Whether to use dropout
             batchnorm (bool): Whether to use batchnorm
             bias (bool): Whether to use bias
+            bneps (float): BatchNorm epsilon
+            bnmomentum (float): BatchNorm momentum
         """
         super(DNN, self).__init__()
         self.n_layers = len(layers)-2
@@ -24,12 +26,14 @@ class DNN(torch.nn.Module):
         self.layers = torch.nn.ModuleList().to(self.device)
         self.dropout = dropout
         self.batchnorm = batchnorm
+        self.bneps = bneps
+        self.bnmomentum = bnmomentum
         ### LAYER INITIALIZATION ###
-        self._layer_init(layers, bias)
+        self._layer_init(layers, bias, eps=bneps, momentum=bnmomentum)
         ### WEIGHT INITIALIZATION ###
         self._weight_init(init, std)
 
-    def _layer_init(self, layers, bias=False):
+    def _layer_init(self, layers, bias=False, eps=1e-5, momentum=0.1):
         """ Initialize layers of NN
 
         Args:
@@ -51,8 +55,8 @@ class DNN(torch.nn.Module):
                     affine=not bias,
                     track_running_stats=True,
                     device=self.device,
-                    eps=1e-4,
-                    momentum=0.15))
+                    eps=eps,
+                    momentum=momentum))
 
     def _weight_init(self, init='normal', std=0.01):
         """ Initialize weights of each layer

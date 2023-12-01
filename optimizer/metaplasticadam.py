@@ -44,7 +44,6 @@ class MetaplasticAdam(torch.optim.Optimizer):
             raise ValueError(f"Invalid beta parameter at index 1: {betas[1]}")
         if not 0.0 <= weight_decay:
             raise ValueError(f"Invalid weight_decay value: {weight_decay}")
-
         defaults = dict(lr=lr, betas=betas, metaplasticity=metaplasticity, eps=eps,
                         weight_decay=weight_decay, amsgrad=amsgrad, maximize=maximize)
         super().__init__(params, defaults)
@@ -209,7 +208,6 @@ def adam_metaplasticity(params: List[torch.Tensor],
         exp_avg = exp_avgs[i]
         exp_avg_sq = exp_avg_sqs[i]
         step_t = state_steps[i]
-
         # Update step
         step_t += 1
         if weight_decay != 0:
