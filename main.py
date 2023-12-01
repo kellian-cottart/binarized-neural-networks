@@ -25,14 +25,14 @@ if __name__ == "__main__":
         torch.cuda.manual_seed(SEED)
         torch.backends.cudnn.deterministic = True
         torch.set_default_device(DEVICE)
-        torch.set_default_tensor_type('torch.cuda.FloatTensor')
+        torch.set_default_dtype(torch.float32)
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
             "name": "BinaryNN-100-100-PermutedMNIST",
             "nn_type": models.BNN,
             "nn_parameters": {
-                "layers": [INPUT_SIZE, 100, 100, 10],
+                "layers": [INPUT_SIZE, 2048, 2048, 10],
                 "init": "uniform",
                 "device": DEVICE,
                 "std": 0.1,
@@ -50,9 +50,9 @@ if __name__ == "__main__":
             "reduction": "sum",
             "optimizer": BayesBiNN,
             "optimizer_parameters": {
-                "lr": 1e-3,
+                "lr": 1e-4,
                 "beta": 0,
-                "temperature": 1e-2,
+                "temperature": 1e-10,
                 "num_mcmc_samples": 1,
             },
             "task": "PermutedMNIST",

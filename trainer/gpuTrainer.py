@@ -75,8 +75,9 @@ class GPUTrainer:
 
         ### EVALUATE ###
         if test_loader is not None:
+            test = []
             for testset in test_loader:
-                test = []
+                batch = []
                 for inputs, targets in testset:
                     if len(inputs.shape) == 4:
                         # remove all dimensions of size 1
@@ -85,10 +86,11 @@ class GPUTrainer:
                         self.testing_accuracy.append(
                             self.test_continual(inputs.to(self.device), targets.to(self.device)))
                     else:
-                        test.append(
+                        batch.append(
                             self.test(inputs.to(self.device), targets.to(self.device)))
-                if "test_permutations" not in dir(self):
-                    self.testing_accuracy.append(test)
+                test.append(torch.mean(torch.tensor(batch)))
+            if "test_permutations" not in dir(self):
+                self.testing_accuracy.append(test)
 
     def test(self, inputs, labels):
         """ Predict labels for a full dataset and retrieve accuracy

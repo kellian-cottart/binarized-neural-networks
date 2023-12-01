@@ -23,10 +23,11 @@ class GPUTensorDataset(torch.utils.data.Dataset):
 class GPUDataLoader():
     """ DataLoader which has a data and a targets tensor and allows batching"""
 
-    def __init__(self, dataset, batch_size, shuffle=True):
+    def __init__(self, dataset, batch_size, shuffle=True, drop_last=True):
         self.dataset = dataset
         self.batch_size = batch_size
         self.shuffle = shuffle
+        self.drop_last = drop_last
 
     def __iter__(self):
         """ Return an iterator over the dataset """
@@ -41,13 +42,17 @@ class GPUDataLoader():
         """ Return a (data, target) pair """
         if self.index >= len(self.dataset):
             raise StopIteration
+        if self.index + self.batch_size > len(self.dataset) and self.drop_last:
+            raise StopIteration
+        if self.index + self.batch_size > len(self.dataset) and not self.drop_last:
+            self.batch_size = len(self.dataset) - self.index
         batch = self.dataset[self.perm[self.index:self.index+self.batch_size]]
         self.index += self.batch_size
         return batch
 
     def __len__(self):
         """ Return the number of batches """
-        return len(self.dataset) // self.batch_size
+        return len(self.dataset)//self.batch_size
 
 
 class GPULoading:
@@ -125,13 +130,13 @@ class GPULoading:
         if not self.as_dataset:
             # create a DataLoader to load the data in batches
             train_dataset = GPUDataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True)
+                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
             test_dataset = GPUDataLoader(
                 test_dataset, batch_size=max_batch_size, shuffle=False)
         else:
             # create a DataLoader to load the data in batches
             train_dataset = torch.utils.data.DataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True)
+                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
             test_dataset = torch.utils.data.DataLoader(
                 test_dataset, batch_size=max_batch_size, shuffle=False)
 
