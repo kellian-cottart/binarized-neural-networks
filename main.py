@@ -9,12 +9,9 @@ import os
 SEED = 2506  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-
 NUM_WORKERS = 4  # Number of workers for data loading when using CPU
 
-STD = 0.1  # Standard deviation for the initialization of the weights
-PADDING = 2  # from 28x28 to 32x32
+PADDING = 0  # from 28x28 to 32x32
 INPUT_SIZE = (28+PADDING*2)**2
 
 ### PATHS ###
@@ -32,62 +29,36 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "name": "BinaryNN-4096-4096-Sequential-Metaplastic",
+            "name": "BinaryNN-100-100-PermutedMNIST",
             "nn_type": models.BNN,
             "nn_parameters": {
-                "layers": [INPUT_SIZE, 4096, 4096, 10],
+                "layers": [INPUT_SIZE, 100, 100, 10],
                 "init": "uniform",
                 "device": DEVICE,
-                "std": STD,
+                "std": 0.1,
                 "dropout": False,
                 "batchnorm": True,
-                "bias": True,
+                "bnmomentum": 0.15,
+                "bneps": 0.0001,
             },
             "training_parameters": {
                 'n_epochs': 50,
                 'batch_size': 128,
+                'test_mcmc_samples': 1,
             },
             "criterion": torch.functional.F.nll_loss,
-            "reduction": "mean",
-            "optimizer": MetaplasticAdam,
+            "reduction": "sum",
+            "optimizer": BayesBiNN,
             "optimizer_parameters": {
-                "lr": 5e-3,
-                "metaplasticity": 1.5,
-                "weight_decay": 1e-8,
+                "lr": 1e-3,
+                "beta": 0,
+                "temperature": 1e-2,
+                "num_mcmc_samples": 1,
             },
-            "task": "Sequential",
+            "task": "PermutedMNIST",
             "n_tasks": 10,
             "padding": PADDING,
         },
-        # {
-        #     "name": "BinaryNN-100-100-PermutedMNIST",
-        #     "nn_type": models.BNN,
-        #     "nn_parameters": {
-        #         "layers": [INPUT_SIZE, 100, 100, 10],
-        #         "init": "uniform",
-        #         "device": DEVICE,
-        #         "std": STD,
-        #         "dropout": True,
-        #         "batchnorm": True,
-        #     },
-        #     "training_parameters": {
-        #         'n_epochs': 100,
-        #         'batch_size': 128,
-        #         'test_mcmc_samples': 100,
-        #     },
-        #     "criterion": torch.functional.F.nll_loss,
-        #     "reduction": "mean",
-        #     "optimizer": BayesBiNN,
-        #     "optimizer_parameters": {
-        #         "lr": 1e-3,
-        #         "beta": 0,
-        #         "temperature": 1e-2,
-        #         "num_mcmc_samples": 1,
-        #     },
-        #     "task": "PermutedMNIST",
-        #     "n_tasks": 10,
-        #     "padding": PADDING,
-        # },
         # {
         #     "nn_type": models.BayesianNN,
         #     "nn_parameters": {
@@ -115,10 +86,10 @@ if __name__ == "__main__":
         #         "keep_prior": False,
         #     },
         #     # Task to train on (Sequential or PermutedMNIST)
-        #     "task": "Sequential",
+        #     "task": "PermutedMNIST",
         #     # Number of tasks to train on (permutations of MNIST)
         #     "n_tasks": 10,
-        #     "name": "BayesianNN-200-200-Sequential",
+        #     "name": "BayesianNN-200-200-PermutedMNIST",
         #     "padding": PADDING,
         # },
     ]
@@ -143,7 +114,8 @@ if __name__ == "__main__":
             ### SEED ###
             torch.manual_seed(SEED + iteration)
             if torch.cuda.is_available():
-                torch.cuda.manual_seed(SEED)
+                torch.cuda.manual_seed(SEED + iteration)
+
             ### NETWORK INITIALIZATION ###
             model = data['nn_type'](**data['nn_parameters'])
 
@@ -157,12 +129,12 @@ if __name__ == "__main__":
             else:
                 network = trainer.GPUTrainer(batch_size=batch_size,
                                              model=model, **data, device=DEVICE, logarithmic=True)
-
-            # print architecture
             print(network.model)
+
             ### TRAINING ###
             task = data["task"]
             n_tasks = data["n_tasks"]
+
             if task == "Sequential":
                 mnist_train, mnist_test = mnist(loader, batch_size)
                 fashion_mnist_train, fashion_mnist_test = fashion_mnist(

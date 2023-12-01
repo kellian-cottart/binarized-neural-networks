@@ -26,6 +26,22 @@ class BayesTrainer(GPUTrainer):
         super().fit(*args, **kwargs)
         self.optimizer.update_prior_lambda()
 
+    def batch_step(self, inputs, targets, dataset_size):
+        """Perform the training of a single sample of the batch
+        """
+        def closure():
+            # Closure for the optimizer sending the loss to the optimizer
+            self.optimizer.zero_grad()
+            output = self.model.forward(inputs).to(self.device)
+            loss = self.criterion(output.to(self.device),
+                                  targets.to(self.device),
+                                  reduction=self.reduction)
+            return loss
+        self.model.train()
+        ### LOSS ###
+        self.loss = self.optimizer.step(
+            input_size=dataset_size, closure=closure)
+
     def test(self, inputs, labels):
         """Test the model on the given inputs and labels
 
@@ -59,7 +75,7 @@ class BayesTrainer(GPUTrainer):
             torch.Tensor: Predictions
         """
         # Retrieve the parameters
-        parameters = self.model.parameters()
+        parameters = self.optimizer.param_groups[0]['params']
         predictions = []
         # We iterate over the parameters
         for n in noise:
@@ -70,24 +86,40 @@ class BayesTrainer(GPUTrainer):
         predictions = torch.stack(predictions, dim=2).to(self.device)
         return torch.mean(predictions, dim=2).to(self.device)
 
-    def batch_step(self, inputs, targets):
-        """Perform the training of a single sample of the batch
-        """
-        def closure():
-            # Closure for the optimizer sending the loss to the optimizer
-            self.optimizer.zero_grad()
-            output = self.model.forward(inputs).to(self.device)
-            loss = self.criterion(output.to(self.device),
-                                  targets.to(self.device))
-            return loss
-        self.model.train()
-        ### LOSS ###
-        self.loss = self.criterion(
-            self.model.forward(inputs).to(self.device),
-            targets.to(self.device),
-            reduction=self.reduction)
+    def epoch_step(self, train_dataset, test_loader=None):
+        """Perform the training of a single epoch
 
-        ### BACKWARD PASS ###
-        self.optimizer.zero_grad()
-        self.loss.backward()
-        self.optimizer.step(input_size=60_000, closure=closure)
+        Args: 
+            train_dataset (torch.Tensor): Training data
+            test_loader (torch.Tensor, optional): Testing data. Defaults to None.
+        """
+        ### SEND BATCH ###
+
+        dataset_size = len(train_dataset) * train_dataset.batch_size
+        for inputs, targets in train_dataset:
+            if len(inputs.shape) == 4:
+                # remove all dimensions of size 1
+                inputs = inputs.squeeze()
+            self.batch_step(inputs.to(self.device),
+                            targets.to(self.device), dataset_size)
+
+        ### SCHEDULER ###
+        if "scheduler" in dir(self):
+            self.scheduler.step()
+
+        ### EVALUATE ###
+        if test_loader is not None:
+            for testset in test_loader:
+                test = []
+                for inputs, targets in testset:
+                    if len(inputs.shape) == 4:
+                        # remove all dimensions of size 1
+                        inputs = inputs.squeeze()
+                    if "test_permutations" in dir(self):
+                        self.testing_accuracy.append(
+                            self.test_continual(inputs.to(self.device), targets.to(self.device)))
+                    else:
+                        test.append(
+                            self.test(inputs.to(self.device), targets.to(self.device)))
+                if "test_permutations" not in dir(self):
+                    self.testing_accuracy.append(test)

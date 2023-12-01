@@ -23,10 +23,19 @@ class BayesianNN(DNN):
             if self.dropout and i != 0:
                 layers.append(torch.nn.Dropout(p=0.2))
             self.layers.append(MetaBayesLinearParallel(
-                layers[i], layers[i+1], bias=bias, device=self.device, sigma_init=self.sigma_init))
+                layers[i],
+                layers[i+1],
+                bias=bias,
+                device=self.device,
+                sigma_init=self.sigma_init))
             if self.batchnorm:
                 self.layers.append(torch.nn.BatchNorm1d(
-                    layers[i+1], affine=not bias, track_running_stats=True, device=self.device))
+                    layers[i+1],
+                    affine=not bias,
+                    track_running_stats=True,
+                    device=self.device,
+                    eps=self.bneps,
+                    momentum=self.bnmomentum))
 
     def _weight_init(self, init='normal', std=0.01):
         pass

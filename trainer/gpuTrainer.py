@@ -75,27 +75,20 @@ class GPUTrainer:
 
         ### EVALUATE ###
         if test_loader is not None:
-            # if we are testing with permuted MNIST, we need to assess all permutations
-            if "test_permutations" in dir(self):
-                for testset in test_loader:
-                    for inputs, targets in testset:
-                        if len(inputs.shape) == 4:
-                            # remove all dimensions of size 1
-                            inputs = inputs.squeeze()
-                        self.testing_accuracy.append(
-                            self.test_continual(inputs.to(self.device),
-                                                targets.to(self.device)))
-            # else, we just test the model on the testloader
-            else:
+            for testset in test_loader:
                 test = []
-                for testset in test_loader:
-                    for inputs, targets in testset:
-                        if len(inputs.shape) == 4:
-                            # remove all dimensions of size 1
-                            inputs = inputs.squeeze()
-                        test.append(self.test(inputs.to(self.device),
-                                              targets.to(self.device)))
-                self.testing_accuracy.append(test)
+                for inputs, targets in testset:
+                    if len(inputs.shape) == 4:
+                        # remove all dimensions of size 1
+                        inputs = inputs.squeeze()
+                    if "test_permutations" in dir(self):
+                        self.testing_accuracy.append(
+                            self.test_continual(inputs.to(self.device), targets.to(self.device)))
+                    else:
+                        test.append(
+                            self.test(inputs.to(self.device), targets.to(self.device)))
+                if "test_permutations" not in dir(self):
+                    self.testing_accuracy.append(test)
 
     def test(self, inputs, labels):
         """ Predict labels for a full dataset and retrieve accuracy
@@ -133,9 +126,8 @@ class GPUTrainer:
         """
         accuracies = []
         for permutation in self.test_permutations:
-            inputs = inputs[:, permutation].to(self.device)
             accuracies.append(
-                self.test(inputs, labels))
+                self.test(inputs[:, permutation].to(self.device), labels))
         return accuracies
 
     def save(self, path):
@@ -151,36 +143,34 @@ class GPUTrainer:
     def fit(self, train_loader, n_epochs, test_loader=None, verbose=True, **kwargs):
         """Train the model for n_epochs
         """
-        if verbose:
-            pbar = trange(
-                n_epochs, desc='Initialization')
-        else:
-            pbar = range(n_epochs)
-
         if "test_permutations" in kwargs:
             self.test_permutations = kwargs["test_permutations"]
 
+        pbar = trange(n_epochs, desc='Initialization')
         for epoch in pbar:
             self.epoch_step(train_loader, test_loader)
-
             ### PROGRESS BAR ###
             if verbose:
-                pbar.set_description(f"Epoch {epoch+1}/{n_epochs}")
-                # creation of a dictionnary with the name of the test set and the accuracy
-                kwargs = {}
-                if len(self.testing_accuracy) > 0:
-                    kwargs = {
-                        f"task {i+1}": f"{accuracy:.2%}" for i, accuracy in enumerate(self.testing_accuracy[-1])
-                    }
-                    # if number of task cannot fit in one line, print it in a new line
-                if len(kwargs) > 4:
-                    pbar.set_postfix(current_loss=self.loss.item(
-                    ), lr=self.optimizer.param_groups[0]['lr'] if "lr" in self.optimizer.param_groups[0] else None)
-                    # Do a pretty print of our results
-                    pbar.write("=================")
-                    pbar.write("Testing accuracy: ")
-                    for key, value in kwargs.items():
-                        pbar.write(f"\t{key}: {value}")
-                else:
-                    pbar.set_postfix(current_loss=self.loss.item(
-                    ), **kwargs, lr=self.optimizer.param_groups[0]['lr'] if "lr" in self.optimizer.param_groups[0] else None)
+                self.pbar_update(pbar, epoch, n_epochs)
+
+    def pbar_update(self, pbar, epoch, n_epochs):
+        """Update the progress bar with the current loss and accuracy"""
+        pbar.set_description(f"Epoch {epoch+1}/{n_epochs}")
+        # creation of a dictionnary with the name of the test set and the accuracy
+        kwargs = {}
+        if len(self.testing_accuracy) > 0:
+            kwargs = {
+                f"task {i+1}": f"{accuracy:.2%}" for i, accuracy in enumerate(self.testing_accuracy[-1])
+            }
+            # if number of task cannot fit in one line, print it in a new line
+        if len(kwargs) > 4:
+            pbar.set_postfix(current_loss=self.loss.item(
+            ), lr=self.optimizer.param_groups[0]['lr'] if "lr" in self.optimizer.param_groups[0] else None)
+            # Do a pretty print of our results
+            pbar.write("=================")
+            pbar.write("Testing accuracy: ")
+            for key, value in kwargs.items():
+                pbar.write(f"\t{key}: {value}")
+        else:
+            pbar.set_postfix(current_loss=self.loss.item(
+            ), **kwargs, lr=self.optimizer.param_groups[0]['lr'] if "lr" in self.optimizer.param_groups[0] else None)

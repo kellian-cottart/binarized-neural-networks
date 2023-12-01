@@ -29,11 +29,11 @@ class DNN(torch.nn.Module):
         self.bneps = bneps
         self.bnmomentum = bnmomentum
         ### LAYER INITIALIZATION ###
-        self._layer_init(layers, bias, eps=bneps, momentum=bnmomentum)
+        self._layer_init(layers, bias)
         ### WEIGHT INITIALIZATION ###
         self._weight_init(init, std)
 
-    def _layer_init(self, layers, bias=False, eps=1e-5, momentum=0.1):
+    def _layer_init(self, layers, bias=False):
         """ Initialize layers of NN
 
         Args:
@@ -55,8 +55,15 @@ class DNN(torch.nn.Module):
                     affine=not bias,
                     track_running_stats=True,
                     device=self.device,
-                    eps=eps,
-                    momentum=momentum))
+                    eps=self.bneps,
+                    momentum=self.bnmomentum))
+
+    def _main_layer(self, bias=False):
+        """ Initialize layers of NN
+
+        Args:
+            bias (bool): Whether to use bias
+        """
 
     def _weight_init(self, init='normal', std=0.01):
         """ Initialize weights of each layer
