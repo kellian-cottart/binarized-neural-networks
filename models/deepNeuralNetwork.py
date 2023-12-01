@@ -66,7 +66,7 @@ class DNN(torch.nn.Module):
             std (float): Standard deviation for initialization
         """
         for layer in self.layers:
-            if hasattr(layer, 'weight'):
+            if hasattr(layer, 'weight') and layer.weight is not None:
                 if init == 'gauss':
                     torch.nn.init.normal_(
                         layer.weight, mean=0.0, std=std)

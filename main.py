@@ -6,7 +6,7 @@ import trainer
 from optimizer import *
 import os
 
-SEED = 0  # Random seed
+SEED = 2506  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -32,15 +32,16 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "name": "BinaryNN-1024-1024-Sequential-Metaplastic",
+            "name": "BinaryNN-4096-4096-Sequential-Metaplastic",
             "nn_type": models.BNN,
             "nn_parameters": {
-                "layers": [INPUT_SIZE, 1024, 1024, 10],
+                "layers": [INPUT_SIZE, 4096, 4096, 10],
                 "init": "uniform",
                 "device": DEVICE,
                 "std": STD,
                 "dropout": False,
                 "batchnorm": True,
+                "bias": True,
             },
             "training_parameters": {
                 'n_epochs': 50,
@@ -50,8 +51,8 @@ if __name__ == "__main__":
             "reduction": "mean",
             "optimizer": MetaplasticAdam,
             "optimizer_parameters": {
-                "lr": 1e-3,
-                "metaplasticity": 15,
+                "lr": 5e-3,
+                "metaplasticity": 1.5,
                 "weight_decay": 1e-8,
             },
             "task": "Sequential",
@@ -141,7 +142,8 @@ if __name__ == "__main__":
         for iteration in range(N_NETWORKS):
             ### SEED ###
             torch.manual_seed(SEED + iteration)
-
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed(SEED)
             ### NETWORK INITIALIZATION ###
             model = data['nn_type'](**data['nn_parameters'])
 
@@ -154,7 +156,7 @@ if __name__ == "__main__":
                                                model=model, **data, device=DEVICE)
             else:
                 network = trainer.GPUTrainer(batch_size=batch_size,
-                                             model=model, **data, device=DEVICE, logarithmic=False)
+                                             model=model, **data, device=DEVICE, logarithmic=True)
 
             # print architecture
             print(network.model)

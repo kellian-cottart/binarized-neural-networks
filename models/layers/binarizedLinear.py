@@ -41,11 +41,11 @@ class BinarizedLinear(torch.nn.Linear):
     def forward(self, input):
         """Forward propagation of the binarized linear layer"""
         if not self.latent_weights:
-            self.weight.data.sign_()
-            self.bias.data.sign_() if self.bias is not None else None
+            self.weight.data = self.weight.data.sign()
+            self.bias.data = self.bias.data.sign() if self.bias is not None else None
             return torch.nn.functional.linear(input, self.weight, self.bias)
         else:
-            if self.bias:
+            if self.bias is not None:
                 return torch.nn.functional.linear(input, Sign.apply(self.weight), Sign.apply(self.bias))
             else:
                 return torch.nn.functional.linear(input, Sign.apply(self.weight))
