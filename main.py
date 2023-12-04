@@ -5,13 +5,14 @@ import torch
 import trainer
 from optimizer import *
 import os
+import json
 
 SEED = 2506  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 4  # Number of workers for data loading when using CPU
 
-PADDING = 0  # from 28x28 to 32x32
+PADDING = 2  # from 28x28 to 32x32
 INPUT_SIZE = (28+PADDING*2)**2
 
 ### PATHS ###
@@ -26,10 +27,10 @@ if __name__ == "__main__":
         torch.backends.cudnn.deterministic = True
         torch.set_default_device(DEVICE)
         torch.set_default_dtype(torch.float32)
+
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "name": "BinaryNN-100-100-PermutedMNIST",
             "nn_type": models.BNN,
             "nn_parameters": {
                 "layers": [INPUT_SIZE, 2048, 2048, 10],
@@ -42,62 +43,32 @@ if __name__ == "__main__":
                 "bneps": 0.0001,
             },
             "training_parameters": {
-                'n_epochs': 50,
+                'n_epochs': 2,
                 'batch_size': 128,
-                'test_mcmc_samples': 1,
+                'test_mcmc_samples': 32,
             },
             "criterion": torch.functional.F.nll_loss,
             "reduction": "sum",
-            "optimizer": BayesBiNN,
+            "optimizer": BinarySynapticUncertainty,
             "optimizer_parameters": {
-                "lr": 1e-4,
+                "metaplasticity": metaplasticity,
                 "beta": 0,
                 "temperature": 1e-10,
                 "num_mcmc_samples": 1,
             },
-            "task": "PermutedMNIST",
+            "task": "Sequential",
             "n_tasks": 10,
             "padding": PADDING,
-        },
-        # {
-        #     "nn_type": models.BayesianNN,
-        #     "nn_parameters": {
-        #         "layers": [INPUT_SIZE, 200, 200, 10],
-        #         "device": DEVICE,
-        #         "dropout": False,
-        #         "batchnorm": False,
-        #         "bias": True,
-        #         "sigma_init": 4e-2,
-        #         "n_samples": 10,
-        #     },
-        #     "training_parameters": {
-        #         'n_epochs': 50,
-        #         'batch_size': 128,
-        #     },
-        #     "criterion": torch.nn.functional.nll_loss,
-        #     "reduction": 'sum',
-        #     "optimizer": MESU,
-        #     "optimizer_parameters": {
-        #         "coeff_likeli_mu": 1,
-        #         "coeff_likeli_sigma": 1,
-        #         "sigma_p": 4e-2,
-        #         "sigma_b": 15,
-        #         "update": 3,
-        #         "keep_prior": False,
-        #     },
-        #     # Task to train on (Sequential or PermutedMNIST)
-        #     "task": "PermutedMNIST",
-        #     # Number of tasks to train on (permutations of MNIST)
-        #     "n_tasks": 10,
-        #     "name": "BayesianNN-200-200-PermutedMNIST",
-        #     "padding": PADDING,
-        # },
+        } for metaplasticity in [80, 100, 120]
     ]
 
     for index, data in enumerate(networks_data):
 
+        # name should be optimizer-layer2-layer3-...-layerN-1-task-metaplacity
+        name = f"{data['optimizer'].__name__}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers'][1:-1]])}-{data['task']}-m={data['optimizer_parameters']['metaplasticity']}"
+        print(f"Training {name}...")
         ### FOLDER INITIALIZATION ###
-        main_folder = os.path.join(SAVE_FOLDER, data['name'])
+        main_folder = os.path.join(SAVE_FOLDER, name)
 
         ### ACCURACY INITIALIZATION ###
         accuracies = []
@@ -120,7 +91,7 @@ if __name__ == "__main__":
             model = data['nn_type'](**data['nn_parameters'])
 
             ### W&B INITIALIZATION ###
-            ident = f"{data['name']} - {index}"
+            ident = f"{name} - {index}"
 
             ### INSTANTIATE THE TRAINER ###
             if data["optimizer"] in [BinarySynapticUncertainty, BayesBiNN]:
@@ -159,20 +130,27 @@ if __name__ == "__main__":
             ### SAVING DATA ###
             os.makedirs(main_folder, exist_ok=True)
             sub_folder = versionning(
-                main_folder, f"{iteration}-"+data['name'], "")
+                main_folder, f"{iteration}-"+name, "")
             os.makedirs(sub_folder, exist_ok=True)
 
-            print(f"Saving {data['name']} weights, accuracy and figure...")
-            weights_name = data['name'] + "-weights"
+            print(f"Saving {name} weights, accuracy and figure...")
+            weights_name = name + "-weights"
             network.save(versionning(sub_folder, weights_name, ".pt"))
 
-            print(f"Saving {data['name']} accuracy...")
-            accuracy_name = data['name'] + "-accuracy"
+            print(f"Saving {name} configuration...")
+            # dump data as json, and turn into string all non-json serializable objects
+            json_data = json.dumps(data, default=lambda o: str(o))
+            config_name = name + "-config"
+            with open(versionning(sub_folder, config_name, ".json"), "w") as f:
+                f.write(json_data)
+
+            print(f"Saving {name} accuracy...")
+            accuracy_name = name + "-accuracy"
             accuracy = network.testing_accuracy
             torch.save(accuracy, versionning(
                 sub_folder, accuracy_name, ".pt"))
             accuracies.append(accuracy)
 
-        print(f"Exporting visualisation of {data['name']} accuracy...")
-        title = data['name'] + "-tasks"
+        print(f"Exporting visualisation of {name} accuracy...")
+        title = name + "-tasks"
         visualize_sequential(title, accuracies, folder=main_folder)

@@ -52,6 +52,7 @@ class BayesTrainer(GPUTrainer):
         Returns:
             torch.Tensor: Predictions
         """
+        self.model.eval()
         with torch.no_grad():
             noise = []
             for _ in range(self.test_mcmc_samples):
@@ -75,7 +76,7 @@ class BayesTrainer(GPUTrainer):
             torch.Tensor: Predictions
         """
         # Retrieve the parameters
-        parameters = self.optimizer.param_groups[0]['params']
+        parameters = self.model.parameters()
         predictions = []
         # We iterate over the parameters
         for n in noise:

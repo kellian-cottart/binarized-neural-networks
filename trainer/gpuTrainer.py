@@ -104,7 +104,7 @@ class GPUTrainer:
 
         """
         ### ACCURACY COMPUTATION ###
-        # The test can be computed faster if the dataset is already in the right format
+        self.model.eval()
         with torch.no_grad():
             # if self.forward can take log in its parameters
             if "log" in self.model.forward.__code__.co_varnames:
@@ -141,6 +141,10 @@ class GPUTrainer:
         """Load the model
         """
         self.model.load_state_dict(torch.load(path))
+
+    def visualize_weights(self):
+        """Visualize the weights of the model to assess the consolidation of the knowledge
+        """
 
     def fit(self, train_loader, n_epochs, test_loader=None, verbose=True, **kwargs):
         """Train the model for n_epochs

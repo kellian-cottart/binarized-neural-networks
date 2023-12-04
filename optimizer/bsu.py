@@ -5,14 +5,11 @@ from torch.nn.utils import parameters_to_vector, vector_to_parameters
 
 
 class BinarySynapticUncertainty(torch.optim.Optimizer):
-    """ BayesBiNN Optimizer for PyTorch
-
-    Training Binary Neural Networks using the Bayesian Learning Rule and aiming for metaplasticity
-
+    """ BinarySynapticUncertainty Optimizer for PyTorch
 
     Args: 
         params (iterable): iterable of parameters to optimize or dicts defining parameter groups
-        lr (float): learning rate
+        metaplasticity (float): learning rate
         beta (float): beta parameter to compute the running average of gradients
         temperature (float): temperature value of the Gumbel soft-max trick (Maddison et al., 2017)
         num_mcmc_samples (int): number of MCMC samples to compute the gradient (default: 1, if 0: computes the point estimate)
@@ -22,7 +19,7 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
 
     def __init__(self,
                  params: params_t,
-                 lr: Union[float, torch.Tensor] = 1e-4,
+                 metaplasticity: Union[float, torch.Tensor] = 1e-4,
                  beta: float = 0.99,
                  temperature: float = 1e-8,
                  num_mcmc_samples: int = 1,
@@ -30,8 +27,8 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
                  init_lambda: int = 10,
                  scale: float = 1.0
                  ):
-        if not 0.0 <= lr:
-            raise ValueError(f"Invalid learning rate: {lr}")
+        if not 0.0 <= metaplasticity:
+            raise ValueError(f"Invalid learning rate: {metaplasticity}")
         if not 0.0 <= beta <= 1.0:
             raise ValueError(f"Invalid beta parameter: {beta}")
         if not 0.0 <= temperature:
@@ -43,7 +40,7 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
             raise ValueError(
                 f"Invalid number of MCMC samples: {num_mcmc_samples}")
 
-        defaults = dict(lr=lr, beta=beta, temperature=temperature,
+        defaults = dict(metaplasticity=metaplasticity, beta=beta, temperature=temperature,
                         prior_lambda=prior_lambda, num_mcmc_samples=num_mcmc_samples, scale=scale)
         super().__init__(params, defaults)
 
@@ -53,13 +50,12 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
         param = parameters_to_vector(self.param_groups[0]['params'])
         bernouilli = torch.randint_like(param, 2)
         # Initialize lambda between -init_lambda and init_lambda
-        self.state['lambda'] = (bernouilli * init_lambda) - \
-            ((1 - bernouilli) * init_lambda)
+        self.state['lambda'] = bernouilli * init_lambda * torch.randn_like(
+            param) - (1-bernouilli) * init_lambda * torch.randn_like(param)
         # Set all other parameters
         self.state['mu'] = torch.tanh(self.state['lambda'])
         self.state['step'] = 0
         self.state['momentum'] = torch.zeros_like(param)
-        self.state['grad'] = torch.zeros_like(param)
         if prior_lambda is None:
             self.state['prior_lambda'] = torch.zeros_like(param)
 
@@ -68,12 +64,13 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
         """
         self.state['prior_lambda'] = self.state['lambda']
 
-    def step(self, closure=None):
+    def step(self, input_size=60_000, closure=None):
         """ Perform a single optimization step 
         Taken from _single_tensor_adam in PyTorch
 
         Args: 
             closure (function): Function to evaluate loss
+            input_size (int): Size of the input data (default: 60_000)
         """
         self._cuda_graph_capture_health_check()
 
@@ -82,6 +79,7 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
             raise RuntimeError(
                 'BayesBiNN optimization step requires a closure function')
         loss = closure()
+        running_loss = []
 
         self.state['step'] += 1
 
@@ -95,7 +93,7 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
             # Parameters of the optimizer
             eps = 1e-10
             beta = group['beta']
-            lr = group['lr']
+            metaplasticity = group['metaplasticity']
             temperature = group['temperature']
             num_mcmc_samples = group['num_mcmc_samples']
             scale = group['scale']
@@ -111,12 +109,16 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
 
             ### OPTIMIZATION STEP ###
             if num_mcmc_samples <= 0:
-                # Point estimate
+                ### POINT ESTIMATE ###
                 relaxed_w = torch.tanh(lambda_)
                 vector_to_parameters(relaxed_w, parameters)
-                g = parameters_to_vector(torch.autograd.grad(loss, parameters))
+                loss = closure()
+                running_loss.append(loss.item())
+                g = parameters_to_vector(
+                    torch.autograd.grad(loss, parameters)).detach()
+                gradient_estimate = input_size * g
             else:
-                # MCMC estimate
+                ### MCMC SAMPLES ###
                 for _ in range(num_mcmc_samples):
                     # Gumbel soft-max trick
                     epsilon = torch.rand_like(mu)
@@ -126,24 +128,27 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
                     vector_to_parameters(relaxed_w, parameters)
                     # Compute the loss
                     loss = closure()
+                    running_loss.append(loss.item())
                     # Compute the gradient
                     g = parameters_to_vector(
-                        torch.autograd.grad(loss, parameters))
+                        torch.autograd.grad(loss, parameters)).detach()
                     s = ((1 - relaxed_w * relaxed_w + eps) / temperature /
                          (1 - mu * mu + eps))
                     gradient_estimate.add_(s * g)
-                batch_size = parameters[0].size()[0]
-                gradient_estimate.div_(num_mcmc_samples/batch_size)
+                gradient_estimate.mul_(input_size).div_(
+                    num_mcmc_samples if num_mcmc_samples > 0 else 1)
 
-            # Update all parameters
+            ### PARAMETER UPDATE ###
             bias_correction = 1 - beta ** step
-            step_size = lr / bias_correction
+
+            # Let's transform the learning rate to an array for each invividual neuron.
+            step_size = metaplasticity / bias_correction
+            metaplastic_lr = 1 / (torch.pow(lambda_, 2) * step_size)
 
             momentum = momentum*beta + (1-beta)*gradient_estimate
-            lambda_ += step_size * \
-                (scale*(prior_lambda - lambda_) - momentum)
 
+            lambda_ -= metaplastic_lr * momentum
             self.state['lambda'] = lambda_
             self.state['momentum'] = momentum
             self.state['mu'] = torch.tanh(lambda_)
-        return loss
+        return torch.mean(torch.tensor(running_loss))
