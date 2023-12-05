@@ -32,22 +32,22 @@ class CPULoading:
             torch.utils.data.DataLoader: Training dataset
             torch.utils.data.DataLoader: Testing dataset
         """
-        normalisation = transforms.Compose([
+        transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Lambda(lambda x: x/255),
-            transforms.Normalize((0,), (1,)),
+            transforms.Lambda(lambda x: x/255.),
+            transforms.Normalize(0, 1),
         ])
 
         train = dataset(root=self.path,
                         train=True,
                         download=True,
                         target_transform=None,
-                        transform=normalisation)
+                        transform=transform)
         test = dataset(root=self.path,
                        train=False,
                        download=True,
                        target_transform=None,
-                       transform=normalisation)
+                       transform=transform)
 
         current_size = train.data.shape[1]
 

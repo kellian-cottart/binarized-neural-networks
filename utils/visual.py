@@ -76,3 +76,32 @@ def visualize_sequential(title, l_accuracies, folder):
     # SVG
     versionned = versionning(folder, title, ".svg")
     plt.savefig(versionned, bbox_inches='tight')
+
+
+def visualize_weights(title, weights, folder):
+    """Visualize the weights of the model to assess the consolidation of the knowledge
+    """
+    ### CREATE FIGURE ###
+    plt.figure()
+    ### CONVERT STATE DICT TO TENSOR ###
+    tensor = torch.cat([torch.flatten(w)
+                       for w in weights.values()]).detach().cpu()
+    ### PLOT ###
+    hist = torch.histc(tensor, bins=1000, min=-1, max=1).detach().cpu()
+    plt.plot(torch.linspace(-1, 1, 1000).detach().cpu(),
+             hist * 100 / len(tensor))
+
+    plt.xlabel('Value of weights')
+    plt.ylabel('% of weights')
+    plt.savefig(versionning(folder, title, ".pdf"), bbox_inches='tight')
+    plt.close()
+
+
+def visualize_lr(lr):
+    """ If the learning rate isn't local, we want to visualize the distribution of the learning rate
+    """
+    hist_lr = torch.histc(lr, bins=1000).detach().cpu() * 100 / len(lr)
+    plt.plot(torch.linspace(0, 1e-1, 1000).detach().cpu(), hist_lr)
+    plt.xlabel('Value of learning rate')
+    plt.ylabel('% of learning rate')
+    plt.show()

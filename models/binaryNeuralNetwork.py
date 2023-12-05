@@ -39,7 +39,7 @@ networks
             if self.batchnorm:
                 self.layers.append(torch.nn.BatchNorm1d(
                     layers[i+1],
-                    affine=not bias,
+                    affine=True,
                     track_running_stats=True,
                     device=self.device,
                     eps=self.bneps,
@@ -62,3 +62,6 @@ networks
             if layer is not self.layers[-1] and (i+1) % len(unique_layers) == 0:
                 x = Sign.apply(x)
         return torch.nn.functional.log_softmax(x, dim=1)
+
+    def __repr__(self):
+        return f"BNN({self.layers}, dropout={self.dropout}, latent_weights={self.latent_weights}, batchnorm={self.batchnorm}, bnmomentum={self.bnmomentum}, bneps={self.bneps}, device={self.device}"

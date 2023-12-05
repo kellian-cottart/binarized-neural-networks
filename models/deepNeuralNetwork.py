@@ -52,18 +52,11 @@ class DNN(torch.nn.Module):
             if self.batchnorm:
                 self.layers.append(torch.nn.BatchNorm1d(
                     layers[i+1],
-                    affine=not bias,
+                    affine=True,
                     track_running_stats=True,
                     device=self.device,
                     eps=self.bneps,
                     momentum=self.bnmomentum))
-
-    def _main_layer(self, bias=False):
-        """ Initialize layers of NN
-
-        Args:
-            bias (bool): Whether to use bias
-        """
 
     def _weight_init(self, init='normal', std=0.01):
         """ Initialize weights of each layer

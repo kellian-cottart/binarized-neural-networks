@@ -31,7 +31,7 @@ class BayesianNN(DNN):
             if self.batchnorm:
                 self.layers.append(torch.nn.BatchNorm1d(
                     layers[i+1],
-                    affine=not bias,
+                    affine=True,
                     track_running_stats=True,
                     device=self.device,
                     eps=self.bneps,

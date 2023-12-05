@@ -42,7 +42,6 @@ class GPUTrainer:
             inputs (torch.Tensor): Input data
             targets (torch.Tensor): Labels
         """
-        self.model.train()
         ### LOSS ###
         self.loss = self.criterion(
             self.model.forward(inputs).to(self.device),
@@ -62,7 +61,6 @@ class GPUTrainer:
             test_loader (torch.Tensor, optional): Testing data. Defaults to None.
         """
         ### SEND BATCH ###
-
         for inputs, targets in train_dataset:
             if len(inputs.shape) == 4:
                 # remove all dimensions of size 1
@@ -74,6 +72,7 @@ class GPUTrainer:
             self.scheduler.step()
 
         ### EVALUATE ###
+        self.model.eval()
         if test_loader is not None:
             test = []
             for testset in test_loader:
@@ -104,7 +103,6 @@ class GPUTrainer:
 
         """
         ### ACCURACY COMPUTATION ###
-        self.model.eval()
         with torch.no_grad():
             # if self.forward can take log in its parameters
             if "log" in self.model.forward.__code__.co_varnames:
@@ -113,8 +111,11 @@ class GPUTrainer:
             else:
                 predictions = self.model.forward(
                     inputs).to(self.device)
-            idx_pred = torch.argmax(predictions, dim=1)
-        return len(torch.where(idx_pred == labels)[0]) / len(labels)
+            # if the model outputs log probabilities, take the argmax
+            _, predictions = torch.max(predictions, dim=1)
+            accuracy = torch.mean(
+                (predictions == labels.to(self.device)).float())
+            return accuracy.item()
 
     def test_continual(self, inputs, labels):
         """Test the model on the test set of the PermutedMNIST task
@@ -141,10 +142,6 @@ class GPUTrainer:
         """Load the model
         """
         self.model.load_state_dict(torch.load(path))
-
-    def visualize_weights(self):
-        """Visualize the weights of the model to assess the consolidation of the knowledge
-        """
 
     def fit(self, train_loader, n_epochs, test_loader=None, verbose=True, **kwargs):
         """Train the model for n_epochs

@@ -132,8 +132,8 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
                     # Compute the gradient
                     g = parameters_to_vector(
                         torch.autograd.grad(loss, parameters)).detach()
-                    s = ((1 - relaxed_w * relaxed_w + eps) / temperature /
-                         (1 - mu * mu + eps))
+                    s = ((1 - torch.pow(relaxed_w, 2) + eps) /
+                         (temperature * (1 - torch.pow(mu, 2) + eps)))
                     gradient_estimate.add_(s * g)
                 gradient_estimate.mul_(input_size).div_(
                     num_mcmc_samples if num_mcmc_samples > 0 else 1)
@@ -141,14 +141,15 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
             ### PARAMETER UPDATE ###
             bias_correction = 1 - beta ** step
 
-            # Let's transform the learning rate to an array for each invividual neuron.
-            step_size = metaplasticity / bias_correction
-            metaplastic_lr = 1 / (torch.pow(lambda_, 2) * step_size)
+            # Let's transform the global learning rate into a per-parameter learning rate
+            step_size = 1 / bias_correction
+            metaplastic_lr = step_size / (torch.pow(lambda_, 2) + eps)
 
             momentum = momentum*beta + (1-beta)*gradient_estimate
-
             lambda_ -= metaplastic_lr * momentum
+
             self.state['lambda'] = lambda_
             self.state['momentum'] = momentum
             self.state['mu'] = torch.tanh(lambda_)
+
         return torch.mean(torch.tensor(running_loss))
