@@ -6,7 +6,7 @@ class DNN(torch.nn.Module):
     """ Neural Network Base Class
     """
 
-    def __init__(self, layers=[512], init='normal', std=0.01, device='cuda', dropout=False, batchnorm=True, bias=False, bneps=1e-5, bnmomentum=0.1, *args, **kwargs):
+    def __init__(self, layers=[512], init='normal', std=0.01, device='cuda', dropout=False, batchnorm=True, bias=False, running_stats=True, bneps=1e-5, bnmomentum=0.1, *args, **kwargs):
         """ NN initialization
 
         Args: 
@@ -28,6 +28,7 @@ class DNN(torch.nn.Module):
         self.batchnorm = batchnorm
         self.bneps = bneps
         self.bnmomentum = bnmomentum
+        self.running_stats = running_stats
         ### LAYER INITIALIZATION ###
         self._layer_init(layers, bias)
         ### WEIGHT INITIALIZATION ###
@@ -53,7 +54,7 @@ class DNN(torch.nn.Module):
                 self.layers.append(torch.nn.BatchNorm1d(
                     layers[i+1],
                     affine=True,
-                    track_running_stats=True,
+                    track_running_stats=self.running_stats,
                     device=self.device,
                     eps=self.bneps,
                     momentum=self.bnmomentum))

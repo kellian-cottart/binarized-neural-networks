@@ -8,7 +8,7 @@ import os
 import json
 
 SEED = 2506  # Random seed
-N_NETWORKS = 5  # Number of networks to train
+N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
 
@@ -30,65 +30,67 @@ if __name__ == "__main__":
 
     ### NETWORK CONFIGURATION ###
     networks_data = [
-        {
-            "nn_type": models.BayesianNN,
-            "nn_parameters": {
-                "layers": [INPUT_SIZE, 2048, 2048, 10],
-                "init": "uniform",
-                "device": DEVICE,
-                "std": 0.1,
-                "dropout": False,
-                "batchnorm": False,
-                "bnmomentum": 0.15,
-                "bneps": 0.0001,
-            },
-            "training_parameters": {
-                'n_epochs': 50,
-                'batch_size': 128,
-            },
-            "criterion": torch.functional.F.nll_loss,
-            "reduction": "mean",
-            "optimizer": MESU,
-            "optimizer_parameters": {
-                "sigma_p": 0.06,
-                "sigma_b": 10,
-                "update": 1,
-            },
-            "task": "Sequential",
-            "n_tasks": 10,
-            "padding": PADDING,
-        }
         # {
-        #     "nn_type": models.BNN,
+        #     "nn_type": models.BayesianNN,
         #     "nn_parameters": {
         #         "layers": [INPUT_SIZE, 2048, 2048, 10],
         #         "init": "uniform",
         #         "device": DEVICE,
         #         "std": 0.1,
         #         "dropout": False,
-        #         "batchnorm": True,
+        #         "batchnorm": False,
         #         "bnmomentum": 0.15,
         #         "bneps": 0.0001,
-        #         "latent_weights": False,
         #     },
         #     "training_parameters": {
         #         'n_epochs': 50,
         #         'batch_size': 128,
-        #         'test_mcmc_samples': 32,
         #     },
         #     "criterion": torch.functional.F.nll_loss,
-        #     "reduction": "sum",
-        #     "optimizer": BinarySynapticUncertainty,
+        #     "reduction": "mean",
+        #     "optimizer": MESU,
         #     "optimizer_parameters": {
-        #         "metaplasticity": metaplasticity,
-        #         "beta": 0,
-        #         "temperature": 1e-10,
-        #         "num_mcmc_samples": 1,
+        #         "sigma_p": 0.06,
+        #         "sigma_b": 10,
+        #         "update": 1,
         #     },
         #     "task": "Sequential",
         #     "n_tasks": 10,
         #     "padding": PADDING,
-        # } for metaplasticity in [1]
+        # }
+        {
+            "nn_type": models.BNN,
+            "nn_parameters": {
+                "layers": [INPUT_SIZE, 2048, 2048, 10],
+                "init": "uniform",
+                "device": DEVICE,
+                "std": 0.1,
+                "dropout": False,
+                "batchnorm": True,
+                "bnmomentum": 0,
+                "bneps": 1e-5,
+                "latent_weights": False,
+                "running_stats": False,
+            },
+            "training_parameters": {
+                'n_epochs': 50,
+                'batch_size': 128,
+                'test_mcmc_samples': 1,
+            },
+            "criterion": torch.functional.F.nll_loss,
+            "reduction": "sum",
+            "optimizer": BinarySynapticUncertainty,
+            "optimizer_parameters": {
+                "temperature": 1,
+                "num_mcmc_samples": 1,
+                "init_lambda": 1e-2,
+                "lr": learning_rate,
+                "metaplasticity": metaplasticity,
+            },
+            "task": "Sequential",
+            "n_tasks": 10,
+            "padding": PADDING,
+        } for metaplasticity in [1, 0.1, 0.01] for learning_rate in [0.1, 0.01, 0.001]
         # {
         #     "nn_type": models.BNN,
         #     "nn_parameters": {
@@ -172,9 +174,6 @@ if __name__ == "__main__":
                 test_loader = [mnist_test, fashion_mnist_test]
                 train_loader = [mnist_train, fashion_mnist_train]
                 for i, dataset in enumerate(train_loader):
-                    title = f"{name}-weights-task{i+1}"
-                    visualize_weights(title, network.model.state_dict(),
-                                      folder=main_folder)
                     network.fit(
                         dataset, **data['training_parameters'], test_loader=test_loader, verbose=True)
             elif task == "PermutedMNIST":

@@ -27,7 +27,7 @@ def visualize_sequential(title, l_accuracies, folder):
     """
     ### CREATE FIGURE ###
     plt.figure()
-    plt.xlim(0, len(l_accuracies[0]))
+    plt.xlim(0, len(l_accuracies[0])-1)
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
     plt.ylim(0, 1)

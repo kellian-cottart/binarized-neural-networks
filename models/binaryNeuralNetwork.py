@@ -40,7 +40,7 @@ networks
                 self.layers.append(torch.nn.BatchNorm1d(
                     layers[i+1],
                     affine=True,
-                    track_running_stats=True,
+                    track_running_stats=self.running_stats,
                     device=self.device,
                     eps=self.bneps,
                     momentum=self.bnmomentum))

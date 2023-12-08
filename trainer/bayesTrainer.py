@@ -37,8 +37,8 @@ class BayesTrainer(GPUTrainer):
                                   targets.to(self.device),
                                   reduction=self.reduction)
             return loss
-        self.model.train()
         ### LOSS ###
+        self.model.train()
         self.loss = self.optimizer.step(
             input_size=dataset_size, closure=closure)
 

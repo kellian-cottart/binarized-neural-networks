@@ -9,8 +9,8 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
 
     Args: 
         params (iterable): iterable of parameters to optimize or dicts defining parameter groups
-        metaplasticity (float): learning rate
-        beta (float): beta parameter to compute the running average of gradients
+        metaplasticity (float): learning rate of the metaplasticity (default: 1)
+        lr (float): learning rate of the optimizer (default: 1e-3)
         temperature (float): temperature value of the Gumbel soft-max trick (Maddison et al., 2017)
         num_mcmc_samples (int): number of MCMC samples to compute the gradient (default: 1, if 0: computes the point estimate)
         prior_lambda (FloatTensor): lambda of the prior distribution (for continual learning, input the previously found distribution) (default: None)
@@ -19,18 +19,18 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
 
     def __init__(self,
                  params: params_t,
-                 metaplasticity: Union[float, torch.Tensor] = 1e-4,
-                 beta: float = 0.99,
+                 metaplasticity: Union[float, torch.Tensor] = 1,
+                 lr: Union[float, torch.Tensor] = 1e-3,
                  temperature: float = 1e-8,
                  num_mcmc_samples: int = 1,
                  prior_lambda: Optional[torch.Tensor] = None,
-                 init_lambda: int = 10,
+                 init_lambda: int = 1,
                  scale: float = 1.0
                  ):
         if not 0.0 <= metaplasticity:
             raise ValueError(f"Invalid learning rate: {metaplasticity}")
-        if not 0.0 <= beta <= 1.0:
-            raise ValueError(f"Invalid beta parameter: {beta}")
+        if not 0.0 <= lr:
+            raise ValueError(f"Invalid learning rate: {lr}")
         if not 0.0 <= temperature:
             raise ValueError(f"Invalid temperature: {temperature}")
         if prior_lambda is not None and not isinstance(prior_lambda, torch.Tensor):
@@ -40,7 +40,7 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
             raise ValueError(
                 f"Invalid number of MCMC samples: {num_mcmc_samples}")
 
-        defaults = dict(metaplasticity=metaplasticity, beta=beta, temperature=temperature,
+        defaults = dict(metaplasticity=metaplasticity, lr=lr, temperature=temperature,
                         prior_lambda=prior_lambda, num_mcmc_samples=num_mcmc_samples, scale=scale)
         super().__init__(params, defaults)
 
@@ -55,7 +55,6 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
         # Set all other parameters
         self.state['mu'] = torch.tanh(self.state['lambda'])
         self.state['step'] = 0
-        self.state['momentum'] = torch.zeros_like(param)
         if prior_lambda is None:
             self.state['prior_lambda'] = torch.zeros_like(param)
 
@@ -92,17 +91,16 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
             parameters = group['params']
             # Parameters of the optimizer
             eps = 1e-10
-            beta = group['beta']
             metaplasticity = group['metaplasticity']
             temperature = group['temperature']
             num_mcmc_samples = group['num_mcmc_samples']
             scale = group['scale']
+            lr = group['lr']
 
             # State of the optimizer
             step = self.state['step']
             lambda_ = self.state['lambda']
             mu = self.state['mu']
-            momentum = self.state['momentum']
             prior_lambda = self.state['prior_lambda']
 
             gradient_estimate = torch.zeros_like(lambda_)
@@ -121,7 +119,7 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
                 ### MCMC SAMPLES ###
                 for _ in range(num_mcmc_samples):
                     # Gumbel soft-max trick
-                    epsilon = torch.rand_like(mu)
+                    epsilon = torch.rand_like(lambda_)
                     delta = torch.log(epsilon / (1 - epsilon)) / 2
                     relaxed_w = torch.tanh(
                         (lambda_ + delta) / temperature)
@@ -139,17 +137,56 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
                     num_mcmc_samples if num_mcmc_samples > 0 else 1)
 
             ### PARAMETER UPDATE ###
-            bias_correction = 1 - beta ** step
+            metaplastic_func = metaplasticity / \
+                torch.cosh(lambda_).pow(2)
 
-            # Let's transform the global learning rate into a per-parameter learning rate
-            step_size = 1 / bias_correction
-            metaplastic_lr = step_size / (torch.pow(lambda_, 2) + eps)
-
-            momentum = momentum*beta + (1-beta)*gradient_estimate
-            lambda_ -= metaplastic_lr * momentum
+            # condition to be able to change the value of the weights
+            lambda_ -= lr * metaplastic_func * gradient_estimate
 
             self.state['lambda'] = lambda_
-            self.state['momentum'] = momentum
             self.state['mu'] = torch.tanh(lambda_)
 
+            ### SHOW THE DISTRIBUTION OF THE VALUES OF MU AS A PERCENTAGE ###
+            if step % 468 == 0:
+                # visualize_mu(self.state['mu'])
+                visualize_lambda(self.state['lambda'])
+
         return torch.mean(torch.tensor(running_loss))
+
+
+def visualize_lambda(lambda_):
+    # print the percentage of values above 2 and below -2
+    print(
+        f"Percentage of Lambda values above 10: {(lambda_ > 10).sum() * 100 / len(lambda_):.2f}%")
+
+    print(
+        f"Percentage of Lambda values above 2: {((lambda_ > 2) & (lambda_ < 10)).sum() * 100 / len(lambda_):.2f}%")
+    print(
+        f"Percentage of Lambda values below -2: {((lambda_ < -2) & (lambda_ > -10)).sum() * 100 / len(lambda_):.2f}%")
+    print(
+        f"Percentage of Lambda values below -10: {(lambda_ < -10).sum() * 100 / len(lambda_):.2f}%")
+    # in between
+    print(
+        f"Percentage of Lambda values between -2 and 2: {((lambda_ < 2) & (lambda_ > -2)).sum() * 100 / len(lambda_):.2f}%")
+
+
+def visualize_mu(mu):
+    TEMP = "temp/experiment-lr=0.001/"
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import AutoMinorLocator
+    import os
+    from utils.visual import versionning
+    plt.figure()
+    bins = 1_000
+    hist = torch.histc(mu, bins=bins, min=-1, max=1).detach().cpu()
+    plt.plot(torch.linspace(-1, 1, bins).detach().cpu(),
+             hist * 100 / len(mu))
+    plt.xlabel('Value of mu')
+    plt.ylabel('% of mu')
+    plt.gca().xaxis.set_minor_locator(AutoMinorLocator(5))
+    plt.gca().yaxis.set_minor_locator(AutoMinorLocator(5))
+    plt.gca().tick_params(which='both', width=1)
+    plt.gca().tick_params(which='major', length=6)
+    path = os.path.join(TEMP, "mu")
+    os.makedirs(path, exist_ok=True)
+    plt.savefig(versionning(path, "mu", ".pdf"), bbox_inches='tight')
