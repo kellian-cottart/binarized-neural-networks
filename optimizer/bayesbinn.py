@@ -134,16 +134,16 @@ class BayesBiNN(torch.optim.Optimizer):
                     # Compute the gradient
                     g = parameters_to_vector(
                         torch.autograd.grad(loss, parameters)).detach()
-                    s = ((1 - relaxed_w * relaxed_w + eps) / temperature /
-                         (1 - mu * mu + eps))
+                    s = ((1 - relaxed_w**2 + eps) / temperature /
+                         (1 - mu**2 + eps))
                     gradient_estimate.add_(s * g)
                 gradient_estimate.mul_(input_size).div_(
                     num_mcmc_samples if num_mcmc_samples > 0 else 1)
 
             ### PARAMETER UPDATE ###
+            momentum = momentum*beta + (1-beta)*gradient_estimate
             bias_correction = 1 - beta ** step
             step_size = lr / bias_correction
-            momentum = momentum*beta + (1-beta)*gradient_estimate
             lambda_ += step_size * \
                 (scale*(prior_lambda - lambda_) - momentum)
             self.state['lambda'] = lambda_

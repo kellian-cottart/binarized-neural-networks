@@ -61,7 +61,8 @@ networks
             x = layer(x)
             if layer is not self.layers[-1] and (i+1) % len(unique_layers) == 0:
                 x = Sign.apply(x)
-        return torch.nn.functional.log_softmax(x, dim=1)
+        x = torch.nn.functional.log_softmax(x, dim=1)
+        return x
 
     def __repr__(self):
         return f"BNN({self.layers}, dropout={self.dropout}, latent_weights={self.latent_weights}, batchnorm={self.batchnorm}, bnmomentum={self.bnmomentum}, bneps={self.bneps}, device={self.device}"

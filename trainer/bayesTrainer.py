@@ -62,7 +62,7 @@ class BayesTrainer(GPUTrainer):
                 noise.append(torch.where(self.optimizer.state['mu'] <= 0, torch.zeros_like(
                     self.optimizer.state['mu']), torch.ones_like(self.optimizer.state['mu'])))
             predictions = self.monte_carlo_prediction(inputs, noise)
-        return predictions.mean(dim=0), predictions.std(dim=0)
+        return predictions
 
     def test(self, inputs, labels):
         """Test the model on the given inputs and labels
@@ -74,18 +74,10 @@ class BayesTrainer(GPUTrainer):
         Returns:
             torch.Tensor: Predictions
         """
-        self.model.eval()
-        with torch.no_grad():
-            noise = []
-            for _ in range(self.test_mcmc_samples):
-                noise.append(torch.bernoulli(
-                    torch.sigmoid(2*self.optimizer.state["lambda"])))
-            if len(noise) == 0:
-                noise.append(torch.where(self.optimizer.state['mu'] <= 0, torch.zeros_like(
-                    self.optimizer.state['mu']), torch.ones_like(self.optimizer.state['mu'])))
-            predictions = self.monte_carlo_prediction(inputs, noise)
-            idx_pred = torch.argmax(predictions, dim=1)
-        return len(torch.where(idx_pred == labels)[0]) / len(labels)
+        predictions = self.predict(inputs, n_samples=self.test_mcmc_samples)
+        predictions = torch.mean(torch.stack(predictions, dim=2), dim=2)
+        predictions = torch.argmax(predictions, dim=1)
+        return torch.mean((predictions == labels).float()).item()
 
     def monte_carlo_prediction(self, inputs, noise):
         """Perform a monte carlo prediction on the given inputs
@@ -98,7 +90,7 @@ class BayesTrainer(GPUTrainer):
             torch.Tensor: Predictions
         """
         # Retrieve the parameters
-        parameters = self.model.parameters()
+        parameters = self.optimizer.param_groups[0]['params']
         predictions = []
         # We iterate over the parameters
         for n in noise:
@@ -106,8 +98,7 @@ class BayesTrainer(GPUTrainer):
             torch.nn.utils.vector_to_parameters(2*n-1, parameters)
             prediction = self.model.forward(inputs).to(self.device)
             predictions.append(prediction)
-        predictions = torch.stack(predictions, dim=2).to(self.device)
-        return torch.mean(predictions, dim=2).to(self.device)
+        return predictions
 
     def epoch_step(self, train_dataset, test_loader=None):
         """Perform the training of a single epoch

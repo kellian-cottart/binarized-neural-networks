@@ -9,7 +9,7 @@ class GPUTensorDataset(torch.utils.data.Dataset):
 
     def __init__(self, data, targets, device="cuda:0"):
         self.data = data.to(device)
-        self.targets = targets.to(torch.long).to(device)
+        self.targets = targets.to(device)
 
     def __getitem__(self, index):
         """ Return a (data, target) pair """
@@ -126,8 +126,10 @@ class GPULoading:
             test_x = test_x[:, permute_idx]
 
         train_dataset = GPUTensorDataset(
-            train_x, torch.from_numpy(train_y))
-        test_dataset = GPUTensorDataset(test_x, torch.from_numpy(test_y))
+            train_x, torch.from_numpy(train_y).type(
+                torch.LongTensor))
+        test_dataset = GPUTensorDataset(test_x.float(), torch.from_numpy(test_y).type(
+            torch.LongTensor))
         max_batch_size = len(test_dataset)
         if not self.as_dataset:
             # create a DataLoader to load the data in batches

@@ -6,38 +6,27 @@ import trainer
 from optimizer import *
 import os
 import json
-from sklearn.datasets import make_moons
 
 SEED = 2506  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+NUM_WORKERS = 0  # Number of workers for data loading when using CPU
+
+PADDING = 2  # from 28x28 to 32x32
+INPUT_SIZE = (28+PADDING*2)**2
 
 ### PATHS ###
-SAVE_FOLDER = "saved-two-moons"
+SAVE_FOLDER = "saved"
 DATASETS_PATH = "datasets"
+ALL_GPU = True
 
 if __name__ == "__main__":
     ### SEED ###
     torch.manual_seed(SEED)
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() and ALL_GPU:
         torch.cuda.manual_seed(SEED)
         torch.set_default_device(DEVICE)
         torch.set_default_dtype(torch.float32)
-
-    ### CREATE TWO MOONS DATASET ###
-    X, y = make_moons(n_samples=1152, noise=0.1, random_state=SEED)
-    X_train = X[:1024]
-    y_train = y[:1024]
-    X_test = X[1024:]
-    y_test = y[1024:]
-
-    train_tensor = GPUTensorDataset(
-        torch.from_numpy(X_train), torch.from_numpy(y_train))
-    test_tensor = GPUTensorDataset(
-        torch.from_numpy(X_test), torch.from_numpy(y_test))
-    train_loader = GPUDataLoader(train_tensor, batch_size=128, shuffle=True)
-    test_loader = GPUDataLoader(test_tensor, batch_size=1152-1024)
-    INPUT_SIZE = train_tensor.data.shape[1]
 
     ### NETWORK CONFIGURATION ###
     networks_data = [
@@ -71,13 +60,16 @@ if __name__ == "__main__":
                 "metaplasticity": metaplasticity,
                 "gamma": 0,
             },
-        } for metaplasticity in torch.linspace(0.1, 5, 10) for lr in [0.1, 0.01, 0.001]
+            "task": "PermutedMNIST",
+            "n_tasks": 10,
+            "padding": PADDING,
+        } for metaplasticity in torch.linspace(1.1, 1.4, 10) for lr in [0.1]
     ]
 
     for index, data in enumerate(networks_data):
 
         # name should be optimizer-layer2-layer3-...-layerN-1-task-metaplacity
-        name = f"{data['optimizer'].__name__}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers'][1:-1]])}"
+        name = f"{data['optimizer'].__name__}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers'][1:-1]])}-{data['task']}"
         # add some parameters to the name
         for key, value in data['optimizer_parameters'].items():
             name += f"-{key}-{value}"
@@ -89,6 +81,13 @@ if __name__ == "__main__":
         accuracies = []
         batch_size = data['training_parameters']['batch_size']
         padding = data['padding'] if 'padding' in data else 0
+        ### DATASET LOADING ###
+        if ALL_GPU:
+            loader = GPULoading(padding=padding,
+                                device=DEVICE, as_dataset=False)
+        else:
+            loader = CPULoading(DATASETS_PATH, padding=padding,
+                                num_workers=NUM_WORKERS)
         ### FOR EACH NETWORK IN THE DICT ###
         for iteration in range(N_NETWORKS):
             ### SEED ###
@@ -112,9 +111,28 @@ if __name__ == "__main__":
             print(network.model)
 
             ### TRAINING ###
-
-            network.fit(
-                train_loader, **data['training_parameters'], test_loader=test_loader, verbose=True)
+            task = data["task"]
+            if task == "Sequential":
+                mnist_train, mnist_test = mnist(loader, batch_size)
+                fashion_mnist_train, fashion_mnist_test = fashion_mnist(
+                    loader, batch_size)
+                test_loader = [mnist_test, fashion_mnist_test]
+                train_loader = [mnist_train, fashion_mnist_train]
+                for i, dataset in enumerate(train_loader):
+                    network.fit(
+                        dataset, **data['training_parameters'], test_loader=test_loader, verbose=True)
+            elif task == "PermutedMNIST":
+                n_tasks = data["n_tasks"]
+                permutations = [torch.randperm(INPUT_SIZE)
+                                for _ in range(n_tasks)]
+                # Normal MNIST to permute from
+                _, mnist_test = mnist(loader, batch_size)
+                for i in range(n_tasks):
+                    # Permuted loader
+                    train_dataset, _ = mnist(
+                        loader, batch_size=batch_size, permute_idx=permutations[i])
+                    network.fit(
+                        train_dataset, **data['training_parameters'], test_loader=[mnist_test], verbose=True, test_permutations=permutations)
 
             ### SAVING DATA ###
             os.makedirs(main_folder, exist_ok=True)
