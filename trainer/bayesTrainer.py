@@ -42,6 +42,28 @@ class BayesTrainer(GPUTrainer):
         self.loss = self.optimizer.step(
             input_size=dataset_size, closure=closure)
 
+    def predict(self, inputs, n_samples=1):
+        """Predict the output of the model on the given inputs
+
+        Args:
+            inputs (torch.Tensor): Input data
+
+        Returns:
+            torch.Tensor: Mean of the predictions
+            torch.Tensor: Standard deviation of the predictions
+        """
+        self.model.eval()
+        with torch.no_grad():
+            noise = []
+            for _ in range(n_samples):
+                noise.append(torch.bernoulli(
+                    torch.sigmoid(2*self.optimizer.state["lambda"])))
+            if len(noise) == 0:
+                noise.append(torch.where(self.optimizer.state['mu'] <= 0, torch.zeros_like(
+                    self.optimizer.state['mu']), torch.ones_like(self.optimizer.state['mu'])))
+            predictions = self.monte_carlo_prediction(inputs, noise)
+        return predictions.mean(dim=0), predictions.std(dim=0)
+
     def test(self, inputs, labels):
         """Test the model on the given inputs and labels
 
