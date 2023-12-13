@@ -24,7 +24,7 @@ class BayesTrainer(GPUTrainer):
 
     def fit(self, *args, **kwargs):
         super().fit(*args, **kwargs)
-        self.optimizer.update_prior_lambda()
+        # self.optimizer.update_prior_lambda()
 
     def batch_step(self, inputs, targets, dataset_size):
         """Perform the training of a single sample of the batch

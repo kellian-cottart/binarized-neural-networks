@@ -167,8 +167,7 @@ class GPUTrainer:
             }
             # if number of task cannot fit in one line, print it in a new line
         if len(kwargs) > 4:
-            pbar.set_postfix(current_loss=self.loss.item(
-            ), lr=self.optimizer.param_groups[0]['lr'] if "lr" in self.optimizer.param_groups[0] else None)
+            pbar.set_postfix(loss=self.loss.item())
             # Do a pretty print of our results
             pbar.write("=================")
             pbar.write("Testing accuracy: ")
@@ -176,4 +175,4 @@ class GPUTrainer:
                 pbar.write(f"\t{key}: {value}")
         else:
             pbar.set_postfix(current_loss=self.loss.item(
-            ), **kwargs, lr=self.optimizer.param_groups[0]['lr'] if "lr" in self.optimizer.param_groups[0] else None)
+            ), **kwargs)

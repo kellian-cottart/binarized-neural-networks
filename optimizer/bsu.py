@@ -2,6 +2,7 @@ import torch
 from torch.optim.optimizer import params_t
 from typing import Optional, Union
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
+from copy import deepcopy
 
 
 class BinarySynapticUncertainty(torch.optim.Optimizer):
@@ -13,8 +14,9 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
         lr (float): learning rate of the optimizer (default: 1e-3)
         temperature (float): temperature value of the Gumbel soft-max trick (Maddison et al., 2017)
         num_mcmc_samples (int): number of MCMC samples to compute the gradient (default: 1, if 0: computes the point estimate)
-        prior_lambda (FloatTensor): lambda of the prior distribution (for continual learning, input the previously found distribution) (default: None)
-        scale (float): scale of the prior distribution (default: 1)
+        init_lambda (int): initial value of lambda (default: 0)
+        prior_lambda (torch.Tensor): prior value of lambda (default: None)
+        gamma (float): coefficient of regularization (default: 0)
     """
 
     def __init__(self,
@@ -23,9 +25,9 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
                  lr: Union[float, torch.Tensor] = 1e-3,
                  temperature: float = 1e-8,
                  num_mcmc_samples: int = 1,
+                 init_lambda: int = 0,
                  prior_lambda: Optional[torch.Tensor] = None,
-                 init_lambda: int = 1,
-                 scale: float = 1.0
+                 gamma: float = 0.0
                  ):
         if not 0.0 <= metaplasticity:
             raise ValueError(f"Invalid learning rate: {metaplasticity}")
@@ -33,15 +35,16 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
             raise ValueError(f"Invalid learning rate: {lr}")
         if not 0.0 <= temperature:
             raise ValueError(f"Invalid temperature: {temperature}")
-        if prior_lambda is not None and not isinstance(prior_lambda, torch.Tensor):
-            raise ValueError(
-                f"Invalid prior lambda: {prior_lambda}, must be a tensor")
         if not 0 <= num_mcmc_samples:
             raise ValueError(
                 f"Invalid number of MCMC samples: {num_mcmc_samples}")
+        if not 0.0 <= init_lambda:
+            raise ValueError(f"Invalid initial lambda: {init_lambda}")
+        if not 0.0 <= gamma:
+            raise ValueError(f"Invalid gamma: {gamma}.")
 
-        defaults = dict(metaplasticity=metaplasticity, lr=lr, temperature=temperature,
-                        prior_lambda=prior_lambda, num_mcmc_samples=num_mcmc_samples, scale=scale)
+        defaults = dict(metaplasticity=metaplasticity, lr=lr, gamma=gamma,
+                        temperature=temperature, num_mcmc_samples=num_mcmc_samples)
         super().__init__(params, defaults)
 
         ### LAMBDA INIT ###
@@ -55,8 +58,12 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
         # Set all other parameters
         self.state['mu'] = torch.tanh(self.state['lambda'])
         self.state['step'] = 0
+        self.state['prior_lambda'] = []
+
         if prior_lambda is None:
-            self.state['prior_lambda'] = torch.zeros_like(param)
+            self.state['prior_lambda'].append(torch.zeros_like(param))
+        else:
+            self.state['prior_lambda'].append(prior_lambda)
 
     def update_prior_lambda(self):
         """ Update the prior lambda for continual learning
@@ -76,7 +83,7 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
         # Necessity for the closure function to evaluate the loss
         if closure is None:
             raise RuntimeError(
-                'BayesBiNN optimization step requires a closure function')
+                'BinarySynapticUncertainty optimization step requires a closure function')
         loss = closure()
         running_loss = []
 
@@ -86,7 +93,7 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
         # Groups are the iterable of parameters to optimize or dicts defining parameter groups
         for i, group in enumerate(self.param_groups):
             if i != 0:
-                continue
+                break
             # Parameters to optimize
             parameters = group['params']
             # Parameters of the optimizer
@@ -94,18 +101,18 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
             metaplasticity = group['metaplasticity']
             temperature = group['temperature']
             num_mcmc_samples = group['num_mcmc_samples']
-            scale = group['scale']
             lr = group['lr']
+            gamma = group['gamma']
 
             # State of the optimizer
-            step = self.state['step']
+            # lambda represents the intertia with each neuron
             lambda_ = self.state['lambda']
             mu = self.state['mu']
-            prior_lambda = self.state['prior_lambda']
+            self.state['prior_lambda'].append(lambda_)
+            prior = self.state['prior_lambda'][0]
 
             gradient_estimate = torch.zeros_like(lambda_)
 
-            ### OPTIMIZATION STEP ###
             if num_mcmc_samples <= 0:
                 ### POINT ESTIMATE ###
                 relaxed_w = torch.tanh(lambda_)
@@ -137,20 +144,16 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
                     num_mcmc_samples if num_mcmc_samples > 0 else 1)
 
             ### PARAMETER UPDATE ###
-            metaplastic_func = metaplasticity / \
-                torch.cosh(lambda_).pow(2)
-
-            # condition to be able to change the value of the weights
-            lambda_ -= lr * metaplastic_func * gradient_estimate
-
+            def metaplastic_func(m, x): return 1 / \
+                torch.cosh(torch.mul(m, x)).pow(2)
+            # Update lambda with metaplasticity
+            lambda_ = lambda_ - lr * metaplastic_func(metaplasticity, lambda_) * \
+                gradient_estimate - gamma * (lambda_ - prior)
+            # Use the prior lambda to coerce lambda
             self.state['lambda'] = lambda_
             self.state['mu'] = torch.tanh(lambda_)
-
-            ### SHOW THE DISTRIBUTION OF THE VALUES OF MU AS A PERCENTAGE ###
-            if step % 468 == 0:
-                # visualize_mu(self.state['mu'])
-                visualize_lambda(self.state['lambda'])
-
+            # remove the first element of the prior lambda
+            self.state['prior_lambda'] = self.state['prior_lambda'][1:]
         return torch.mean(torch.tensor(running_loss))
 
 

@@ -30,34 +30,6 @@ if __name__ == "__main__":
 
     ### NETWORK CONFIGURATION ###
     networks_data = [
-        # {
-        #     "nn_type": models.BayesianNN,
-        #     "nn_parameters": {
-        #         "layers": [INPUT_SIZE, 2048, 2048, 10],
-        #         "init": "uniform",
-        #         "device": DEVICE,
-        #         "std": 0.1,
-        #         "dropout": False,
-        #         "batchnorm": False,
-        #         "bnmomentum": 0.15,
-        #         "bneps": 0.0001,
-        #     },
-        #     "training_parameters": {
-        #         'n_epochs': 50,
-        #         'batch_size': 128,
-        #     },
-        #     "criterion": torch.functional.F.nll_loss,
-        #     "reduction": "mean",
-        #     "optimizer": MESU,
-        #     "optimizer_parameters": {
-        #         "sigma_p": 0.06,
-        #         "sigma_b": 10,
-        #         "update": 1,
-        #     },
-        #     "task": "Sequential",
-        #     "n_tasks": 10,
-        #     "padding": PADDING,
-        # }
         {
             "nn_type": models.BNN,
             "nn_parameters": {
@@ -67,58 +39,31 @@ if __name__ == "__main__":
                 "std": 0.1,
                 "dropout": False,
                 "batchnorm": True,
-                "bnmomentum": 0,
+                "bnmomentum": 0.15,
                 "bneps": 1e-5,
                 "latent_weights": False,
                 "running_stats": False,
             },
             "training_parameters": {
-                'n_epochs': 50,
+                'n_epochs': 20,
                 'batch_size': 128,
                 'test_mcmc_samples': 1,
             },
             "criterion": torch.functional.F.nll_loss,
-            "reduction": "sum",
+            "reduction": "mean",
             "optimizer": BinarySynapticUncertainty,
             "optimizer_parameters": {
                 "temperature": 1,
                 "num_mcmc_samples": 1,
-                "init_lambda": 1e-2,
-                "lr": learning_rate,
+                "init_lambda": 0,
+                "lr": lr,
                 "metaplasticity": metaplasticity,
+                "gamma": 0,
             },
-            "task": "Sequential",
+            "task": "PermutedMNIST",
             "n_tasks": 10,
             "padding": PADDING,
-        } for metaplasticity in [1, 0.1, 0.01] for learning_rate in [0.1, 0.01, 0.001]
-        # {
-        #     "nn_type": models.BNN,
-        #     "nn_parameters": {
-        #         "layers": [INPUT_SIZE, 4096, 4096, 10],
-        #         "init": "uniform",
-        #         "device": DEVICE,
-        #         "std": 0.1,
-        #         "dropout": False,
-        #         "batchnorm": True,
-        #         "latent_weights": True,
-        #     },
-        #     "training_parameters": {
-        #         'n_epochs': 50,
-        #         'batch_size': 128,
-        #     },
-        #     "criterion": torch.functional.F.nll_loss,
-        #     "reduction": "mean",
-        #     "optimizer": MetaplasticAdam,
-        #     "optimizer_parameters": {
-        #         "lr": 0.005,
-        #         "metaplasticity": metaplasticity,
-        #         "weight_decay": 1e-8,
-        #     },
-        #     "task": "Sequential",
-        #     "n_tasks": 10,
-        #     "padding": PADDING,
-        # } for metaplasticity in [1.5]
-
+        } for metaplasticity in torch.linspace(0.1, 5, 10) for lr in [0.1, 0.01, 0.001]
     ]
 
     for index, data in enumerate(networks_data):
@@ -215,4 +160,5 @@ if __name__ == "__main__":
 
         print(f"Exporting visualisation of {name} accuracy...")
         title = name + "-tasks"
-        visualize_sequential(title, accuracies, folder=main_folder)
+        visualize_sequential(title, accuracies, folder=main_folder, sequential=True if task ==
+                             "Sequential" else False)

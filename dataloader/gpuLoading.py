@@ -89,8 +89,6 @@ class GPULoading:
         test_y = idx2numpy.convert_from_file(
             path_test_y).astype(np.float32)
 
-        current_size = train_x.shape[1]
-
         # Flatten the images
         train_x = train_x.reshape(train_x.shape[0], -1)
         test_x = test_x.reshape(test_x.shape[0], -1)
@@ -107,32 +105,25 @@ class GPULoading:
         test_x = transform(test_x).squeeze(0).to(
             self.device)
 
-        # if permute_idx is given, permute the dataset as for PermutedMNIST
+        # De-flatten the images
+        train_x = train_x.view(train_x.shape[0], 28, 28)
+        test_x = test_x.view(test_x.shape[0], 28, 28)
+        # Regular padding
+        train_x = torch.nn.functional.pad(
+            train_x, (self.padding, self.padding, self.padding, self.padding))
+        test_x = torch.nn.functional.pad(
+            test_x, (self.padding, self.padding, self.padding, self.padding))
+        # Flatten the images
+        train_x = train_x.reshape(train_x.shape[0], -1)
+        test_x = test_x.reshape(test_x.shape[0], -1)
+
         if "permute_idx" in kwargs and kwargs["permute_idx"] is not None:
-            # Add padding (Ref: Chen Zeno - Task Agnostic Continual Learning Using Online Variational Bayes)
-            target_size = (current_size+self.padding*2)
-            train_x = torch.cat(
-                (train_x, torch.zeros(len(train_x), target_size**2-current_size**2).to(self.device)), axis=1)
-            test_x = torch.cat(
-                (test_x, torch.zeros(len(test_x), target_size**2-current_size**2).to(self.device)), axis=1)
             # permute_idx is the permutation to apply to the pixels of the images
             permute_idx = kwargs["permute_idx"]
             # Permute the pixels of the training examples using torch
             train_x = train_x[:, permute_idx]
             # Permute the pixels of the test examples
             test_x = test_x[:, permute_idx]
-        else:
-            # De-flatten the images
-            train_x = train_x.view(train_x.shape[0], 28, 28)
-            test_x = test_x.view(test_x.shape[0], 28, 28)
-            # Regular padding
-            train_x = torch.nn.functional.pad(
-                train_x, (self.padding, self.padding, self.padding, self.padding))
-            test_x = torch.nn.functional.pad(
-                test_x, (self.padding, self.padding, self.padding, self.padding))
-            # Flatten the images
-            train_x = train_x.reshape(train_x.shape[0], -1)
-            test_x = test_x.reshape(test_x.shape[0], -1)
 
         train_dataset = GPUTensorDataset(
             train_x, torch.from_numpy(train_y))
