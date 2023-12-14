@@ -32,7 +32,7 @@ class BayesianNN(DNN):
                 self.layers.append(torch.nn.BatchNorm1d(
                     layers[i+1],
                     affine=True,
-                    track_running_stats=True,
+                    track_running_stats=self.running_stats,
                     device=self.device,
                     eps=self.bneps,
                     momentum=self.bnmomentum))
@@ -50,12 +50,15 @@ class BayesianNN(DNN):
             else:
                 x = layer(torch.mean(x, dim=0))
             if layer is not self.layers[-1] and (i+1) % len(unique_layers) == 0:
-                x = torch.nn.functional.relu(x)
+                x = self.activation_function(x)
         # Average over samples if the last layer is a MetaBayesLinearParallel layer
         if isinstance(layer, MetaBayesLinearParallel):
             x = torch.nn.functional.log_softmax(x, dim=2)
-            if not log:
-                x = torch.exp(x)
-            return x.mean(0)
-        else:
-            return torch.nn.functional.log_softmax(x, dim=1)
+            x = torch.mean(x, dim=0)
+        if self.output_function == "softmax":
+            x = torch.nn.functional.softmax(x, dim=1)
+        if self.output_function == "log_softmax":
+            x = torch.nn.functional.log_softmax(x, dim=1)
+        if self.output_function == "sigmoid":
+            x = torch.nn.functional.sigmoid(x)
+        return x

@@ -22,10 +22,6 @@ class BayesTrainer(GPUTrainer):
 
         super().__init__(*args, **kwargs)
 
-    def fit(self, *args, **kwargs):
-        super().fit(*args, **kwargs)
-        # self.optimizer.update_prior_lambda()
-
     def batch_step(self, inputs, targets, dataset_size):
         """Perform the training of a single sample of the batch
         """
@@ -59,8 +55,10 @@ class BayesTrainer(GPUTrainer):
                 noise.append(torch.bernoulli(
                     torch.sigmoid(2*self.optimizer.state["lambda"])))
             if len(noise) == 0:
-                noise.append(torch.where(self.optimizer.state['mu'] <= 0, torch.zeros_like(
-                    self.optimizer.state['mu']), torch.ones_like(self.optimizer.state['mu'])))
+                noise.append(torch.where(self.optimizer.state['mu'] <= 0,
+                                         torch.zeros_like(
+                                             self.optimizer.state['mu']),
+                                         torch.ones_like(self.optimizer.state['mu'])))
             predictions = self.monte_carlo_prediction(inputs, noise)
         return predictions
 
@@ -75,9 +73,16 @@ class BayesTrainer(GPUTrainer):
             torch.Tensor: Predictions
         """
         predictions = self.predict(inputs, n_samples=self.test_mcmc_samples)
-        predictions = torch.mean(torch.stack(predictions, dim=2), dim=2)
-        predictions = torch.argmax(predictions, dim=1)
-        return torch.mean((predictions == labels).float()).item()
+        predictions = torch.stack(predictions, dim=0)
+        predictions = torch.mean(predictions, dim=0)
+        if "binary_cross_entropy" in self.criterion.__name__:
+            # apply exponential to get the probability
+            predictions = torch.functional.F.sigmoid(predictions)
+            predictions = torch.where(predictions >= 0.5, torch.ones_like(
+                predictions), torch.zeros_like(predictions))
+        else:
+            predictions = torch.argmax(predictions, dim=1)
+        return torch.mean((predictions == labels).float())
 
     def monte_carlo_prediction(self, inputs, noise):
         """Perform a monte carlo prediction on the given inputs

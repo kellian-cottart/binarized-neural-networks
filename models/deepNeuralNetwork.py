@@ -6,7 +6,21 @@ class DNN(torch.nn.Module):
     """ Neural Network Base Class
     """
 
-    def __init__(self, layers=[512], init='normal', std=0.01, device='cuda', dropout=False, batchnorm=True, bias=False, running_stats=True, bneps=1e-5, bnmomentum=0.1, *args, **kwargs):
+    def __init__(self,
+                 layers: list = [1024, 1024],
+                 init: str = "uniform",
+                 std: float = 0.01,
+                 device: str = "cuda:0",
+                 dropout: bool = False,
+                 batchnorm: bool = False,
+                 bias: bool = False,
+                 running_stats: bool = False,
+                 bneps: float = 1e-5,
+                 bnmomentum: float = 0.15,
+                 activation_function: torch.nn.functional = torch.nn.functional.relu,
+                 output_function: str = "softmax",
+                 *args,
+                 **kwargs):
         """ NN initialization
 
         Args: 
@@ -19,6 +33,9 @@ class DNN(torch.nn.Module):
             bias (bool): Whether to use bias
             bneps (float): BatchNorm epsilon
             bnmomentum (float): BatchNorm momentum
+            running_stats (bool): Whether to use running stats in BatchNorm
+            activation_function (torch.nn.functional): Activation function
+            output_function (str): Output function
         """
         super(DNN, self).__init__()
         self.n_layers = len(layers)-2
@@ -29,6 +46,8 @@ class DNN(torch.nn.Module):
         self.bneps = bneps
         self.bnmomentum = bnmomentum
         self.running_stats = running_stats
+        self.activation_function = activation_function
+        self.output_function = output_function
         ### LAYER INITIALIZATION ###
         self._layer_init(layers, bias)
         ### WEIGHT INITIALIZATION ###
@@ -77,7 +96,7 @@ class DNN(torch.nn.Module):
                 elif init == 'xavier':
                     torch.nn.init.xavier_normal_(layer.weight)
 
-    def forward(self, x, activation=torch.nn.functional.relu):
+    def forward(self, x):
         """ Forward pass of DNN
 
         Args: 
@@ -92,5 +111,12 @@ class DNN(torch.nn.Module):
         for i, layer in enumerate(self.layers):
             x = layer(x)
             if layer is not self.layers[-1] and (i+1) % len(unique_layers) == 0:
-                x = activation(x)
-        return torch.nn.functional.log_softmax(x, dim=1)
+                x = self.activation_function(x)
+
+        if self.output_function == "softmax":
+            x = torch.nn.functional.softmax(x, dim=1)
+        if self.output_function == "log_softmax":
+            x = torch.nn.functional.log_softmax(x, dim=1)
+        if self.output_function == "sigmoid":
+            x = torch.nn.functional.sigmoid(x)
+        return x

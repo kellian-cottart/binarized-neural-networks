@@ -134,8 +134,8 @@ class BayesBiNN(torch.optim.Optimizer):
                     # Compute the gradient
                     g = parameters_to_vector(
                         torch.autograd.grad(loss, parameters)).detach()
-                    s = ((1 - relaxed_w**2 + eps) / temperature /
-                         (1 - mu**2 + eps))
+                    s = ((1 - torch.pow(relaxed_w, 2) + eps) /
+                         (temperature * (1 - torch.pow(mu, 2) + eps)))
                     gradient_estimate.add_(s * g)
                 gradient_estimate.mul_(input_size).div_(
                     num_mcmc_samples if num_mcmc_samples > 0 else 1)

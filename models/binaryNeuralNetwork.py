@@ -4,8 +4,8 @@ from .layers import *
 from .deepNeuralNetwork import *
 
 
-class BNN(DNN):
-    """ Binarized Neural Network (BNN)
+class BiNN(DNN):
+    """ Binarized Neural Network (BiNN)
 
     Neural Network with binary weights and activations, using hidden weights called "degrees of certainty" (DOCs) to approximate real-valued weights.
 
@@ -55,14 +55,11 @@ networks
             torch.Tensor: Output tensor
 
         """
-        unique_layers = set(type(layer) for layer in self.layers)
-        ### FORWARD PASS ###
-        for i, layer in enumerate(self.layers):
-            x = layer(x)
-            if layer is not self.layers[-1] and (i+1) % len(unique_layers) == 0:
-                x = Sign.apply(x)
-        x = torch.nn.functional.log_softmax(x, dim=1)
-        return x
+        # In BNN, the activation function is the sign function on top of having binarized layers
+        if self.activation_function is None:
+            self.activation_function = Sign.apply
+        # call forward of parent class
+        return super().forward(x)
 
     def __repr__(self):
         return f"BNN({self.layers}, dropout={self.dropout}, latent_weights={self.latent_weights}, batchnorm={self.batchnorm}, bnmomentum={self.bnmomentum}, bneps={self.bneps}, device={self.device}"

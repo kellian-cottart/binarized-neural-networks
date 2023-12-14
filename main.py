@@ -31,7 +31,7 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "nn_type": models.BNN,
+            "nn_type": models.BiNN,
             "nn_parameters": {
                 "layers": [INPUT_SIZE, 2048, 2048, 10],
                 "init": "uniform",
@@ -43,6 +43,8 @@ if __name__ == "__main__":
                 "bneps": 1e-5,
                 "latent_weights": False,
                 "running_stats": False,
+                "activation_function": None,
+                "output_function": "log_softmax",
             },
             "training_parameters": {
                 'n_epochs': 20,
@@ -50,20 +52,20 @@ if __name__ == "__main__":
                 'test_mcmc_samples': 1,
             },
             "criterion": torch.functional.F.nll_loss,
-            "reduction": "mean",
+            "reduction": "sum",
             "optimizer": BinarySynapticUncertainty,
             "optimizer_parameters": {
                 "temperature": 1,
                 "num_mcmc_samples": 1,
                 "init_lambda": 0,
-                "lr": lr,
+                "lr": 0.001,
                 "metaplasticity": metaplasticity,
                 "gamma": 0,
             },
             "task": "PermutedMNIST",
             "n_tasks": 10,
             "padding": PADDING,
-        } for metaplasticity in torch.linspace(1.1, 1.4, 10) for lr in [0.1]
+        } for metaplasticity in torch.linspace(1, 3, 10)
     ]
 
     for index, data in enumerate(networks_data):
