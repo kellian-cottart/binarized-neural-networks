@@ -125,11 +125,15 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
             else:
                 ### MCMC SAMPLES ###
                 for _ in range(num_mcmc_samples):
-                    # Gumbel soft-max trick
-                    epsilon = torch.rand_like(lambda_)
+                    ### Gumbel soft-max trick ###
+                    # Add eps to avoid log(0)
+                    epsilon = torch.rand_like(lambda_) + eps
+                    # Compute the exploration noise
                     delta = torch.log(epsilon / (1 - epsilon)) / 2
+                    # Compute the relaxed weights
                     relaxed_w = torch.tanh(
                         (lambda_ + delta) / temperature)
+                    # Update the parameters
                     vector_to_parameters(relaxed_w, parameters)
                     # Compute the loss
                     loss = closure()
@@ -149,7 +153,7 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
 
             # Update lambda with metaplasticity
             lambda_ = lambda_ - lr * metaplastic_func(metaplasticity, lambda_) * \
-                gradient_estimate - gamma * (prior - lambda_)
+                gradient_estimate - gamma * (lambda_ - prior)
             # Use the prior lambda to coerce lambda
             self.state['lambda'] = lambda_
             self.state['mu'] = torch.tanh(lambda_)

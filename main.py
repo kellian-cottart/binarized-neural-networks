@@ -12,7 +12,7 @@ N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
 
-PADDING = 2  # from 28x28 to 32x32
+PADDING = 0  # from 28x28 to 32x32
 INPUT_SIZE = (28+PADDING*2)**2
 
 ### PATHS ###
@@ -33,16 +33,17 @@ if __name__ == "__main__":
         {
             "nn_type": models.BiNN,
             "nn_parameters": {
-                "layers": [INPUT_SIZE, 2048, 2048, 10],
+                "layers": [INPUT_SIZE, 4096, 4096, 10],
                 "init": "uniform",
                 "device": DEVICE,
                 "std": 0.1,
                 "dropout": False,
                 "batchnorm": True,
-                "bnmomentum": 0.15,
+                "bnmomentum": 0.1,
                 "bneps": 1e-5,
-                "latent_weights": False,
-                "running_stats": False,
+                "bias": False,
+                "latent_weights": True,
+                "running_stats": True,
                 "activation_function": None,
                 "output_function": "log_softmax",
             },
@@ -52,20 +53,16 @@ if __name__ == "__main__":
                 'test_mcmc_samples': 1,
             },
             "criterion": torch.functional.F.nll_loss,
-            "reduction": "mean",
-            "optimizer": BinarySynapticUncertainty,
+            "optimizer": MetaplasticAdam,
             "optimizer_parameters": {
-                "temperature": 1,
-                "num_mcmc_samples": 1,
-                "init_lambda": 0,
-                "lr": 1,
-                "metaplasticity": meta,
-                "gamma": gamma,
+                "metaplasticity": 1.5,
+                "lr": 0.005,
+                "weight_decay": 1e-8,
             },
             "task": "Sequential",
             "n_tasks": 10,
             "padding": PADDING,
-        } for gamma in [0.2, 0.4, 0.6, 0.8] for meta in [0.35]
+        },
     ]
 
     for index, data in enumerate(networks_data):

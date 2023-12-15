@@ -11,18 +11,16 @@ class GPUTrainer:
         optimizer_parameters (dict): Parameters of the optimizer
         criterion (torch.nn): Loss function
         device (torch.device): Device to use for the training
-        reduction (str, optional): Reduction to use for the loss. Defaults to "mean".
         kwargs: Additional arguments
             scheduler (torch.optim.lr_scheduler, optional): Scheduler to use. Defaults to None.
             scheduler_parameters (dict, optional): Parameters of the scheduler. Defaults to None.
     """
 
-    def __init__(self, model, optimizer, optimizer_parameters, criterion, device, reduction="mean", *args, **kwargs):
+    def __init__(self, model, optimizer, optimizer_parameters, criterion, device, *args, **kwargs):
         self.model = model
         self.optimizer = optimizer(
             self.model.parameters(), **optimizer_parameters)
         self.criterion = criterion
-        self.reduction = reduction
         self.device = device
         self.training_accuracy = []
         self.testing_accuracy = []
@@ -41,11 +39,9 @@ class GPUTrainer:
             targets (torch.Tensor): Labels
         """
         ### LOSS ###
-        self.model.train()
         self.loss = self.criterion(
             self.model.forward(inputs).to(self.device),
-            targets.to(self.device),
-            reduction=self.reduction)
+            targets.to(self.device))
 
         ### BACKWARD PASS ###
         self.optimizer.zero_grad()
@@ -60,6 +56,14 @@ class GPUTrainer:
             test_loader (torch.Tensor, optional): Testing data. Defaults to None.
         """
         ### SEND BATCH ###
+
+        # weird case where the latent weights are used and using .train() ruins the training
+        if "latent_weights" in dir(self.model):
+            if self.model.latent_weights is False:
+                self.model.train()
+        else:
+            self.model.train()
+
         for inputs, targets in train_dataset:
             if len(inputs.shape) == 4:
                 # remove all dimensions of size 1
@@ -107,17 +111,17 @@ class GPUTrainer:
     def test(self, inputs, labels):
         """ Predict labels for a full dataset and retrieve accuracy
 
-        Args: 
+        Args:
             inputs (torch.Tensor): Input data
             labels (torch.Tensor): Labels of the data
 
-        Returns: 
+        Returns:
             float: Accuracy of the model on the dataset
 
         """
         ### ACCURACY COMPUTATION ###
         predictions = self.predict(inputs)
-        if "binary_cross_entropy" in self.criterion.__name__:
+        if "__name__" in dir(self.criterion) and "cross_entropy" in self.criterion.__name__:
             # apply exponential to get the probability
             predictions = torch.functional.F.sigmoid(predictions)
             predictions = torch.where(predictions >= 0.5, torch.ones_like(

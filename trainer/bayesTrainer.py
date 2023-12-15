@@ -34,7 +34,6 @@ class BayesTrainer(GPUTrainer):
                                   reduction=self.reduction)
             return loss
         ### LOSS ###
-        self.model.train()
         self.loss = self.optimizer.step(
             input_size=dataset_size, closure=closure)
 
@@ -48,7 +47,6 @@ class BayesTrainer(GPUTrainer):
             torch.Tensor: Mean of the predictions
             torch.Tensor: Standard deviation of the predictions
         """
-        self.model.eval()
         with torch.no_grad():
             noise = []
             for _ in range(n_samples):
@@ -115,6 +113,7 @@ class BayesTrainer(GPUTrainer):
         ### SEND BATCH ###
 
         dataset_size = len(train_dataset) * train_dataset.batch_size
+        self.model.train()
         for inputs, targets in train_dataset:
             if len(inputs.shape) == 4:
                 # remove all dimensions of size 1
@@ -127,6 +126,7 @@ class BayesTrainer(GPUTrainer):
             self.scheduler.step()
 
         ### EVALUATE ###
+        self.model.eval()
         if test_loader is not None:
             test = []
             for testset in test_loader:
