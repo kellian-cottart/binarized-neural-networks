@@ -146,9 +146,10 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
             ### PARAMETER UPDATE ###
             def metaplastic_func(m, x): return 1 / \
                 torch.cosh(torch.mul(m, x)).pow(2)
+
             # Update lambda with metaplasticity
             lambda_ = lambda_ - lr * metaplastic_func(metaplasticity, lambda_) * \
-                gradient_estimate - gamma * (lambda_ - prior)
+                gradient_estimate - gamma * (prior - lambda_)
             # Use the prior lambda to coerce lambda
             self.state['lambda'] = lambda_
             self.state['mu'] = torch.tanh(lambda_)

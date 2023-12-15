@@ -47,25 +47,25 @@ if __name__ == "__main__":
                 "output_function": "log_softmax",
             },
             "training_parameters": {
-                'n_epochs': 20,
+                'n_epochs': 50,
                 'batch_size': 128,
                 'test_mcmc_samples': 1,
             },
             "criterion": torch.functional.F.nll_loss,
-            "reduction": "sum",
+            "reduction": "mean",
             "optimizer": BinarySynapticUncertainty,
             "optimizer_parameters": {
                 "temperature": 1,
                 "num_mcmc_samples": 1,
                 "init_lambda": 0,
-                "lr": 0.001,
-                "metaplasticity": metaplasticity,
-                "gamma": 0,
+                "lr": 1,
+                "metaplasticity": meta,
+                "gamma": gamma,
             },
-            "task": "PermutedMNIST",
+            "task": "Sequential",
             "n_tasks": 10,
             "padding": PADDING,
-        } for metaplasticity in torch.linspace(1, 3, 10)
+        } for gamma in [0.2, 0.4, 0.6, 0.8] for meta in [0.35]
     ]
 
     for index, data in enumerate(networks_data):
@@ -122,7 +122,7 @@ if __name__ == "__main__":
                 train_loader = [mnist_train, fashion_mnist_train]
                 for i, dataset in enumerate(train_loader):
                     network.fit(
-                        dataset, **data['training_parameters'], test_loader=test_loader, verbose=True)
+                        dataset, **data['training_parameters'], test_loader=test_loader, verbose=True, name_loader=["t1_MNIST", "t2_FashionMNIST"])
             elif task == "PermutedMNIST":
                 n_tasks = data["n_tasks"]
                 permutations = [torch.randperm(INPUT_SIZE)
