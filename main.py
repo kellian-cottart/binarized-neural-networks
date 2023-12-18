@@ -43,7 +43,7 @@ if __name__ == "__main__":
                 "bneps": 1e-5,
                 "bias": False,
                 "latent_weights": True,
-                "running_stats": True,
+                "running_stats": False,
                 "activation_function": None,
                 "output_function": "log_softmax",
             },

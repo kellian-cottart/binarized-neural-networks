@@ -41,7 +41,8 @@ class GPUTrainer:
         ### LOSS ###
         self.loss = self.criterion(
             self.model.forward(inputs).to(self.device),
-            targets.to(self.device))
+            targets.to(self.device)
+        )
 
         ### BACKWARD PASS ###
         self.optimizer.zero_grad()
@@ -56,14 +57,7 @@ class GPUTrainer:
             test_loader (torch.Tensor, optional): Testing data. Defaults to None.
         """
         ### SEND BATCH ###
-
-        # weird case where the latent weights are used and using .train() ruins the training
-        if "latent_weights" in dir(self.model):
-            if self.model.latent_weights is False:
-                self.model.train()
-        else:
-            self.model.train()
-
+        self.model.train()
         for inputs, targets in train_dataset:
             if len(inputs.shape) == 4:
                 # remove all dimensions of size 1
@@ -75,7 +69,6 @@ class GPUTrainer:
             self.scheduler.step()
 
         ### EVALUATE ###
-        self.model.eval()
         if test_loader is not None:
             test = []
             for testset in test_loader:
@@ -94,6 +87,7 @@ class GPUTrainer:
             if "test_permutations" not in dir(self):
                 self.testing_accuracy.append(test)
 
+    @torch.no_grad()
     def predict(self, inputs):
         """Predict the labels of the given inputs
 
@@ -103,11 +97,12 @@ class GPUTrainer:
         Returns:
             torch.Tensor: Predictions
         """
-        with torch.no_grad():
-            predictions = self.model.forward(
-                inputs).to(self.device)
+        self.model.eval()
+        predictions = self.model.forward(
+            inputs).to(self.device)
         return predictions
 
+    @torch.no_grad()
     def test(self, inputs, labels):
         """ Predict labels for a full dataset and retrieve accuracy
 
@@ -121,7 +116,7 @@ class GPUTrainer:
         """
         ### ACCURACY COMPUTATION ###
         predictions = self.predict(inputs)
-        if "__name__" in dir(self.criterion) and "cross_entropy" in self.criterion.__name__:
+        if "output_activation" in dir(self.model) and self.model.output_activation == "sigmoid":
             # apply exponential to get the probability
             predictions = torch.functional.F.sigmoid(predictions)
             predictions = torch.where(predictions >= 0.5, torch.ones_like(
@@ -130,6 +125,7 @@ class GPUTrainer:
             predictions = torch.argmax(predictions, dim=1)
         return torch.mean((predictions == labels).float())
 
+    @torch.no_grad()
     def test_continual(self, inputs, labels):
         """Test the model on the test set of the PermutedMNIST task
 

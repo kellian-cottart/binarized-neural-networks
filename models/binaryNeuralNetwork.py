@@ -26,7 +26,7 @@ networks
         super().__init__(*args, **kwargs)
 
     def _layer_init(self, layers, bias=False):
-        for i in range(self.n_layers+1):
+        for i, _ in enumerate(layers[:-1]):
             # Linear layers with BatchNorm
             if self.dropout and i != 0:
                 self.layers.append(torch.nn.Dropout(p=0.2))

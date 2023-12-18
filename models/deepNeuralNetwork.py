@@ -38,7 +38,6 @@ class DNN(torch.nn.Module):
             output_function (str): Output function
         """
         super(DNN, self).__init__()
-        self.n_layers = len(layers)-2
         self.device = device
         self.layers = torch.nn.ModuleList().to(self.device)
         self.dropout = dropout
@@ -60,7 +59,7 @@ class DNN(torch.nn.Module):
             dropout (bool): Whether to use dropout
             bias (bool): Whether to use bias
         """
-        for i in range(self.n_layers+1):
+        for i, _ in enumerate(layers[:-1]):
             # Linear layers with BatchNorm
             if self.dropout and i != 0:
                 self.layers.append(torch.nn.Dropout(p=0.2))
