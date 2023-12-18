@@ -1,5 +1,4 @@
 import torch
-from tqdm import trange
 
 
 class DNN(torch.nn.Module):
@@ -77,7 +76,7 @@ class DNN(torch.nn.Module):
                     eps=self.bneps,
                     momentum=self.bnmomentum))
 
-    def _weight_init(self, init='normal', std=0.01):
+    def _weight_init(self, init='normal', std=0.1):
         """ Initialize weights of each layer
 
         Args:

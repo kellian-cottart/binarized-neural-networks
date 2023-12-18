@@ -49,6 +49,9 @@ class MetaplasticAdam(torch.optim.Optimizer):
                         weight_decay=weight_decay, amsgrad=amsgrad, maximize=maximize)
         super().__init__(params, defaults)
 
+    def __repr__(self):
+        return f"MetaplasticAdam(lr={self.defaults['lr']}, betas={self.defaults['betas']}, metaplasticity={self.defaults['metaplasticity']}, eps={self.defaults['eps']}, weight_decay={self.defaults['weight_decay']}, amsgrad={self.defaults['amsgrad']}, maximize={self.defaults['maximize']})"
+
     def __setstate__(self, state):
         """ Set the optimizer state 
 

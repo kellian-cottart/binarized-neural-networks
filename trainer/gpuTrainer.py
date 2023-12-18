@@ -69,23 +69,45 @@ class GPUTrainer:
             self.scheduler.step()
 
         ### EVALUATE ###
-        if test_loader is not None:
-            test = []
-            for testset in test_loader:
-                batch = []
-                for inputs, targets in testset:
-                    if len(inputs.shape) == 4:
-                        # remove all dimensions of size 1
-                        inputs = inputs.squeeze()
-                    if "test_permutations" in dir(self):
-                        self.testing_accuracy.append(
-                            self.test_continual(inputs.to(self.device), targets.to(self.device)))
-                    else:
-                        batch.append(
-                            self.test(inputs.to(self.device), targets.to(self.device)))
-                test.append(torch.mean(torch.tensor(batch)))
-            if "test_permutations" not in dir(self):
-                self.testing_accuracy.append(test)
+        self.model.eval()
+        with torch.no_grad():
+            if test_loader is not None:
+                test = []
+                for testset in test_loader:
+                    batch = []
+                    for inputs, targets in testset:
+                        if len(inputs.shape) == 4:
+                            # remove all dimensions of size 1
+                            inputs = inputs.squeeze()
+                        if "test_permutations" in dir(self):
+                            self.testing_accuracy.append(
+                                self.test_continual(inputs.to(self.device), targets.to(self.device)))
+                        else:
+                            batch.append(
+                                self.test(inputs.to(self.device), targets.to(self.device)))
+                    test.append(torch.mean(torch.tensor(batch)))
+                if "test_permutations" not in dir(self):
+                    self.testing_accuracy.append(test)
+
+    def fit(self, train_loader, n_epochs, test_loader=None, verbose=True, name_loader=None, **kwargs):
+        """Train the model for n_epochs
+
+        Args:
+            train_loader (torch.utils.data.DataLoader): Training data
+            n_epochs (int): Number of epochs
+            test_loader (torch.utils.data.DataLoader, optional): Testing data. Defaults to None.
+            verbose (bool, optional): Whether to print the progress bar. Defaults to True.
+            name_loader (str, optional): Name of the test sets to print. Defaults to None.
+        """
+        if "test_permutations" in kwargs:
+            self.test_permutations = kwargs["test_permutations"]
+
+        pbar = trange(n_epochs, desc='Initialization')
+        for epoch in pbar:
+            self.epoch_step(train_loader, test_loader)
+            ### PROGRESS BAR ###
+            if verbose:
+                self.pbar_update(pbar, epoch, n_epochs, name_loader)
 
     @torch.no_grad()
     def predict(self, inputs):
@@ -115,6 +137,7 @@ class GPUTrainer:
 
         """
         ### ACCURACY COMPUTATION ###
+        self.model.eval()
         predictions = self.predict(inputs)
         if "output_activation" in dir(self.model) and self.model.output_activation == "sigmoid":
             # apply exponential to get the probability
@@ -141,36 +164,6 @@ class GPUTrainer:
             accuracies.append(
                 self.test(inputs[:, permutation].to(self.device), labels))
         return accuracies
-
-    def save(self, path):
-        """Save the model
-        """
-        torch.save(self.model.state_dict(), path)
-
-    def load(self, path):
-        """Load the model
-        """
-        self.model.load_state_dict(torch.load(path))
-
-    def fit(self, train_loader, n_epochs, test_loader=None, verbose=True, name_loader=None, **kwargs):
-        """Train the model for n_epochs
-
-        Args:
-            train_loader (torch.utils.data.DataLoader): Training data
-            n_epochs (int): Number of epochs
-            test_loader (torch.utils.data.DataLoader, optional): Testing data. Defaults to None.
-            verbose (bool, optional): Whether to print the progress bar. Defaults to True.
-            name_loader (str, optional): Name of the test sets to print. Defaults to None.
-        """
-        if "test_permutations" in kwargs:
-            self.test_permutations = kwargs["test_permutations"]
-
-        pbar = trange(n_epochs, desc='Initialization')
-        for epoch in pbar:
-            self.epoch_step(train_loader, test_loader)
-            ### PROGRESS BAR ###
-            if verbose:
-                self.pbar_update(pbar, epoch, n_epochs, name_loader)
 
     def pbar_update(self, pbar, epoch, n_epochs, name_loader=None):
         """Update the progress bar with the current loss and accuracy"""
@@ -202,3 +195,13 @@ class GPUTrainer:
         else:
             pbar.set_postfix(loss=self.loss.item(
             ), **kwargs)
+
+    def save(self, path):
+        """Save the model
+        """
+        torch.save(self.model.state_dict(), path)
+
+    def load(self, path):
+        """Load the model
+        """
+        self.model.load_state_dict(torch.load(path))

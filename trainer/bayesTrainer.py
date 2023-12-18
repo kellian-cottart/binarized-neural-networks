@@ -30,13 +30,13 @@ class BayesTrainer(GPUTrainer):
             self.optimizer.zero_grad()
             output = self.model.forward(inputs).to(self.device)
             loss = self.criterion(output.to(self.device),
-                                  targets.to(self.device),
-                                  reduction=self.reduction)
+                                  targets.to(self.device))
             return loss
         ### LOSS ###
         self.loss = self.optimizer.step(
             input_size=dataset_size, closure=closure)
 
+    @torch.no_grad()
     def predict(self, inputs, n_samples=1):
         """Predict the output of the model on the given inputs
 
@@ -47,19 +47,20 @@ class BayesTrainer(GPUTrainer):
             torch.Tensor: Mean of the predictions
             torch.Tensor: Standard deviation of the predictions
         """
-        with torch.no_grad():
-            noise = []
-            for _ in range(n_samples):
-                noise.append(torch.bernoulli(
-                    torch.sigmoid(2*self.optimizer.state["lambda"])))
-            if len(noise) == 0:
-                noise.append(torch.where(self.optimizer.state['mu'] <= 0,
-                                         torch.zeros_like(
-                                             self.optimizer.state['mu']),
-                                         torch.ones_like(self.optimizer.state['mu'])))
-            predictions = self.monte_carlo_prediction(inputs, noise)
+        self.model.eval()
+        noise = []
+        for _ in range(n_samples):
+            noise.append(torch.bernoulli(
+                torch.sigmoid(2*self.optimizer.state["lambda"])))
+        if len(noise) == 0:
+            noise.append(torch.where(self.optimizer.state['mu'] <= 0,
+                                     torch.zeros_like(
+                self.optimizer.state['mu']),
+                torch.ones_like(self.optimizer.state['mu'])))
+        predictions = self.monte_carlo_prediction(inputs, noise)
         return predictions
 
+    @torch.no_grad()
     def test(self, inputs, labels):
         """Test the model on the given inputs and labels
 
@@ -70,6 +71,7 @@ class BayesTrainer(GPUTrainer):
         Returns:
             torch.Tensor: Predictions
         """
+        self.model.eval()
         predictions = self.predict(inputs, n_samples=self.test_mcmc_samples)
         predictions = torch.stack(predictions, dim=0)
         predictions = torch.mean(predictions, dim=0)
@@ -82,6 +84,7 @@ class BayesTrainer(GPUTrainer):
             predictions = torch.argmax(predictions, dim=1)
         return torch.mean((predictions == labels).float())
 
+    @torch.no_grad()
     def monte_carlo_prediction(self, inputs, noise):
         """Perform a monte carlo prediction on the given inputs
 
@@ -92,6 +95,7 @@ class BayesTrainer(GPUTrainer):
         Returns:
             torch.Tensor: Predictions
         """
+        self.model.eval()
         # Retrieve the parameters
         parameters = self.optimizer.param_groups[0]['params']
         predictions = []
@@ -127,20 +131,21 @@ class BayesTrainer(GPUTrainer):
 
         ### EVALUATE ###
         self.model.eval()
-        if test_loader is not None:
-            test = []
-            for testset in test_loader:
-                batch = []
-                for inputs, targets in testset:
-                    if len(inputs.shape) == 4:
-                        # remove all dimensions of size 1
-                        inputs = inputs.squeeze()
-                    if "test_permutations" in dir(self):
-                        self.testing_accuracy.append(
-                            self.test_continual(inputs.to(self.device), targets.to(self.device)))
-                    else:
-                        batch.append(
-                            self.test(inputs.to(self.device), targets.to(self.device)))
-                test.append(torch.mean(torch.tensor(batch)))
-            if "test_permutations" not in dir(self):
-                self.testing_accuracy.append(test)
+        with torch.no_grad():
+            if test_loader is not None:
+                test = []
+                for testset in test_loader:
+                    batch = []
+                    for inputs, targets in testset:
+                        if len(inputs.shape) == 4:
+                            # remove all dimensions of size 1
+                            inputs = inputs.squeeze()
+                        if "test_permutations" in dir(self):
+                            self.testing_accuracy.append(
+                                self.test_continual(inputs.to(self.device), targets.to(self.device)))
+                        else:
+                            batch.append(
+                                self.test(inputs.to(self.device), targets.to(self.device)))
+                    test.append(torch.mean(torch.tensor(batch)))
+                if "test_permutations" not in dir(self):
+                    self.testing_accuracy.append(test)

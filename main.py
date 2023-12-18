@@ -40,7 +40,7 @@ if __name__ == "__main__":
                 "dropout": False,
                 "batchnorm": True,
                 "bnmomentum": 0.1,
-                "bneps": 1e-5,
+                "bneps": 1e-05,
                 "bias": False,
                 "latent_weights": True,
                 "running_stats": False,
@@ -59,6 +59,14 @@ if __name__ == "__main__":
                 "lr": 0.005,
                 "weight_decay": 1e-8,
             },
+            # "optimizer": BinarySynapticUncertainty,
+            # "optimizer_parameters": {
+            #     "metaplasticity": 0.35,
+            #     "lr": 1,
+            #     "temperature": 1,
+            #     "gamma": 0,
+            #     "num_mcmc_samples": 1,
+            # },
             "task": "Sequential",
             "n_tasks": 10,
             "padding": PADDING,
@@ -67,12 +75,14 @@ if __name__ == "__main__":
 
     for index, data in enumerate(networks_data):
 
+        ### NAME INITIALIZATION ###
         # name should be optimizer-layer2-layer3-...-layerN-1-task-metaplacity
         name = f"{data['optimizer'].__name__}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers'][1:-1]])}-{data['task']}"
         # add some parameters to the name
         for key, value in data['optimizer_parameters'].items():
             name += f"-{key}-{value}"
         print(f"Training {name}...")
+
         ### FOLDER INITIALIZATION ###
         main_folder = os.path.join(SAVE_FOLDER, name)
 
@@ -80,6 +90,7 @@ if __name__ == "__main__":
         accuracies = []
         batch_size = data['training_parameters']['batch_size']
         padding = data['padding'] if 'padding' in data else 0
+
         ### DATASET LOADING ###
         if ALL_GPU:
             loader = GPULoading(padding=padding,
@@ -87,12 +98,14 @@ if __name__ == "__main__":
         else:
             loader = CPULoading(DATASETS_PATH, padding=padding,
                                 num_workers=NUM_WORKERS)
+
         ### FOR EACH NETWORK IN THE DICT ###
         for iteration in range(N_NETWORKS):
             ### SEED ###
-            torch.manual_seed(SEED + iteration)
-            if torch.cuda.is_available():
-                torch.cuda.manual_seed(SEED + iteration)
+            if iteration != 0:
+                torch.manual_seed(SEED + iteration)
+                if torch.cuda.is_available():
+                    torch.cuda.manual_seed(SEED + iteration)
 
             ### NETWORK INITIALIZATION ###
             model = data['nn_type'](**data['nn_parameters'])
@@ -106,7 +119,7 @@ if __name__ == "__main__":
                                                model=model, **data, device=DEVICE)
             else:
                 network = trainer.GPUTrainer(batch_size=batch_size,
-                                             model=model, **data, device=DEVICE, logarithmic=True)
+                                             model=model, **data, device=DEVICE)
             print(network.model)
 
             ### TRAINING ###
@@ -119,7 +132,12 @@ if __name__ == "__main__":
                 train_loader = [mnist_train, fashion_mnist_train]
                 for i, dataset in enumerate(train_loader):
                     network.fit(
-                        dataset, **data['training_parameters'], test_loader=test_loader, verbose=True, name_loader=["t1_MNIST", "t2_FashionMNIST"])
+                        dataset,
+                        **data['training_parameters'],
+                        test_loader=test_loader,
+                        verbose=True,
+                        name_loader=["t1_MNIST", "t2_FashionMNIST"]
+                    )
             elif task == "PermutedMNIST":
                 n_tasks = data["n_tasks"]
                 permutations = [torch.randperm(INPUT_SIZE)
