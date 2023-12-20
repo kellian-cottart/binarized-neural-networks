@@ -31,6 +31,15 @@ class GPUTrainer:
             self.scheduler = scheduler(
                 self.optimizer, **scheduler_parameters)
 
+    def reset_optimizer(self, optimizer_parameters):
+        """Reset the optimizer parameters such as momentum and learning rate
+
+        Args:
+            optimizer_parameters (dict): Parameters of the optimizer
+        """
+        self.optimizer = self.optimizer.__class__(
+            self.model.parameters(), **optimizer_parameters)
+
     def batch_step(self, inputs, targets):
         """Perform the training of a single batch
 
@@ -73,21 +82,17 @@ class GPUTrainer:
         with torch.no_grad():
             if test_loader is not None:
                 test = []
-                for testset in test_loader:
+                # Sending MNIST to the permutation function, returns an iterator
+                if "test_permutations" in dir(self):
+                    test_loader = self.yield_permutation(test_loader[0])
+                # Iterate over the Dataloaders
+                for i, dataloader in enumerate(test_loader):
                     batch = []
-                    for inputs, targets in testset:
-                        if len(inputs.shape) == 4:
-                            # remove all dimensions of size 1
-                            inputs = inputs.squeeze()
-                        if "test_permutations" in dir(self):
-                            self.testing_accuracy.append(
-                                self.test_continual(inputs.to(self.device), targets.to(self.device)))
-                        else:
-                            batch.append(
-                                self.test(inputs.to(self.device), targets.to(self.device)))
+                    for inputs, targets in dataloader:
+                        batch.append(
+                            self.test(inputs.to(self.device), targets.to(self.device)))
                     test.append(torch.mean(torch.tensor(batch)))
-                if "test_permutations" not in dir(self):
-                    self.testing_accuracy.append(test)
+                self.testing_accuracy.append(test)
 
     def fit(self, train_loader, n_epochs, test_loader=None, verbose=True, name_loader=None, **kwargs):
         """Train the model for n_epochs
@@ -183,18 +188,12 @@ class GPUTrainer:
                 kwargs = {
                     name: f"{accuracy:.2%}" for name, accuracy in zip(name_loader, self.testing_accuracy[-1])
                 }
-
-            # if number of task cannot fit in one line, print it in a new line
-        if len(kwargs) > 4:
             pbar.set_postfix(loss=self.loss.item())
             # Do a pretty print of our results
             pbar.write("=================")
             pbar.write("Testing accuracy: ")
             for key, value in kwargs.items():
                 pbar.write(f"\t{key}: {value}")
-        else:
-            pbar.set_postfix(loss=self.loss.item(
-            ), **kwargs)
 
     def save(self, path):
         """Save the model
@@ -205,3 +204,16 @@ class GPUTrainer:
         """Load the model
         """
         self.model.load_state_dict(torch.load(path))
+
+    def yield_permutation(self, loader):
+        """Yield the permuted inputs
+
+        Args:
+            loader (torch.DataLoader): Loader to use containing MNIST
+
+        Yields:
+            iterator: Iterator over the permuted loaders 
+        """
+        for permutation in self.test_permutations:
+            loader.__unpermute__()
+            yield loader.__permute__(permutation)

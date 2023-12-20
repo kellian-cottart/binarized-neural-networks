@@ -75,7 +75,7 @@ class BayesTrainer(GPUTrainer):
         predictions = self.predict(inputs, n_samples=self.test_mcmc_samples)
         predictions = torch.stack(predictions, dim=0)
         predictions = torch.mean(predictions, dim=0)
-        if "binary_cross_entropy" in self.criterion.__name__:
+        if "output_activation" in dir(self.model) and self.model.output_activation == "sigmoid":
             # apply exponential to get the probability
             predictions = torch.functional.F.sigmoid(predictions)
             predictions = torch.where(predictions >= 0.5, torch.ones_like(
@@ -115,13 +115,9 @@ class BayesTrainer(GPUTrainer):
             test_loader (torch.Tensor, optional): Testing data. Defaults to None.
         """
         ### SEND BATCH ###
-
         dataset_size = len(train_dataset) * train_dataset.batch_size
         self.model.train()
         for inputs, targets in train_dataset:
-            if len(inputs.shape) == 4:
-                # remove all dimensions of size 1
-                inputs = inputs.squeeze()
             self.batch_step(inputs.to(self.device),
                             targets.to(self.device), dataset_size)
 
@@ -130,22 +126,19 @@ class BayesTrainer(GPUTrainer):
             self.scheduler.step()
 
         ### EVALUATE ###
+
         self.model.eval()
         with torch.no_grad():
             if test_loader is not None:
                 test = []
-                for testset in test_loader:
+                # Sending MNIST to the permutation function, returns an iterator
+                if "test_permutations" in dir(self):
+                    test_loader = self.yield_permutation(test_loader[0])
+                # Iterate over the Dataloaders
+                for i, dataloader in enumerate(test_loader):
                     batch = []
-                    for inputs, targets in testset:
-                        if len(inputs.shape) == 4:
-                            # remove all dimensions of size 1
-                            inputs = inputs.squeeze()
-                        if "test_permutations" in dir(self):
-                            self.testing_accuracy.append(
-                                self.test_continual(inputs.to(self.device), targets.to(self.device)))
-                        else:
-                            batch.append(
-                                self.test(inputs.to(self.device), targets.to(self.device)))
+                    for inputs, targets in dataloader:
+                        batch.append(
+                            self.test(inputs.to(self.device), targets.to(self.device)))
                     test.append(torch.mean(torch.tensor(batch)))
-                if "test_permutations" not in dir(self):
-                    self.testing_accuracy.append(test)
+                self.testing_accuracy.append(test)

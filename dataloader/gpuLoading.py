@@ -54,6 +54,17 @@ class GPUDataLoader():
         """ Return the number of batches """
         return len(self.dataset)//self.batch_size
 
+    def __permute__(self, permutation):
+        """ Permute the pixels of the images """
+        self.dataset.original = self.dataset.data
+        self.dataset.data = self.dataset.data[:, permutation]
+        return self
+
+    def __unpermute__(self):
+        """ Unpermute the pixels of the images """
+        if "original" in dir(self.dataset):
+            self.dataset.data = self.dataset.original
+
 
 class GPULoading:
     """ Load local datasets on GPU
@@ -97,7 +108,7 @@ class GPULoading:
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Lambda(lambda x: x/255.),
-            transforms.Normalize(0, 1),
+            transforms.Normalize((0,), (1,))
         ])
 
         train_x = transform(train_x).squeeze(0).to(
@@ -127,9 +138,9 @@ class GPULoading:
 
         train_dataset = GPUTensorDataset(
             train_x, torch.from_numpy(train_y).type(
-                torch.LongTensor))
+                torch.LongTensor), device=self.device)
         test_dataset = GPUTensorDataset(test_x.float(), torch.from_numpy(test_y).type(
-            torch.LongTensor))
+            torch.LongTensor), device=self.device)
         max_batch_size = len(test_dataset)
         if not self.as_dataset:
             # create a DataLoader to load the data in batches
@@ -143,5 +154,4 @@ class GPULoading:
                 train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
             test_dataset = torch.utils.data.DataLoader(
                 test_dataset, batch_size=max_batch_size, shuffle=False)
-
         return train_dataset, test_dataset

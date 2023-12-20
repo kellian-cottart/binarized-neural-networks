@@ -6,13 +6,14 @@ import trainer
 from optimizer import *
 import os
 import json
+from ray import tune
 
 SEED = 2506  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
 
-PADDING = 0  # from 28x28 to 32x32
+PADDING = 2  # from 28x28 to 32x32
 INPUT_SIZE = (28+PADDING*2)**2
 
 ### PATHS ###
@@ -33,7 +34,7 @@ if __name__ == "__main__":
         {
             "nn_type": models.BiNN,
             "nn_parameters": {
-                "layers": [INPUT_SIZE, 4096, 4096, 10],
+                "layers": [INPUT_SIZE, 2048, 2048, 10],
                 "init": "uniform",
                 "device": DEVICE,
                 "std": 0.1,
@@ -53,12 +54,12 @@ if __name__ == "__main__":
                 'test_mcmc_samples': 1,
             },
             "criterion": torch.functional.F.nll_loss,
-            "optimizer": MetaplasticAdam,
-            "optimizer_parameters": {
-                "metaplasticity": 1.5,
-                "lr": 0.005,
-                "weight_decay": 1e-8,
-            },
+            # "optimizer": MetaplasticAdam,
+            # "optimizer_parameters": {
+            #     "metaplasticity": 1.35,
+            #     "lr": 0.005,
+            #     "weight_decay": 1e-9,
+            # },
             # "optimizer": BinarySynapticUncertainty,
             # "optimizer_parameters": {
             #     "metaplasticity": 0.35,
@@ -67,16 +68,25 @@ if __name__ == "__main__":
             #     "gamma": 0,
             #     "num_mcmc_samples": 1,
             # },
-            "task": "Sequential",
-            "n_tasks": 10,
+            "optimizer": BinarySynapticUncertaintyTaskBoundaries,
+            "optimizer_parameters": {
+                "metaplasticity": 1,
+                "lr": lr,
+                "temperature": 1,
+                "gamma": 0,
+                "num_mcmc_samples": 1,
+                "init_lambda": init,
+            },
+            "task": "PermutedMNIST",
+            "n_tasks": 10,  # PermutedMNIST: number of tasks, Sequential: number of mnist, fashion_mnist pairs
             "padding": PADDING,
-        },
+        } for lr in [5] for init in [0]
     ]
 
     for index, data in enumerate(networks_data):
 
         ### NAME INITIALIZATION ###
-        # name should be optimizer-layer2-layer3-...-layerN-1-task-metaplacity
+        # name should be optimizer-layer2-layer3-...-layerN-1-task-metaplac ity
         name = f"{data['optimizer'].__name__}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers'][1:-1]])}-{data['task']}"
         # add some parameters to the name
         for key, value in data['optimizer_parameters'].items():
@@ -92,12 +102,9 @@ if __name__ == "__main__":
         padding = data['padding'] if 'padding' in data else 0
 
         ### DATASET LOADING ###
-        if ALL_GPU:
-            loader = GPULoading(padding=padding,
-                                device=DEVICE, as_dataset=False)
-        else:
-            loader = CPULoading(DATASETS_PATH, padding=padding,
-                                num_workers=NUM_WORKERS)
+        loader = GPULoading(padding=padding,
+                            device=DEVICE,
+                            as_dataset=False)
 
         ### FOR EACH NETWORK IN THE DICT ###
         for iteration in range(N_NETWORKS):
@@ -114,7 +121,7 @@ if __name__ == "__main__":
             ident = f"{name} - {index}"
 
             ### INSTANTIATE THE TRAINER ###
-            if data["optimizer"] in [BinarySynapticUncertainty, BayesBiNN]:
+            if data["optimizer"] in [BinarySynapticUncertainty, BayesBiNN, BinarySynapticUncertaintyTaskBoundaries]:
                 network = trainer.BayesTrainer(batch_size=batch_size,
                                                model=model, **data, device=DEVICE)
             else:
@@ -129,15 +136,23 @@ if __name__ == "__main__":
                 fashion_mnist_train, fashion_mnist_test = fashion_mnist(
                     loader, batch_size)
                 test_loader = [mnist_test, fashion_mnist_test]
-                train_loader = [mnist_train, fashion_mnist_train]
-                for i, dataset in enumerate(train_loader):
+                train_loader = []
+                for n in range(data["n_tasks"]):
+                    train_loader.append(mnist_train)
+                    train_loader.append(fashion_mnist_train)
+                for task_dataset in train_loader:
                     network.fit(
-                        dataset,
+                        task_dataset,
                         **data['training_parameters'],
                         test_loader=test_loader,
                         verbose=True,
-                        name_loader=["t1_MNIST", "t2_FashionMNIST"]
+                        name_loader=["MNIST", "FashionMNIST"]
                     )
+                    ### TASK BOUNDARIES ###
+                    if data["optimizer"] in [BinarySynapticUncertaintyTaskBoundaries, BayesBiNN]:
+                        network.optimizer.update_prior_lambda()
+                    if data["optimizer"] == MetaplasticAdam:
+                        network.reset_optimizer(data['optimizer_parameters'])
             elif task == "PermutedMNIST":
                 n_tasks = data["n_tasks"]
                 permutations = [torch.randperm(INPUT_SIZE)
@@ -150,6 +165,14 @@ if __name__ == "__main__":
                         loader, batch_size=batch_size, permute_idx=permutations[i])
                     network.fit(
                         train_dataset, **data['training_parameters'], test_loader=[mnist_test], verbose=True, test_permutations=permutations)
+                    ### TASK BOUNDARIES ###
+                    if data["optimizer"] in [BinarySynapticUncertaintyTaskBoundaries, BayesBiNN]:
+                        network.optimizer.update_prior_lambda()
+                    if data["optimizer"] == MetaplasticAdam:
+                        network.reset_optimizer(data['optimizer_parameters'])
+            else:
+                raise ValueError(
+                    f"Task {task} is not implemented. Please choose between Sequential and PermutedMNIST")
 
             ### SAVING DATA ###
             os.makedirs(main_folder, exist_ok=True)

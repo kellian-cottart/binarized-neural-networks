@@ -4,7 +4,7 @@ from typing import Optional, Union
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 
 
-class BinarySynapticUncertainty(torch.optim.Optimizer):
+class BinarySynapticUncertaintyTaskBoundaries(torch.optim.Optimizer):
     """ BinarySynapticUncertainty Optimizer for PyTorch
 
     Args: 
@@ -42,26 +42,28 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
         if not 0.0 <= gamma:
             raise ValueError(f"Invalid gamma: {gamma}.")
 
-        defaults = dict(metaplasticity=metaplasticity, lr=lr, gamma=gamma,
-                        temperature=temperature, num_mcmc_samples=num_mcmc_samples)
+        defaults = dict(metaplasticity=metaplasticity,
+                        lr=lr,
+                        gamma=gamma,
+                        temperature=temperature,
+                        num_mcmc_samples=num_mcmc_samples)
         super().__init__(params, defaults)
 
         ### LAMBDA INIT ###
         # Know the size of the input
         param = parameters_to_vector(self.param_groups[0]['params'])
         # Initialize lambda as a gaussian around 0 with std init_lambda
-        self.state['lambda'] = torch.normal(
-            mean=0, std=init_lambda, size=param.shape
-        ).to(param.device)
+        if init_lambda == 0:
+            self.state['lambda'] = torch.zeros_like(param)
+        else:
+            self.state['lambda'] = torch.normal(
+                mean=0, std=init_lambda, size=param.shape
+            ).to(param.device)
         # Set all other parameters
         self.state['mu'] = torch.tanh(self.state['lambda'])
         self.state['step'] = 0
-        self.state['prior_lambda'] = []
-
-        if prior_lambda is None:
-            self.state['prior_lambda'].append(torch.zeros_like(param))
-        else:
-            self.state['prior_lambda'].append(prior_lambda)
+        self.state['prior_lambda'] = prior_lambda if prior_lambda is not None else torch.zeros_like(
+            param)
 
     def update_prior_lambda(self):
         """ Update the prior lambda for continual learning
@@ -106,8 +108,7 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
             # lambda represents the intertia with each neuron
             lambda_ = self.state['lambda']
             mu = self.state['mu']
-            self.state['prior_lambda'].append(lambda_)
-            prior = self.state['prior_lambda'][0]
+            prior = self.state['prior_lambda']
 
             gradient_estimate = torch.zeros_like(lambda_)
 
@@ -150,13 +151,11 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
                 torch.cosh(torch.mul(m, x)).pow(2)
 
             # Update lambda with metaplasticity
+            # And use the prior lambda to coerce lambda
             lambda_ = lambda_ - lr * metaplastic_func(metaplasticity, lambda_) * \
                 gradient_estimate - gamma * (prior - lambda_)
-            # Use the prior lambda to coerce lambda
             self.state['lambda'] = lambda_
             self.state['mu'] = torch.tanh(lambda_)
-            # remove the first element of the prior lambda
-            self.state['prior_lambda'] = self.state['prior_lambda'][1:]
         return torch.mean(torch.tensor(running_loss))
 
 
