@@ -6,7 +6,6 @@ import trainer
 from optimizer import *
 import os
 import json
-from ray import tune
 
 SEED = 2506  # Random seed
 N_NETWORKS = 1  # Number of networks to train
@@ -108,71 +107,52 @@ if __name__ == "__main__":
 
         ### FOR EACH NETWORK IN THE DICT ###
         for iteration in range(N_NETWORKS):
-            ### SEED ###
+            ### INIT ###
             if iteration != 0:
                 torch.manual_seed(SEED + iteration)
                 if torch.cuda.is_available():
                     torch.cuda.manual_seed(SEED + iteration)
-
-            ### NETWORK INITIALIZATION ###
             model = data['nn_type'](**data['nn_parameters'])
-
-            ### W&B INITIALIZATION ###
             ident = f"{name} - {index}"
 
             ### INSTANTIATE THE TRAINER ###
             if data["optimizer"] in [BinarySynapticUncertainty, BayesBiNN, BinarySynapticUncertaintyTaskBoundaries]:
-                network = trainer.BayesTrainer(batch_size=batch_size,
-                                               model=model, **data, device=DEVICE)
+                net_trainer = trainer.BayesTrainer(batch_size=batch_size,
+                                                   model=model, **data, device=DEVICE)
             else:
-                network = trainer.GPUTrainer(batch_size=batch_size,
-                                             model=model, **data, device=DEVICE)
-            print(network.model)
+                net_trainer = trainer.GPUTrainer(batch_size=batch_size,
+                                                 model=model, **data, device=DEVICE)
+            print(net_trainer.model)
 
             ### TRAINING ###
-            task = data["task"]
-            if task == "Sequential":
-                mnist_train, mnist_test = mnist(loader, batch_size)
-                fashion_mnist_train, fashion_mnist_test = fashion_mnist(
+            mnist_train, mnist_test = mnist(loader, batch_size)
+            if data["task"] == "Sequential":
+                fashion_train, fashion_test = fashion_mnist(
                     loader, batch_size)
-                test_loader = [mnist_test, fashion_mnist_test]
-                train_loader = []
-                for n in range(data["n_tasks"]):
-                    train_loader.append(mnist_train)
-                    train_loader.append(fashion_mnist_train)
-                for task_dataset in train_loader:
-                    network.fit(
-                        task_dataset,
-                        **data['training_parameters'],
-                        test_loader=test_loader,
-                        verbose=True,
-                        name_loader=["MNIST", "FashionMNIST"]
-                    )
-                    ### TASK BOUNDARIES ###
-                    if data["optimizer"] in [BinarySynapticUncertaintyTaskBoundaries, BayesBiNN]:
-                        network.optimizer.update_prior_lambda()
-                    if data["optimizer"] == MetaplasticAdam:
-                        network.reset_optimizer(data['optimizer_parameters'])
-            elif task == "PermutedMNIST":
-                n_tasks = data["n_tasks"]
+                train_loader = [mnist_train, fashion_train]
+                test_loader = [mnist_test, fashion_test]
+            elif data["task"] == "PermutedMNIST":
                 permutations = [torch.randperm(INPUT_SIZE)
-                                for _ in range(n_tasks)]
-                # Normal MNIST to permute from
-                _, mnist_test = mnist(loader, batch_size)
-                for i in range(n_tasks):
-                    # Permuted loader
-                    train_dataset, _ = mnist(
-                        loader, batch_size=batch_size, permute_idx=permutations[i])
-                    network.fit(
-                        train_dataset, **data['training_parameters'], test_loader=[mnist_test], verbose=True, test_permutations=permutations)
-                    ### TASK BOUNDARIES ###
-                    if data["optimizer"] in [BinarySynapticUncertaintyTaskBoundaries, BayesBiNN]:
-                        network.optimizer.update_prior_lambda()
-                    if data["optimizer"] == MetaplasticAdam:
-                        network.reset_optimizer(data['optimizer_parameters'])
+                                for _ in range(data["n_tasks"])]
+                train_loader = net_trainer.yield_permutation(
+                    mnist_train, permutations)
+                test_loader = [mnist_test]
             else:
                 raise ValueError(
-                    f"Task {task} is not implemented. Please choose between Sequential and PermutedMNIST")
+                    f"Task {data['task']} is not implemented. Please choose between Sequential and PermutedMNIST")
+
+            for task_dataset in train_loader:
+                net_trainer.fit(
+                    task_dataset,
+                    **data['training_parameters'],
+                    test_loader=test_loader,
+                    permutations=permutations if data["task"] == "PermutedMNIST" else None,
+                )
+                ### TASK BOUNDARIES ###
+                if data["optimizer"] in [BinarySynapticUncertaintyTaskBoundaries, BayesBiNN]:
+                    net_trainer.optimizer.update_prior_lambda()
+                if data["optimizer"] == MetaplasticAdam:
+                    net_trainer.reset_optimizer(data['optimizer_parameters'])
 
             ### SAVING DATA ###
             os.makedirs(main_folder, exist_ok=True)
@@ -182,7 +162,7 @@ if __name__ == "__main__":
 
             print(f"Saving {name} weights, accuracy and figure...")
             weights_name = name + "-weights"
-            network.save(versionning(sub_folder, weights_name, ".pt"))
+            net_trainer.save(versionning(sub_folder, weights_name, ".pt"))
 
             print(f"Saving {name} configuration...")
             # dump data as json, and turn into string all non-json serializable objects
@@ -193,12 +173,12 @@ if __name__ == "__main__":
 
             print(f"Saving {name} accuracy...")
             accuracy_name = name + "-accuracy"
-            accuracy = network.testing_accuracy
+            accuracy = net_trainer.testing_accuracy
             torch.save(accuracy, versionning(
                 sub_folder, accuracy_name, ".pt"))
             accuracies.append(accuracy)
 
         print(f"Exporting visualisation of {name} accuracy...")
         title = name + "-tasks"
-        visualize_sequential(title, accuracies, folder=main_folder, sequential=True if task ==
+        visualize_sequential(title, accuracies, folder=main_folder, sequential=True if data['task'] ==
                              "Sequential" else False)

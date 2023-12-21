@@ -14,7 +14,9 @@ class BayesTrainer(GPUTrainer):
     """
 
     def __init__(self, *args, **kwargs):
-        if "test_mcmc_samples" in kwargs["training_parameters"]:
+        if "test_mcmc_samples" in kwargs:
+            self.test_mcmc_samples = kwargs["test_mcmc_samples"]
+        elif "training_parameters" in kwargs and "test_mcmc_samples" in kwargs["training_parameters"]:
             self.test_mcmc_samples = kwargs["training_parameters"]["test_mcmc_samples"]
         else:
             raise ValueError(
@@ -120,25 +122,3 @@ class BayesTrainer(GPUTrainer):
         for inputs, targets in train_dataset:
             self.batch_step(inputs.to(self.device),
                             targets.to(self.device), dataset_size)
-
-        ### SCHEDULER ###
-        if "scheduler" in dir(self):
-            self.scheduler.step()
-
-        ### EVALUATE ###
-
-        self.model.eval()
-        with torch.no_grad():
-            if test_loader is not None:
-                test = []
-                # Sending MNIST to the permutation function, returns an iterator
-                if "test_permutations" in dir(self):
-                    test_loader = self.yield_permutation(test_loader[0])
-                # Iterate over the Dataloaders
-                for i, dataloader in enumerate(test_loader):
-                    batch = []
-                    for inputs, targets in dataloader:
-                        batch.append(
-                            self.test(inputs.to(self.device), targets.to(self.device)))
-                    test.append(torch.mean(torch.tensor(batch)))
-                self.testing_accuracy.append(test)

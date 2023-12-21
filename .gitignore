@@ -2,6 +2,7 @@ saved
 datasets
 wandb
 utils/test
+gridsearch
 
 __pycache__/
 *.py[cod]

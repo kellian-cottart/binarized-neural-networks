@@ -1,5 +1,5 @@
 import torch
-from tqdm import trange
+import tqdm
 
 
 class GPUTrainer:
@@ -19,11 +19,14 @@ class GPUTrainer:
     def __init__(self, model, optimizer, optimizer_parameters, criterion, device, *args, **kwargs):
         self.model = model
         self.optimizer = optimizer(
-            self.model.parameters(), **optimizer_parameters)
+            self.model.parameters(),
+            **optimizer_parameters
+        )
         self.criterion = criterion
         self.device = device
         self.training_accuracy = []
         self.testing_accuracy = []
+        self.mean_testing_accuracy = []
         # Scheduler addition
         if "scheduler" in kwargs:
             scheduler = kwargs["scheduler"]
@@ -58,7 +61,7 @@ class GPUTrainer:
         self.loss.backward()
         self.optimizer.step()
 
-    def epoch_step(self, train_dataset, test_loader=None):
+    def epoch_step(self, train_dataset):
         """Perform the training of a single epoch
 
         Args: 
@@ -73,46 +76,59 @@ class GPUTrainer:
                 inputs = inputs.squeeze()
             self.batch_step(inputs.to(self.device), targets.to(self.device))
 
-        ### SCHEDULER ###
-        if "scheduler" in dir(self):
-            self.scheduler.step()
+    @torch.no_grad()
+    def evaluate(self, test_loader):
+        """ Evaluate the model on the test sets
 
-        ### EVALUATE ###
+        Args:
+            test_loader (torch.utils.data.DataLoader): Testing data
+
+        Returns:
+            float: mean accuracy on the test sets
+        """
         self.model.eval()
         with torch.no_grad():
             if test_loader is not None:
                 test = []
-                # Sending MNIST to the permutation function, returns an iterator
-                if "test_permutations" in dir(self):
-                    test_loader = self.yield_permutation(test_loader[0])
                 # Iterate over the Dataloaders
-                for i, dataloader in enumerate(test_loader):
+                for dataloader in test_loader:
                     batch = []
                     for inputs, targets in dataloader:
                         batch.append(
                             self.test(inputs.to(self.device), targets.to(self.device)))
                     test.append(torch.mean(torch.tensor(batch)))
                 self.testing_accuracy.append(test)
+                self.mean_testing_accuracy.append(
+                    torch.mean(torch.tensor(test)))
 
-    def fit(self, train_loader, n_epochs, test_loader=None, verbose=True, name_loader=None, **kwargs):
+    def fit(self, train_loader, n_epochs, test_loader=None, name_loader=None, permutations=None, **kwargs):
         """Train the model for n_epochs
 
         Args:
             train_loader (torch.utils.data.DataLoader): Training data
             n_epochs (int): Number of epochs
             test_loader (torch.utils.data.DataLoader, optional): Testing data. Defaults to None.
-            verbose (bool, optional): Whether to print the progress bar. Defaults to True.
             name_loader (str, optional): Name of the test sets to print. Defaults to None.
+            permutations (list, optional): Permutations to use for the permuted MNIST. Defaults to None.
         """
-        if "test_permutations" in kwargs:
-            self.test_permutations = kwargs["test_permutations"]
-
-        pbar = trange(n_epochs, desc='Initialization')
+        pbar = tqdm.trange(n_epochs)
         for epoch in pbar:
-            self.epoch_step(train_loader, test_loader)
+            ### TRAINING ###
+            self.epoch_step(train_loader)
+
+            ### SCHEDULER ###
+            if "scheduler" in dir(self):
+                self.scheduler.step()
+
+            ### TASK EVALUATION (+ PERMUTATION IF NEEDED) ###
+            if permutations is not None:
+                self.evaluate(self.yield_permutation(
+                    test_loader[0], permutations))
+            else:
+                self.evaluate(test_loader)
+
             ### PROGRESS BAR ###
-            if verbose:
-                self.pbar_update(pbar, epoch, n_epochs, name_loader)
+            self.pbar_update(pbar, epoch, n_epochs, name_loader)
 
     @torch.no_grad()
     def predict(self, inputs):
@@ -153,23 +169,6 @@ class GPUTrainer:
             predictions = torch.argmax(predictions, dim=1)
         return torch.mean((predictions == labels).float())
 
-    @torch.no_grad()
-    def test_continual(self, inputs, labels):
-        """Test the model on the test set of the PermutedMNIST task
-
-        Args:
-            inputs (torch.Tensor): Input data
-            labels (torch.Tensor): Labels of the data
-
-        Returns:
-            list: List of accuracies for each permutation
-        """
-        accuracies = []
-        for permutation in self.test_permutations:
-            accuracies.append(
-                self.test(inputs[:, permutation].to(self.device), labels))
-        return accuracies
-
     def pbar_update(self, pbar, epoch, n_epochs, name_loader=None):
         """Update the progress bar with the current loss and accuracy"""
         pbar.set_description(f"Epoch {epoch+1}/{n_epochs}")
@@ -205,7 +204,8 @@ class GPUTrainer:
         """
         self.model.load_state_dict(torch.load(path))
 
-    def yield_permutation(self, loader):
+    @staticmethod
+    def yield_permutation(loader, permutations):
         """Yield the permuted inputs
 
         Args:
@@ -214,6 +214,6 @@ class GPUTrainer:
         Yields:
             iterator: Iterator over the permuted loaders 
         """
-        for permutation in self.test_permutations:
+        for permutation in permutations:
             loader.__unpermute__()
             yield loader.__permute__(permutation)
