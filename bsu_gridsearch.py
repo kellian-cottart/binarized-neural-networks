@@ -9,10 +9,11 @@ import torch
 import os
 import optuna
 from optuna.trial import TrialState
+from optuna.storages import RetryFailedTrialCallback
 import json
 
 ### GENERAL CONFIGURATION ###
-SEED = 2506  # Random seed
+SEED = 0  # Random seed
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 PADDING = 2  # from 28x28 to 32x32
 INPUT_SIZE = (28+PADDING*2)**2
@@ -20,7 +21,7 @@ INPUT_SIZE = (28+PADDING*2)**2
 ### PATHS ###
 SAVE_FOLDER = "saved"
 DATASETS_PATH = "datasets"
-GRIDSEARCH_PATH = "./gridsearch"
+STUDY = "gridsearch/optimal-lr-meta-gamma"
 ALL_GPU = True
 
 
@@ -30,18 +31,6 @@ def train_iteration(trial):
     Args:
         config (dict): Configuration of the network
     """
-    ### PARAMETERS ###
-    metaplasticity = trial.suggest_loguniform("metaplasticity", 0.1, 100)
-    lr = trial.suggest_loguniform("lr", 0.1, 100)
-    gamma = trial.suggest_categorical("gamma", [0])
-
-    config = {
-        # Fixed parameters
-        "batch_size": 128,
-        "epochs": 20,
-        "task": "Sequential",
-        "n_tasks": 1,
-    }
 
     ### NETWORK CONFIGURATION ###
     model = models.BiNN(
@@ -59,11 +48,24 @@ def train_iteration(trial):
         output_function="log_softmax",  # Output function
     )
 
-    ### LOADER ###
-    # Creates a GPULoading instance that loads any dataset in the same format
-    loader = GPULoading(padding=PADDING,
-                        device=DEVICE,
-                        as_dataset=False)
+    ### PARAMETERS ###
+    metaplasticity = trial.suggest_loguniform("metaplasticity", 0.01, 10)
+    lr = trial.suggest_loguniform("lr", 0.01, 100)
+    gamma = trial.suggest_loguniform("gamma", 1e-6, 1e-3)
+    epochs = trial.suggest_categorical("epochs", [20])
+    seed = trial.suggest_categorical("seed", [SEED])
+
+    torch.manual_seed(seed)
+    if torch.cuda.is_available() and ALL_GPU:
+        torch.cuda.manual_seed(seed)
+
+    config = {
+        # Fixed parameters
+        "batch_size": 128,
+        "epochs": epochs,
+        "task": "PermutedMNIST",
+        "n_tasks": 10,
+    }
 
     ### TRAINER ###
     # Creates a trainer instance that will train the model
@@ -86,6 +88,12 @@ def train_iteration(trial):
         },
     )
 
+    ### LOADER ###
+    # Creates a GPULoading instance that loads any dataset in the same format
+    loader = GPULoading(padding=PADDING,
+                        device=DEVICE,
+                        as_dataset=False)
+
     ### DATA ###
     mnist_train, mnist_test = mnist(loader, config["batch_size"])
 
@@ -102,7 +110,7 @@ def train_iteration(trial):
         test_loader = [mnist_test]
 
     ### TRAINING ###
-    for task in data_loader:
+    for i, task in enumerate(data_loader):
         pbar = tqdm.trange(config["epochs"])
         for epoch in pbar:
             bayes_trainer.epoch_step(task)  # Epoch of optimization
@@ -117,23 +125,33 @@ def train_iteration(trial):
                 pbar, epoch, config["epochs"])
             # report the accuracy to optuna
             trial.report(
-                bayes_trainer.mean_testing_accuracy[-1], epoch)
+                bayes_trainer.mean_testing_accuracy[-1],
+                step=i*config["epochs"]+epoch,
+            )
             if trial.should_prune():
                 raise optuna.TrialPruned()
 
         bayes_trainer.optimizer.update_prior_lambda()
 
-    # save trial parameters in a json file
-    with open(os.path.join(GRIDSEARCH_PATH, f"trial_{trial.number}.json"), "w") as f:
-        json.dump(trial.params, f)
+    # save all parameters of the model in a json file
+    with open(os.path.join(STUDY, f"{trial.number}.json"), "w") as f:
+        all_accuracies = {
+            f"task_{i}": bayes_trainer.testing_accuracy[-1][i].item() for i in range(len(bayes_trainer.testing_accuracy[-1]))
+        }
+        score = {
+            "mean_acc": bayes_trainer.mean_testing_accuracy[-1].item(),
+            "params": trial.params,
+            "tasks_acc": all_accuracies,
+        }
+        json.dump(score, f)
 
-    return bayes_trainer.mean_testing_accuracy[-1]
+    return bayes_trainer.mean_testing_accuracy[-1].item()
 
 
 if __name__ == "__main__":
     ### SEED ###
 
-    os.makedirs(GRIDSEARCH_PATH, exist_ok=True)
+    os.makedirs(STUDY, exist_ok=True)
     torch.manual_seed(SEED)
     if torch.cuda.is_available() and ALL_GPU:
         torch.cuda.manual_seed(SEED)
@@ -145,10 +163,13 @@ if __name__ == "__main__":
     study = optuna.create_study(
         direction="maximize",
         pruner=optuna.pruners.MedianPruner(
-            n_startup_trials=5, n_warmup_steps=5),
+            n_startup_trials=5, n_warmup_steps=5
+        ),
+        storage=f"sqlite:///{os.path.join('gridsearch', 'gridsearch.sqlite3')}",
+        study_name=STUDY
     )
     # Optimize the network for 5 trials
-    study.optimize(train_iteration, n_trials=5)
+    study.optimize(train_iteration, n_trials=50)
     # Get the pruned trials and the complete trials
     pruned_trials = study.get_trials(
         deepcopy=False, states=[TrialState.PRUNED])
@@ -168,6 +189,6 @@ if __name__ == "__main__":
     print("  Value: ", trial.value)
 
     # Save the best trial in a json file
-    with open(os.path.join(GRIDSEARCH_PATH, "best_trial.json"), "w") as f:
+    with open(os.path.join(STUDY, "best_trial.json"), "w") as f:
         output = {"value": trial.value, "params": trial.params}
         json.dump(output, f)

@@ -1,31 +1,7 @@
-Brotli @ file:///home/conda/feedstock_root/build_artifacts/brotli-split_1695989787169/work
-certifi==2023.7.22
-charset-normalizer @ file:///home/conda/feedstock_root/build_artifacts/charset-normalizer_1698833585322/work
-colorama @ file:///home/conda/feedstock_root/build_artifacts/colorama_1666700638685/work
-cycler @ file:///home/conda/feedstock_root/build_artifacts/cycler_1696677705766/work
-filelock @ file:///home/conda/feedstock_root/build_artifacts/filelock_1698714947081/work
-gmpy2 @ file:///home/conda/feedstock_root/build_artifacts/gmpy2_1666808679441/work
-idna @ file:///home/conda/feedstock_root/build_artifacts/idna_1663625384323/work
-Jinja2 @ file:///home/conda/feedstock_root/build_artifacts/jinja2_1654302431367/work
-kiwisolver @ file:///home/conda/feedstock_root/build_artifacts/kiwisolver_1695379916629/work
-MarkupSafe @ file:///home/conda/feedstock_root/build_artifacts/markupsafe_1695367432301/work
-matplotlib @ file:///home/conda/feedstock_root/build_artifacts/matplotlib-suite_1604870968456/work
-mpmath @ file:///home/conda/feedstock_root/build_artifacts/mpmath_1678228039184/work
-networkx @ file:///home/conda/feedstock_root/build_artifacts/networkx_1697694336581/work
-numpy @ file:///home/conda/feedstock_root/build_artifacts/numpy_1695290879892/work/dist/numpy-1.26.0-cp39-cp39-linux_x86_64.whl#sha256=2145d30cdd6d3c9c4a4be216bb158edeac64e1c9aba388e733918d65b9481735
-Pillow @ file:///home/conda/feedstock_root/build_artifacts/pillow_1675487166627/work
-pyparsing @ file:///home/conda/feedstock_root/build_artifacts/pyparsing_1690737849915/work
-PySocks @ file:///home/conda/feedstock_root/build_artifacts/pysocks_1661604839144/work
-python-dateutil @ file:///home/conda/feedstock_root/build_artifacts/python-dateutil_1626286286081/work
-PyYAML @ file:///home/conda/feedstock_root/build_artifacts/pyyaml_1695373447169/work
-requests @ file:///home/conda/feedstock_root/build_artifacts/requests_1684774241324/work
-six @ file:///home/conda/feedstock_root/build_artifacts/six_1620240208055/work
-sympy @ file:///home/conda/feedstock_root/build_artifacts/sympy_1684180540116/work
+idx2numpy==1.2.3
+matplotlib==3.3.2
+numpy==1.26.2
+optuna==3.5.0
 torch==2.1.0
-torchaudio==2.1.0
 torchvision==0.16.0
-tornado @ file:///home/conda/feedstock_root/build_artifacts/tornado_1695373443748/work
-tqdm @ file:///home/conda/feedstock_root/build_artifacts/tqdm_1691671248568/work
-triton==2.1.0
-typing_extensions @ file:///home/conda/feedstock_root/build_artifacts/typing_extensions_1695040754690/work
-urllib3 @ file:///home/conda/feedstock_root/build_artifacts/urllib3_1697720414277/work
+tqdm==4.66.1
