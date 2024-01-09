@@ -21,6 +21,7 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
     def __init__(self,
                  params: params_t,
                  metaplasticity: Union[float, torch.Tensor] = 1,
+                 regularization_metaplasticity: Union[float, torch.Tensor] = 1,
                  lr: Union[float, torch.Tensor] = 1e-3,
                  temperature: float = 1e-8,
                  num_mcmc_samples: int = 1,
@@ -42,8 +43,12 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
         if not 0.0 <= gamma:
             raise ValueError(f"Invalid gamma: {gamma}.")
 
-        defaults = dict(metaplasticity=metaplasticity, lr=lr, gamma=gamma,
-                        temperature=temperature, num_mcmc_samples=num_mcmc_samples)
+        defaults = dict(metaplasticity=metaplasticity,
+                        regularization_metaplasticity=regularization_metaplasticity,
+                        lr=lr,
+                        gamma=gamma,
+                        temperature=temperature,
+                        num_mcmc_samples=num_mcmc_samples)
         super().__init__(params, defaults)
 
         ### LAMBDA INIT ###
@@ -97,6 +102,7 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
             # Parameters of the optimizer
             eps = 1e-10
             metaplasticity = group['metaplasticity']
+            regularization_metaplasticity = group['regularization_metaplasticity']
             temperature = group['temperature']
             num_mcmc_samples = group['num_mcmc_samples']
             lr = group['lr']
@@ -151,7 +157,9 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
 
             # Update lambda with metaplasticity
             lambda_ = lambda_ - lr * metaplastic_func(metaplasticity, lambda_) * \
-                gradient_estimate - gamma * (prior - lambda_)
+                gradient_estimate + gamma * \
+                metaplastic_func(regularization_metaplasticity, prior -
+                                 lambda_) * (lambda_)
             # Use the prior lambda to coerce lambda
             self.state['lambda'] = lambda_
             self.state['mu'] = torch.tanh(lambda_)

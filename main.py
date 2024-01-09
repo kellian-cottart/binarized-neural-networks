@@ -7,8 +7,8 @@ from optimizer import *
 import os
 import json
 
-SEED = 2506  # Random seed
-N_NETWORKS = 1  # Number of networks to train
+SEED = 1000  # Random seed
+N_NETWORKS = 5  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
 
@@ -53,33 +53,20 @@ if __name__ == "__main__":
                 'test_mcmc_samples': 1,
             },
             "criterion": torch.functional.F.nll_loss,
-            # "optimizer": MetaplasticAdam,
-            # "optimizer_parameters": {
-            #     "metaplasticity": 1.35,
-            #     "lr": 0.005,
-            #     "weight_decay": 1e-9,
-            # },
-            # "optimizer": BinarySynapticUncertainty,
-            # "optimizer_parameters": {
-            #     "metaplasticity": 0.35,
-            #     "lr": 1,
-            #     "temperature": 1,
-            #     "gamma": 0,
-            #     "num_mcmc_samples": 1,
-            # },
-            "optimizer": BinarySynapticUncertaintyTaskBoundaries,
+            "optimizer": BinarySynapticUncertainty,
             "optimizer_parameters": {
-                "metaplasticity": 1,
-                "lr": lr,
+                "metaplasticity": 0.4,
+                "regularization_metaplasticity": 1,
+                "lr": 1,
                 "temperature": 1,
                 "gamma": 0,
                 "num_mcmc_samples": 1,
-                "init_lambda": init,
+                "init_lambda": 0.50,
             },
-            "task": "PermutedMNIST",
-            "n_tasks": 10,  # PermutedMNIST: number of tasks, Sequential: number of mnist, fashion_mnist pairs
+            "task": "Sequential",
+            "n_tasks": 1,  # PermutedMNIST: number of tasks, Sequential: number of mnist, fashion_mnist pairs
             "padding": PADDING,
-        } for lr in [5] for init in [0]
+        }
     ]
 
     for index, data in enumerate(networks_data):

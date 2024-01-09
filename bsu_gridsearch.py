@@ -9,19 +9,19 @@ import torch
 import os
 import optuna
 from optuna.trial import TrialState
-from optuna.storages import RetryFailedTrialCallback
 import json
 
 ### GENERAL CONFIGURATION ###
-SEED = 0  # Random seed
+SEED = 1000  # Random seed
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 PADDING = 2  # from 28x28 to 32x32
 INPUT_SIZE = (28+PADDING*2)**2
+N_TRIALS = 1000  # Number of trials
 
 ### PATHS ###
 SAVE_FOLDER = "saved"
 DATASETS_PATH = "datasets"
-STUDY = "gridsearch/optimal-lr-meta-gamma"
+STUDY = "gridsearch/optimal-lr-meta-gamma(no_prior)-sequential"
 ALL_GPU = True
 
 
@@ -49,11 +49,20 @@ def train_iteration(trial):
     )
 
     ### PARAMETERS ###
-    metaplasticity = trial.suggest_loguniform("metaplasticity", 0.01, 10)
-    lr = trial.suggest_loguniform("lr", 0.01, 100)
-    gamma = trial.suggest_loguniform("gamma", 1e-6, 1e-3)
-    epochs = trial.suggest_categorical("epochs", [20])
+    metaplasticity = trial.suggest_float(
+        "metaplasticity", 1e-1, 1e1, log=True)
+    lr = trial.suggest_float("lr", 1e-2, 1e3, log=True)
+
+    # regularization_metaplasticity = trial.suggest_float(
+    #     "regularization_metaplasticity", 1e-4, 1e2, log=True)
+    # gamma = trial.suggest_float("gamma", 1e-8, 1e-3, log=True)
+    regularization_metaplasticity = 0
+    gamma = 0
+
+    epochs = trial.suggest_categorical("epochs", [50])
     seed = trial.suggest_categorical("seed", [SEED])
+    task = trial.suggest_categorical("task", ["Sequential"])
+    std = trial.suggest_float("std", 0, 0.5)
 
     torch.manual_seed(seed)
     if torch.cuda.is_available() and ALL_GPU:
@@ -63,21 +72,32 @@ def train_iteration(trial):
         # Fixed parameters
         "batch_size": 128,
         "epochs": epochs,
-        "task": "PermutedMNIST",
-        "n_tasks": 10,
+        "task": task,
+        "n_tasks": 2,
+        "optimizer": "BinarySynapticUncertaintyTaskBoundaries",
     }
+
+    if config["optimizer"] == "BinarySynapticUncertainty":
+        optimizer = BinarySynapticUncertainty
+    elif config["optimizer"] == "BinarySynapticUncertaintyTaskBoundaries":
+        optimizer = BinarySynapticUncertaintyTaskBoundaries
+    else:
+        raise ValueError(
+            f"Optimizer {config['optimizer']} not recognized")
 
     ### TRAINER ###
     # Creates a trainer instance that will train the model
     bayes_trainer = trainer.BayesTrainer(
         model=model,
-        optimizer=BinarySynapticUncertaintyTaskBoundaries,
+        optimizer=optimizer,
         optimizer_parameters={
             "metaplasticity": metaplasticity,
+            "regularization_metaplasticity": regularization_metaplasticity,
             "lr": lr,
             "temperature": 1,
             "num_mcmc_samples": 1,
             "gamma": gamma,
+            "init_lambda": std,
         },
         criterion=torch.functional.F.nll_loss,
         device=DEVICE,
@@ -121,17 +141,24 @@ def train_iteration(trial):
             else:
                 bayes_trainer.evaluate(test_loader)
             # update the progress bar
-            bayes_trainer.pbar_update(
-                pbar, epoch, config["epochs"])
-            # report the accuracy to optuna
+            # bayes_trainer.pbar_update(
+            #     pbar, epoch, config["epochs"])
+            # create all tasks that weren't evaluated to 0.1
+            other_tasks_stack = torch.zeros(
+                len(bayes_trainer.testing_accuracy[-1]) - i - 1)
+            # set to 0.1
+            other_tasks_stack.fill_(0.1)
+            ongoing_accuracy = torch.cat(
+                (torch.stack(bayes_trainer.testing_accuracy[-1][:i+1]), other_tasks_stack))
+            ongoing_accuracy = ongoing_accuracy.mean()
             trial.report(
-                bayes_trainer.mean_testing_accuracy[-1],
+                ongoing_accuracy.item(),
                 step=i*config["epochs"]+epoch,
             )
             if trial.should_prune():
                 raise optuna.TrialPruned()
-
-        bayes_trainer.optimizer.update_prior_lambda()
+        if config["optimizer"] == "BinarySynapticUncertaintyTaskBoundaries":
+            bayes_trainer.optimizer.update_prior_lambda()
 
     # save all parameters of the model in a json file
     with open(os.path.join(STUDY, f"{trial.number}.json"), "w") as f:
@@ -144,13 +171,11 @@ def train_iteration(trial):
             "tasks_acc": all_accuracies,
         }
         json.dump(score, f)
-
     return bayes_trainer.mean_testing_accuracy[-1].item()
 
 
 if __name__ == "__main__":
     ### SEED ###
-
     os.makedirs(STUDY, exist_ok=True)
     torch.manual_seed(SEED)
     if torch.cuda.is_available() and ALL_GPU:
@@ -162,14 +187,16 @@ if __name__ == "__main__":
     # Create a new study that "maximize" the accuracy of all tasks
     study = optuna.create_study(
         direction="maximize",
-        pruner=optuna.pruners.MedianPruner(
-            n_startup_trials=5, n_warmup_steps=5
+        # prune at quartile
+        pruner=optuna.pruners.HyperbandPruner(
+            min_resource=4, reduction_factor=2
         ),
-        storage=f"sqlite:///{os.path.join('gridsearch', 'gridsearch.sqlite3')}",
-        study_name=STUDY
+        storage=f"sqlite:///{os.path.join('gridsearch', 'gridsearch-2.sqlite3')}",
+        study_name=STUDY,
+        load_if_exists=True,
     )
     # Optimize the network for 5 trials
-    study.optimize(train_iteration, n_trials=50)
+    study.optimize(train_iteration, n_trials=N_TRIALS)
     # Get the pruned trials and the complete trials
     pruned_trials = study.get_trials(
         deepcopy=False, states=[TrialState.PRUNED])

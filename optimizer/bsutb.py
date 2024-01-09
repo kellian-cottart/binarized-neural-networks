@@ -21,6 +21,7 @@ class BinarySynapticUncertaintyTaskBoundaries(torch.optim.Optimizer):
     def __init__(self,
                  params: params_t,
                  metaplasticity: Union[float, torch.Tensor] = 1,
+                 regularization_metaplasticity: Union[float, torch.Tensor] = 1,
                  lr: Union[float, torch.Tensor] = 1e-3,
                  temperature: float = 1e-8,
                  num_mcmc_samples: int = 1,
@@ -43,6 +44,7 @@ class BinarySynapticUncertaintyTaskBoundaries(torch.optim.Optimizer):
             raise ValueError(f"Invalid gamma: {gamma}.")
 
         defaults = dict(metaplasticity=metaplasticity,
+                        regularization_metaplasticity=regularization_metaplasticity,
                         lr=lr,
                         gamma=gamma,
                         temperature=temperature,
@@ -99,6 +101,7 @@ class BinarySynapticUncertaintyTaskBoundaries(torch.optim.Optimizer):
             # Parameters of the optimizer
             eps = 1e-10
             metaplasticity = group['metaplasticity']
+            regularization_metaplasticity = group['regularization_metaplasticity']
             temperature = group['temperature']
             num_mcmc_samples = group['num_mcmc_samples']
             lr = group['lr']
@@ -153,7 +156,11 @@ class BinarySynapticUncertaintyTaskBoundaries(torch.optim.Optimizer):
             # Update lambda with metaplasticity
             # And use the prior lambda to coerce lambda
             lambda_ = lambda_ - lr * metaplastic_func(metaplasticity, lambda_) * \
-                gradient_estimate - gamma * (prior - lambda_)
+                gradient_estimate + gamma * \
+                metaplastic_func(regularization_metaplasticity, prior -
+                                 lambda_) * (lambda_)
+            # if self.state['step'] % 100 == 0:
+            #     visualize_lambda(lambda_)
             self.state['lambda'] = lambda_
             self.state['mu'] = torch.tanh(lambda_)
         return torch.mean(torch.tensor(running_loss))
