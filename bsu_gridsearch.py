@@ -16,12 +16,12 @@ SEED = 1000  # Random seed
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 PADDING = 2  # from 28x28 to 32x32
 INPUT_SIZE = (28+PADDING*2)**2
-N_TRIALS = 1000  # Number of trials
+N_TRIALS = 500  # Number of trials
 
 ### PATHS ###
 SAVE_FOLDER = "saved"
 DATASETS_PATH = "datasets"
-STUDY = "gridsearch/optimal-lr-meta-gamma(no_prior)-sequential"
+STUDY = "gridsearch/bsutest-PermutedMNIST"
 ALL_GPU = True
 
 
@@ -49,20 +49,12 @@ def train_iteration(trial):
     )
 
     ### PARAMETERS ###
-    metaplasticity = trial.suggest_float(
-        "metaplasticity", 1e-1, 1e1, log=True)
-    lr = trial.suggest_float("lr", 1e-2, 1e3, log=True)
-
-    # regularization_metaplasticity = trial.suggest_float(
-    #     "regularization_metaplasticity", 1e-4, 1e2, log=True)
-    # gamma = trial.suggest_float("gamma", 1e-8, 1e-3, log=True)
-    regularization_metaplasticity = 0
-    gamma = 0
-
-    epochs = trial.suggest_categorical("epochs", [50])
-    seed = trial.suggest_categorical("seed", [SEED])
-    task = trial.suggest_categorical("task", ["Sequential"])
-    std = trial.suggest_float("std", 0, 0.5)
+    lr = trial.suggest_float("lr", 1, 1e2, log=True)
+    gamma = trial.suggest_float("gamma", 1e-7, 1e-4, log=True)
+    temperature = trial.suggest_float("temperature", 1, 1, log=True)
+    seed = trial.suggest_int("seed", 0, 1000)
+    epochs = trial.suggest_categorical("epochs", [20])
+    task = trial.suggest_categorical("task", ["PermutedMNIST"])
 
     torch.manual_seed(seed)
     if torch.cuda.is_available() and ALL_GPU:
@@ -73,14 +65,18 @@ def train_iteration(trial):
         "batch_size": 128,
         "epochs": epochs,
         "task": task,
-        "n_tasks": 2,
-        "optimizer": "BinarySynapticUncertaintyTaskBoundaries",
+        "n_tasks": 10,
+        "optimizer": "BSUTest",
     }
 
     if config["optimizer"] == "BinarySynapticUncertainty":
         optimizer = BinarySynapticUncertainty
     elif config["optimizer"] == "BinarySynapticUncertaintyTaskBoundaries":
         optimizer = BinarySynapticUncertaintyTaskBoundaries
+    elif config["optimizer"] == "BayesBiNN":
+        optimizer = BayesBiNN
+    elif config["optimizer"] == "BSUTest":
+        optimizer = BSUTest
     else:
         raise ValueError(
             f"Optimizer {config['optimizer']} not recognized")
@@ -91,13 +87,11 @@ def train_iteration(trial):
         model=model,
         optimizer=optimizer,
         optimizer_parameters={
-            "metaplasticity": metaplasticity,
-            "regularization_metaplasticity": regularization_metaplasticity,
             "lr": lr,
-            "temperature": 1,
-            "num_mcmc_samples": 1,
             "gamma": gamma,
-            "init_lambda": std,
+            "temperature": temperature,
+            "num_mcmc_samples": 1,
+            "init_lambda": 0,
         },
         criterion=torch.functional.F.nll_loss,
         device=DEVICE,
@@ -157,7 +151,7 @@ def train_iteration(trial):
             )
             if trial.should_prune():
                 raise optuna.TrialPruned()
-        if config["optimizer"] == "BinarySynapticUncertaintyTaskBoundaries":
+        if config["optimizer"] == "BinarySynapticUncertaintyTaskBoundaries" or config["optimizer"] == "BayesBiNN":
             bayes_trainer.optimizer.update_prior_lambda()
 
     # save all parameters of the model in a json file

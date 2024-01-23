@@ -6,9 +6,10 @@ import trainer
 from optimizer import *
 import os
 import json
+import tqdm
 
 SEED = 1000  # Random seed
-N_NETWORKS = 5  # Number of networks to train
+N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
 
@@ -53,15 +54,13 @@ if __name__ == "__main__":
                 'test_mcmc_samples': 1,
             },
             "criterion": torch.functional.F.nll_loss,
-            "optimizer": BinarySynapticUncertainty,
+            "optimizer": BSUTest,
             "optimizer_parameters": {
-                "metaplasticity": 0.4,
-                "regularization_metaplasticity": 1,
-                "lr": 1,
+                "lr": 10,
+                "gamma": 0.1,
                 "temperature": 1,
-                "gamma": 0,
                 "num_mcmc_samples": 1,
-                "init_lambda": 0.50,
+                "init_lambda": 0.1,
             },
             "task": "Sequential",
             "n_tasks": 1,  # PermutedMNIST: number of tasks, Sequential: number of mnist, fashion_mnist pairs
@@ -103,7 +102,7 @@ if __name__ == "__main__":
             ident = f"{name} - {index}"
 
             ### INSTANTIATE THE TRAINER ###
-            if data["optimizer"] in [BinarySynapticUncertainty, BayesBiNN, BinarySynapticUncertaintyTaskBoundaries]:
+            if data["optimizer"] in [BinarySynapticUncertainty, BayesBiNN, BinarySynapticUncertaintyTaskBoundaries, BSUTest]:
                 net_trainer = trainer.BayesTrainer(batch_size=batch_size,
                                                    model=model, **data, device=DEVICE)
             else:
@@ -128,13 +127,25 @@ if __name__ == "__main__":
                 raise ValueError(
                     f"Task {data['task']} is not implemented. Please choose between Sequential and PermutedMNIST")
 
-            for task_dataset in train_loader:
-                net_trainer.fit(
-                    task_dataset,
-                    **data['training_parameters'],
-                    test_loader=test_loader,
-                    permutations=permutations if data["task"] == "PermutedMNIST" else None,
-                )
+            for i, task in enumerate(train_loader):
+                pbar = tqdm.trange(data["training_parameters"]["n_epochs"])
+                for epoch in pbar:
+                    # If BSUTest, visualize lambda
+                    if data["optimizer"] == BSUTest and epoch % 10 == 0:
+                        net_trainer.optimizer.visualize_lambda(
+                            path=os.path.join(main_folder, "lambda"),
+                            threshold=100,
+                        )
+                    net_trainer.epoch_step(task)  # Epoch of optimization
+                    # If permutedMNIST, permute the datasets and test
+                    if data["task"] == "PermutedMNIST":
+                        net_trainer.evaluate(net_trainer.yield_permutation(
+                            test_loader[0], permutations))
+                    else:
+                        net_trainer.evaluate(test_loader)
+                    # update the progress bar
+                    net_trainer.pbar_update(
+                        pbar, epoch, data["training_parameters"]["n_epochs"])
                 ### TASK BOUNDARIES ###
                 if data["optimizer"] in [BinarySynapticUncertaintyTaskBoundaries, BayesBiNN]:
                     net_trainer.optimizer.update_prior_lambda()
