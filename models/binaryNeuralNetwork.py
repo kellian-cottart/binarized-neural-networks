@@ -55,10 +55,7 @@ networks
             torch.Tensor: Output tensor
 
         """
-        # In BNN, the activation function is the sign function on top of having binarized layers
-        if self.activation_function is None:
-            self.activation_function = Sign.apply
-        # call forward of parent class
+        # Call forward of parent class
         return super().forward(x)
 
     def __repr__(self):

@@ -7,6 +7,7 @@ from optimizer import *
 import os
 import json
 import tqdm
+from models.layers.activation import Sign
 
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
@@ -32,35 +33,30 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "nn_type": models.BiNN,
+            "nn_type": models.BiNNBayesianNN,
             "nn_parameters": {
                 "layers": [INPUT_SIZE, 2048, 2048, 10],
-                "init": "uniform",
                 "device": DEVICE,
-                "std": 0.1,
                 "dropout": False,
                 "batchnorm": True,
                 "bnmomentum": 0.1,
                 "bneps": 1e-05,
                 "bias": False,
-                "latent_weights": True,
                 "running_stats": False,
-                "activation_function": None,
+                "activation_function": Sign.apply,
                 "output_function": "log_softmax",
+                "lambda_init": 0.1,
+                "n_samples": 1,
             },
             "training_parameters": {
                 'n_epochs': 50,
                 'batch_size': 128,
-                'test_mcmc_samples': 1,
             },
             "criterion": torch.functional.F.nll_loss,
-            "optimizer": BSUTest,
+            "optimizer": BinaryMetaplasticUncertainty,
             "optimizer_parameters": {
-                "lr": 10,
-                "gamma": 0.1,
-                "temperature": 1,
-                "num_mcmc_samples": 1,
-                "init_lambda": 0.1,
+                "lr": 1,
+                "gamma": 0.01,
             },
             "task": "Sequential",
             "n_tasks": 1,  # PermutedMNIST: number of tasks, Sequential: number of mnist, fashion_mnist pairs

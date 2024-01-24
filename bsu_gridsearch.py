@@ -21,7 +21,7 @@ N_TRIALS = 500  # Number of trials
 ### PATHS ###
 SAVE_FOLDER = "saved"
 DATASETS_PATH = "datasets"
-STUDY = "gridsearch/bsutest-PermutedMNIST"
+STUDY = "gridsearch/bsutest3-Sequential"
 ALL_GPU = True
 
 
@@ -37,7 +37,7 @@ def train_iteration(trial):
         layers=[INPUT_SIZE, 2048, 2048, 10],  # Size of the layers
         device=DEVICE,  # Device to use
         init="uniform",  # Initialization of the weights
-        std=0.1,  # Standard deviation of the weights
+        std=0,  # Standard deviation of the weights
         batchnorm=True,  # Batch normalization
         bnmomentum=0.1,  # Batch normalization momentum
         bneps=1e-05,  # Batch normalization epsilon
@@ -49,12 +49,12 @@ def train_iteration(trial):
     )
 
     ### PARAMETERS ###
-    lr = trial.suggest_float("lr", 1, 1e2, log=True)
-    gamma = trial.suggest_float("gamma", 1e-7, 1e-4, log=True)
-    temperature = trial.suggest_float("temperature", 1, 1, log=True)
-    seed = trial.suggest_int("seed", 0, 1000)
-    epochs = trial.suggest_categorical("epochs", [20])
-    task = trial.suggest_categorical("task", ["PermutedMNIST"])
+    lr = trial.suggest_float("lr", 0.1, 100, log=True)
+    gamma = trial.suggest_float("gamma", 1e-5, 10, log=True)
+    temperature = trial.suggest_categorical("temperature", [1])
+    seed = trial.suggest_categorical("seed", [1000])
+    epochs = trial.suggest_categorical("epochs", [50])
+    task = trial.suggest_categorical("task", ["Sequential"])
 
     torch.manual_seed(seed)
     if torch.cuda.is_available() and ALL_GPU:

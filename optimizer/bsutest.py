@@ -96,8 +96,6 @@ class BSUTest(torch.optim.Optimizer):
             mu = self.state['mu']
             prior = self.state['prior_lambda']
 
-            gradient_estimate = torch.zeros_like(lambda_)
-
             if num_mcmc_samples <= 0:
                 ### POINT ESTIMATE ###
                 relaxed_w = torch.tanh(lambda_)
@@ -109,6 +107,7 @@ class BSUTest(torch.optim.Optimizer):
                 gradient_estimate = input_size * g
             else:
                 ### MCMC SAMPLES ###
+                gradient_estimate = torch.zeros_like(lambda_)
                 for _ in range(num_mcmc_samples):
                     ### Gumbel soft-max trick ###
                     # Add eps to avoid log(0)
@@ -133,12 +132,12 @@ class BSUTest(torch.optim.Optimizer):
                     num_mcmc_samples if num_mcmc_samples > 0 else 1)
 
             # Update lambda with metaplasticity
+            def meta(x, p): return 1/(torch.cosh(x)**p)
+
             # And use the prior lambda to coerce lambda
             lambda_ = lambda_ \
-                - lr * 1 / torch.pow(torch.cosh(lambda_), 1) * gradient_estimate \
-                - gamma * 1/torch.pow(torch.cosh(lambda_),
-                                      2) * (lambda_ - prior)
-
+                - lr * meta(lambda_, 1) * gradient_estimate \
+                - gamma * meta(prior - lambda_, 2) * (prior - lambda_)
             self.state['lambda'] = lambda_
             self.state['mu'] = torch.tanh(lambda_)
         return torch.mean(torch.tensor(running_loss))
@@ -165,8 +164,8 @@ class BSUTest(torch.optim.Optimizer):
                 hist * 100 / len(self.state['lambda']),
                 width=1.5,
                 zorder=2)
-        plt.xlabel('Value of Lambda')
-        plt.ylabel('% of Lambda')
+        plt.xlabel('Value of $\lambda$ ')
+        plt.ylabel('% of $\lambda$')
         plt.gca().xaxis.set_minor_locator(AutoMinorLocator(5))
         plt.gca().yaxis.set_minor_locator(AutoMinorLocator(5))
         plt.gca().tick_params(which='both', width=1)
@@ -176,15 +175,15 @@ class BSUTest(torch.optim.Optimizer):
         textsize = 6
         transform = plt.gca().transAxes
 
-        plt.text(0.5, 0.95, f"Percentage of Lambda values above {threshold}: {(self.state['lambda'] > threshold).sum() * 100 / len(self.state['lambda']):.2f}%",
+        plt.text(0.5, 0.95, f"$\lambda$  Lambda values above {threshold}: {(self.state['lambda'] > threshold).sum() * 100 / len(self.state['lambda']):.2f}%",
                  fontsize=textsize, ha='center', va='center', transform=transform)
-        plt.text(0.5, 0.9, f"Percentage of Lambda values above 2: {((self.state['lambda'] > 2) & (self.state['lambda'] < threshold)).sum() * 100 / len(self.state['lambda']):.2f}%",
+        plt.text(0.5, 0.9, f"$\lambda$ values above 2: {((self.state['lambda'] > 2) & (self.state['lambda'] < threshold)).sum() * 100 / len(self.state['lambda']):.2f}%",
                  fontsize=textsize, ha='center', va='center', transform=transform)
-        plt.text(0.5, 0.85, f"Percentage of Lambda values below -2: {((self.state['lambda'] < -2) & (self.state['lambda'] > -threshold)).sum() * 100 / len(self.state['lambda']):.2f}%",
+        plt.text(0.5, 0.85, f"$\lambda$  values below -2: {((self.state['lambda'] < -2) & (self.state['lambda'] > -threshold)).sum() * 100 / len(self.state['lambda']):.2f}%",
                  fontsize=textsize, ha='center', va='center', transform=transform)
-        plt.text(0.5, 0.8, f"Percentage of Lambda values below -{threshold}: {(self.state['lambda'] < -threshold).sum() * 100 / len(self.state['lambda']):.2f}%",
+        plt.text(0.5, 0.8, f"$\lambda$ values below -{threshold}: {(self.state['lambda'] < -threshold).sum() * 100 / len(self.state['lambda']):.2f}%",
                  fontsize=textsize, ha='center', va='center', transform=transform)
-        plt.text(0.5, 0.75, f"Percentage of Lambda values between -2 and 2: {((self.state['lambda'] < 2) & (self.state['lambda'] > -2)).sum() * 100 / len(self.state['lambda']):.2f}%",
+        plt.text(0.5, 0.75, f"$\lambda$ values between -2 and 2: {((self.state['lambda'] < 2) & (self.state['lambda'] > -2)).sum() * 100 / len(self.state['lambda']):.2f}%",
                  fontsize=textsize, ha='center', va='center', transform=transform)
 
         os.makedirs(path, exist_ok=True)

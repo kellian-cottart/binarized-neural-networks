@@ -4,30 +4,41 @@ from .layers import *
 from .deepNeuralNetwork import *
 
 
-class BayesianNN(DNN):
-    """ Bayesian Neural Network (BNN)
+class BiNNBayesianNN(DNN):
+    """ Binary Bayesian Neural Network
 
-    Neural Network with probabilistic weights
-
-    Blundell et al., 2015: Weight Uncertainty in Neural Networks
+    Args:
+        layers (list): List of layer sizes
+        lambda_init (float): Initial standard deviation of the gaussian distribution of the lambda parameter
+        n_samples (int): Number of samples to use for the forward pass
     """
 
-    def __init__(self, layers, sigma_init=0.1, n_samples=1, *args, **kwargs):
-        self.sigma_init = sigma_init
+    def __init__(self,
+                 layers: list,
+                 lambda_init: float = 0.1,
+                 n_samples: int = 1,
+                 *args,
+                 **kwargs):
+        self.lambda_init = lambda_init
         self.n_samples = n_samples
         super().__init__(layers, *args, **kwargs)
 
     def _layer_init(self, layers, bias=False):
         for i, _ in enumerate(layers[:-1]):
-            # Linear layers with BatchNorm
+            # Dropout only on hidden layers
             if self.dropout and i != 0:
-                self.layers.append(torch.nn.Dropout(p=0.2))
-            self.layers.append(MetaBayesLinearParallel(
+                layers.append(torch.nn.Dropout(p=0.2))
+
+            # Bayesian Binary Linear Layer
+            self.layers.append(BayesianBiNNLinear(
                 layers[i],
                 layers[i+1],
+                lambda_init=self.lambda_init,
                 bias=bias,
                 device=self.device,
-                sigma_init=self.sigma_init))
+            ))
+
+            # Batchnorm
             if self.batchnorm:
                 self.layers.append(torch.nn.BatchNorm1d(
                     layers[i+1],
@@ -44,15 +55,14 @@ class BayesianNN(DNN):
         ### FORWARD PASS ###
         unique_layers = set(type(layer) for layer in self.layers)
         for i, layer in enumerate(self.layers):
-            if isinstance(layer, MetaBayesLinearParallel):
+            if isinstance(layer, BayesianBiNNLinear):
                 x = layer(x, self.n_samples)
-            # if its batchnorm, we need to average over n_samples
             else:
                 x = layer(torch.mean(x, dim=0))
             if layer is not self.layers[-1] and (i+1) % len(unique_layers) == 0:
                 x = self.activation_function(x)
         # Average over samples if the last layer is a MetaBayesLinearParallel layer
-        if isinstance(layer, MetaBayesLinearParallel):
+        if isinstance(layer, BayesianBiNNLinear):
             x = torch.nn.functional.log_softmax(x, dim=2)
             x = torch.mean(x, dim=0)
         if self.output_function == "softmax":
