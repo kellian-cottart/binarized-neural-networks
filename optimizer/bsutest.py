@@ -136,7 +136,7 @@ class BSUTest(torch.optim.Optimizer):
 
             # And use the prior lambda to coerce lambda
             lambda_ = lambda_ \
-                - lr * meta(lambda_, 1) * gradient_estimate \
+                - lr * meta(lambda_, 2) * gradient_estimate \
                 - gamma * meta(prior - lambda_, 2) * (prior - lambda_)
             self.state['lambda'] = lambda_
             self.state['mu'] = torch.tanh(lambda_)

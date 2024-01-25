@@ -39,31 +39,32 @@ if __name__ == "__main__":
                 "device": DEVICE,
                 "dropout": False,
                 "batchnorm": True,
-                "bnmomentum": 0.1,
-                "bneps": 1e-05,
+                "bnmomentum": 0,
+                "bneps": 0,
                 "bias": False,
                 "running_stats": False,
+                "affine": False,
                 "activation_function": Sign.apply,
                 "output_function": "log_softmax",
-                "lambda_init": 0.1,
+                "lambda_init": 0,
                 "n_samples": 1,
             },
             "training_parameters": {
-                'n_epochs': 50,
+                'n_epochs': 20,
                 'batch_size': 128,
             },
             "criterion": torch.functional.F.nll_loss,
             "optimizer": BinaryMetaplasticUncertainty,
             "optimizer_parameters": {
-                "lr": 1,
-                "gamma": 0.01,
+                "lr": 40,
+                "gamma": 0,
+                "n_samples": 1
             },
-            "task": "Sequential",
-            "n_tasks": 1,  # PermutedMNIST: number of tasks, Sequential: number of mnist, fashion_mnist pairs
+            "task": "PermutedMNIST",
+            "n_tasks": 10,  # PermutedMNIST: number of tasks, Sequential: number of mnist, fashion_mnist pairs
             "padding": PADDING,
         }
     ]
-
     for index, data in enumerate(networks_data):
 
         ### NAME INITIALIZATION ###
@@ -132,6 +133,13 @@ if __name__ == "__main__":
                             path=os.path.join(main_folder, "lambda"),
                             threshold=100,
                         )
+                    if data["optimizer"] == BinaryMetaplasticUncertainty and epoch % 10 == 0:
+                        for param in model.parameters():
+                            visualize_lambda(
+                                lambda_=param,
+                                path=os.path.join(main_folder, "lambda"),
+                                threshold=100,
+                            )
                     net_trainer.epoch_step(task)  # Epoch of optimization
                     # If permutedMNIST, permute the datasets and test
                     if data["task"] == "PermutedMNIST":

@@ -14,6 +14,7 @@ class DNN(torch.nn.Module):
                  batchnorm: bool = False,
                  bias: bool = False,
                  running_stats: bool = False,
+                 affine: bool = False,
                  bneps: float = 1e-5,
                  bnmomentum: float = 0.15,
                  activation_function: torch.nn.functional = torch.nn.functional.relu,
@@ -33,6 +34,7 @@ class DNN(torch.nn.Module):
             bneps (float): BatchNorm epsilon
             bnmomentum (float): BatchNorm momentum
             running_stats (bool): Whether to use running stats in BatchNorm
+            affine (bool): Whether to use affine transformation in BatchNorm
             activation_function (torch.nn.functional): Activation function
             output_function (str): Output function
         """
@@ -44,6 +46,7 @@ class DNN(torch.nn.Module):
         self.bneps = bneps
         self.bnmomentum = bnmomentum
         self.running_stats = running_stats
+        self.affine = affine
         self.activation_function = activation_function
         self.output_function = output_function
         ### LAYER INITIALIZATION ###
@@ -70,7 +73,7 @@ class DNN(torch.nn.Module):
             if self.batchnorm:
                 self.layers.append(torch.nn.BatchNorm1d(
                     layers[i+1],
-                    affine=True,
+                    affine=self.affine,
                     track_running_stats=self.running_stats,
                     device=self.device,
                     eps=self.bneps,

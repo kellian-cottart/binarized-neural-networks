@@ -127,3 +127,52 @@ def visualize_lr(lr):
     plt.xlabel('Value of learning rate')
     plt.ylabel('% of learning rate')
     plt.show()
+
+
+def visualize_lambda(lambda_, path, threshold=10):
+    """ Plot a graph with the distribution in lambda values with respect to certain thresholds
+
+    Args:
+        lambda_ (torch.Tensor): Lambda values
+        path (str): Path to save the graph
+        threshold (int): Threshold to plot the distribution
+    """
+    plt.figure()
+    plt.grid()
+    bins = 100
+    hist = torch.histc(lambda_, bins=bins, min=-threshold,
+                       max=threshold).detach().cpu()
+
+    # total number of values in lambda
+    shape = lambda_.shape[0] * lambda_.shape[1]
+
+    plt.bar(torch.linspace(-threshold, threshold, bins).detach().cpu(),
+            hist * 100 / shape,
+            width=1.5,
+            zorder=2)
+    plt.xlabel('Value of $\lambda$ ')
+    plt.ylabel('% of $\lambda$')
+    plt.gca().xaxis.set_minor_locator(AutoMinorLocator(5))
+    plt.gca().yaxis.set_minor_locator(AutoMinorLocator(5))
+    plt.gca().tick_params(which='both', width=1)
+    plt.gca().tick_params(which='major', length=6)
+    plt.ylim(0, 100)
+
+    textsize = 6
+    transform = plt.gca().transAxes
+
+    plt.text(0.5, 0.95, f"$\lambda$  Lambda values above {threshold}: {(lambda_ > threshold).sum() * 100 / shape:.2f}%",
+             fontsize=textsize, ha='center', va='center', transform=transform)
+    plt.text(0.5, 0.9, f"$\lambda$ values above 2: {((lambda_ > 2) & (lambda_ < threshold)).sum() * 100 / shape:.2f}%",
+             fontsize=textsize, ha='center', va='center', transform=transform)
+    plt.text(0.5, 0.85, f"$\lambda$  values below -2: {((lambda_ < -2) & (lambda_ > -threshold)).sum() * 100 / shape:.2f}%",
+             fontsize=textsize, ha='center', va='center', transform=transform)
+    plt.text(0.5, 0.8, f"$\lambda$ values below -{threshold}: {(lambda_ < -threshold).sum() * 100 / shape:.2f}%",
+             fontsize=textsize, ha='center', va='center', transform=transform)
+    plt.text(0.5, 0.75, f"$\lambda$ values between -2 and 2: {((lambda_ < 2) & (lambda_ > -2)).sum() * 100 / shape:.2f}%",
+             fontsize=textsize, ha='center', va='center', transform=transform)
+
+    os.makedirs(path, exist_ok=True)
+    plt.savefig(versionning(path, "lambda-visualization",
+                ".pdf"), bbox_inches='tight')
+    plt.close()

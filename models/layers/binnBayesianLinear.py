@@ -26,21 +26,24 @@ class BernouilliWeights:
         logistic_noise = self.uniform.sample(
             (samples, *self.lambda_.shape)).to(self.lambda_.device)
         # 2. Compute delta = 1/2 * log(U/(1-U))
-        delta = torch.log(logistic_noise / (1 - logistic_noise)) / 2
+        delta = (1/2 * torch.log(logistic_noise / (1 - logistic_noise))).to(
+            self.lambda_.device)
         # 3. Compute the relaxed weights
-        relaxed_w = torch.tanh((self.lambda_ + delta))
-        return relaxed_w
+        relaxed_w = torch.tanh((self.lambda_ + delta)).to(
+            self.lambda_.device)
+        # 4. Take the binary weights
+        return Sign.apply(relaxed_w).to(
+            self.lambda_.device)
 
-    # def sample(self, samples=1):
-    #     """ Sample from the exponential distribution using the Gumbel-softmax trick"""
-    #     # 1. Sample from the bernouilli distribution with p = sigmoid(2*lambda)
-    #     # Shape of bernouilli_noise: (samples, *self.lambda_.shape)
-    #     bernouilli_noise = torch.distributions.bernoulli.Bernoulli(
-    #         torch.sigmoid(2*self.lambda_)).sample((samples,)).to(self.lambda_.device)
-    #     print(bernouilli_noise.shape)
-    #     # 2. Scale the bernouilli noise to -1 and 1
-    #     bernouilli_noise = 2 * bernouilli_noise - 1
-    #     return bernouilli_noise
+    def sample_inference(self, samples=1):
+        """ Sample from the bernouilli distribution using lambda"""
+        # 1. Sample from the bernouilli distribution with p = sigmoid(2*lambda)
+        bernouilli_noise = torch.distributions.bernoulli.Bernoulli(
+            torch.sigmoid(2*self.lambda_)).sample((samples,)).to(self.lambda_.device)
+        # 2. Scale the bernouilli noise to -1 and 1
+        bernouilli_noise = 2 * bernouilli_noise - 1
+        return Sign.apply(bernouilli_noise).to(
+            self.lambda_.device)
 
 
 class BayesianBiNNLinear(torch.nn.modules.Module):
@@ -61,7 +64,8 @@ class BayesianBiNNLinear(torch.nn.modules.Module):
                  lambda_init: float = 0.1,
                  bias: bool = False,
                  device: None = None,
-                 dtype: None = None):
+                 dtype: None = None,
+                 ):
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(BayesianBiNNLinear, self).__init__()
         self.in_features = in_features
@@ -74,7 +78,8 @@ class BayesianBiNNLinear(torch.nn.modules.Module):
             self.lambda_.data = torch.distributions.normal.Normal(
                 0, lambda_init).sample(self.lambda_.shape).to(self.lambda_.device)
         else:
-            self.lambda_.data = torch.zeros_like(self.lambda_)
+            self.lambda_.data = torch.zeros_like(self.lambda_).to(
+                self.lambda_.device)
         # Create the bernouilli weights from the lambda parameter
         self.weight = BernouilliWeights(self.lambda_)
 
@@ -90,7 +95,8 @@ class BayesianBiNNLinear(torch.nn.modules.Module):
         Returns:
             torch.Tensor: Output tensor
         """
-        return torch.matmul(input, Sign.apply(self.weight.sample(samples)))
+        return torch.matmul(input, self.weight.sample(samples)).to(
+            self.lambda_.device)
 
     def extra_repr(self):
         return 'in_features={}, out_features={}, lambda.shape={}'.format(
