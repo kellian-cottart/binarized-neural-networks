@@ -113,7 +113,6 @@ class DNN(torch.nn.Module):
             x = layer(x)
             if layer is not self.layers[-1] and (i+1) % len(unique_layers) == 0:
                 x = self.activation_function(x)
-
         if self.output_function == "softmax":
             x = torch.nn.functional.softmax(x, dim=1)
         if self.output_function == "log_softmax":

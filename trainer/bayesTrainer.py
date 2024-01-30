@@ -13,15 +13,15 @@ class BayesTrainer(GPUTrainer):
         **kwargs: Arbitrary keyword arguments (most likely optimizer or scheduler parameters)
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, test_mcmc_samples=1, *args, **kwargs):
         if "test_mcmc_samples" in kwargs:
             self.test_mcmc_samples = kwargs["test_mcmc_samples"]
         elif "training_parameters" in kwargs and "test_mcmc_samples" in kwargs["training_parameters"]:
             self.test_mcmc_samples = kwargs["training_parameters"]["test_mcmc_samples"]
         else:
-            raise ValueError(
-                "BayesTrainer needs test_mcmc_samples to be defined in training_parameters (number of samples to use for the monte carlo prediction)")
-
+            self.test_mcmc_samples = test_mcmc_samples
+        # add the test_mcmc_samples to kwargs
+        kwargs["test_mcmc_samples"] = self.test_mcmc_samples
         super().__init__(*args, **kwargs)
 
     def batch_step(self, inputs, targets, dataset_size):
@@ -51,6 +51,7 @@ class BayesTrainer(GPUTrainer):
         """
         self.model.eval()
         noise = []
+        # Sample from the bernoulli distribution with p = sigmoid(2*lambda)
         for _ in range(n_samples):
             noise.append(torch.bernoulli(
                 torch.sigmoid(2*self.optimizer.state["lambda"])))
@@ -59,7 +60,16 @@ class BayesTrainer(GPUTrainer):
                                      torch.zeros_like(
                 self.optimizer.state['mu']),
                 torch.ones_like(self.optimizer.state['mu'])))
-        predictions = self.monte_carlo_prediction(inputs, noise)
+        # Retrieve the parameters of the networks
+        parameters = self.optimizer.param_groups[0]['params']
+        predictions = []
+        # We iterate over the parameters
+        for n in noise:
+            # Sample neural networks weights
+            torch.nn.utils.vector_to_parameters(2*n-1, parameters)
+            # Predict with this sampled network
+            prediction = self.model.forward(inputs).to(self.device)
+            predictions.append(prediction)
         return predictions
 
     @torch.no_grad()
@@ -85,29 +95,6 @@ class BayesTrainer(GPUTrainer):
         else:
             predictions = torch.argmax(predictions, dim=1)
         return torch.mean((predictions == labels).float())
-
-    @torch.no_grad()
-    def monte_carlo_prediction(self, inputs, noise):
-        """Perform a monte carlo prediction on the given inputs
-
-        Args:
-            inputs (torch.Tensor): Input data
-            noise (torch.Tensor, optional): Noise to use for the prediction. Defaults to None.
-
-        Returns:
-            torch.Tensor: Predictions
-        """
-        self.model.eval()
-        # Retrieve the parameters
-        parameters = self.optimizer.param_groups[0]['params']
-        predictions = []
-        # We iterate over the parameters
-        for n in noise:
-            # 2p - 1
-            torch.nn.utils.vector_to_parameters(2*n-1, parameters)
-            prediction = self.model.forward(inputs).to(self.device)
-            predictions.append(prediction)
-        return predictions
 
     def epoch_step(self, train_dataset, test_loader=None):
         """Perform the training of a single epoch

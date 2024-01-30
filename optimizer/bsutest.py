@@ -10,7 +10,7 @@ class BSUTest(torch.optim.Optimizer):
     Args: 
         params (iterable): iterable of parameters to optimize or dicts defining parameter groups
         lr (float): learning rate of the optimizer (default: 1e-3)
-        gamma (float): learning rate of forgetting (default: 1e-6)
+        scale (float): scale value of the forgetting rate (default: 1)
         temperature (float): temperature value of the Gumbel soft-max trick (Maddison et al., 2017)
         num_mcmc_samples (int): number of MCMC samples to compute the gradient (default: 1, if 0: computes the point estimate)
         init_lambda (int): initial value of lambda (default: 0)
@@ -20,7 +20,7 @@ class BSUTest(torch.optim.Optimizer):
     def __init__(self,
                  params: params_t,
                  lr: Union[float, torch.Tensor] = 1e-3,
-                 gamma: float = 1e-6,
+                 scale: float = 1,
                  temperature: float = 1e-8,
                  num_mcmc_samples: int = 1,
                  init_lambda: int = 0,
@@ -35,11 +35,11 @@ class BSUTest(torch.optim.Optimizer):
                 f"Invalid number of MCMC samples: {num_mcmc_samples}")
         if not 0.0 <= init_lambda:
             raise ValueError(f"Invalid initial lambda: {init_lambda}")
-        if not 0.0 <= gamma:
-            raise ValueError(f"Invalid gamma: {gamma}.")
+        if not 0.0 <= scale:
+            raise ValueError(f"Invalid gamma: {scale}.")
 
         defaults = dict(lr=lr,
-                        gamma=gamma,
+                        scale=scale,
                         temperature=temperature,
                         num_mcmc_samples=num_mcmc_samples)
         super().__init__(params, defaults)
@@ -88,7 +88,7 @@ class BSUTest(torch.optim.Optimizer):
             temperature = group['temperature']
             num_mcmc_samples = group['num_mcmc_samples']
             lr = group['lr']
-            gamma = group['gamma']
+            scale = group['scale']
 
             # State of the optimizer
             # lambda represents the intertia with each neuron
@@ -134,10 +134,21 @@ class BSUTest(torch.optim.Optimizer):
             # Update lambda with metaplasticity
             def meta(x, p): return 1/(torch.cosh(x)**p)
 
-            # And use the prior lambda to coerce lambda
-            lambda_ = lambda_ \
-                - lr * meta(lambda_, 2) * gradient_estimate \
-                - gamma * meta(prior - lambda_, 2) * (prior - lambda_)
+            # LEARNING
+            # if gradient and lambda have opposite signs, we apply lr
+            opposite_sign = torch.where(lambda_ * gradient_estimate < 0,
+                                        lr * gradient_estimate,
+                                        torch.zeros_like(lambda_))
+
+            # FORGETTING
+            # if gradient and lambda have the same sign, we apply scale
+            same_sign = torch.where(lambda_ * gradient_estimate >= 0,
+                                    lr * scale * gradient_estimate,
+                                    torch.zeros_like(lambda_))
+
+            # when lambda and the gradient have opposite signs, we apply lr
+            lambda_ = lambda_ - meta(lambda_, 2) * (opposite_sign + same_sign)
+
             self.state['lambda'] = lambda_
             self.state['mu'] = torch.tanh(lambda_)
         return torch.mean(torch.tensor(running_loss))

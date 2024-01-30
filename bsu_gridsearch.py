@@ -10,6 +10,7 @@ import os
 import optuna
 from optuna.trial import TrialState
 import json
+from models.layers.activation import Sign
 
 ### GENERAL CONFIGURATION ###
 SEED = 1000  # Random seed
@@ -21,7 +22,7 @@ N_TRIALS = 500  # Number of trials
 ### PATHS ###
 SAVE_FOLDER = "saved"
 DATASETS_PATH = "datasets"
-STUDY = "gridsearch/bsutest3-Sequential"
+STUDY = "gridsearch/asymmetric-PermutedMNIST"
 ALL_GPU = True
 
 
@@ -39,22 +40,23 @@ def train_iteration(trial):
         init="uniform",  # Initialization of the weights
         std=0,  # Standard deviation of the weights
         batchnorm=True,  # Batch normalization
-        bnmomentum=0.1,  # Batch normalization momentum
-        bneps=1e-05,  # Batch normalization epsilon
+        bnmomentum=0,  # Batch normalization momentum
+        bneps=0,  # Batch normalization epsilon
         running_stats=False,  # Batch normalization running stats
+        affine=False,  # Affine
         bias=False,  # Bias
         latent_weights=False,  # Latent weights
-        activation_function=None,  # Activation function => None gives sign activation
+        activation_function=Sign.apply,  # Activation function
         output_function="log_softmax",  # Output function
     )
 
     ### PARAMETERS ###
-    lr = trial.suggest_float("lr", 0.1, 100, log=True)
-    gamma = trial.suggest_float("gamma", 1e-5, 10, log=True)
+    lr = trial.suggest_float("lr", 1e-2, 1e2, log=True)
+    scale = trial.suggest_float("scale", 0.5, 3, log=False)
     temperature = trial.suggest_categorical("temperature", [1])
     seed = trial.suggest_categorical("seed", [1000])
-    epochs = trial.suggest_categorical("epochs", [50])
-    task = trial.suggest_categorical("task", ["Sequential"])
+    epochs = trial.suggest_categorical("epochs", [20])
+    task = trial.suggest_categorical("task", ["PermutedMNIST"])
 
     torch.manual_seed(seed)
     if torch.cuda.is_available() and ALL_GPU:
@@ -88,7 +90,7 @@ def train_iteration(trial):
         optimizer=optimizer,
         optimizer_parameters={
             "lr": lr,
-            "gamma": gamma,
+            "scale": scale,
             "temperature": temperature,
             "num_mcmc_samples": 1,
             "init_lambda": 0,

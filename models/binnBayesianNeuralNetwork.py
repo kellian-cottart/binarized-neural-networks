@@ -63,7 +63,6 @@ class BiNNBayesianNN(DNN):
                 x = self.activation_function(x)
         # Average over samples if the last layer is a MetaBayesLinearParallel layer
         if isinstance(layer, BayesianBiNNLinear):
-            x = torch.nn.functional.log_softmax(x, dim=2)
             x = torch.mean(x, dim=0)
         if self.output_function == "softmax":
             x = torch.nn.functional.softmax(x, dim=1)
