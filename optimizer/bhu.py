@@ -4,16 +4,19 @@ from typing import Optional, Union
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 
 
-class BSUTest(torch.optim.Optimizer):
+class BinaryHomosynapticUncertainty(torch.optim.Optimizer):
     """ BinarySynapticUncertainty Optimizer for PyTorch
 
     Args: 
         params (iterable): iterable of parameters to optimize or dicts defining parameter groups
         lr (float): learning rate of the optimizer (default: 1e-3)
-        scale (float): scale value of the forgetting rate (default: 1)
+        scale (float): LTP/LTD ratio (default: 1) A higher value will increase the Long Term Depression (LTD) and decrease the Long Term Potentiation (LTP)
+        gamma (float): prior learning rate term (default: 0)
+        noise (float): noise added to the gradient (default: 0)
         temperature (float): temperature value of the Gumbel soft-max trick (Maddison et al., 2017)
         num_mcmc_samples (int): number of MCMC samples to compute the gradient (default: 1, if 0: computes the point estimate)
         init_lambda (int): initial value of lambda (default: 0)
+        quantization (int): quantization of lambda (8 for 8 bits, 4 for 4 bits, etc.) (default: None)
         prior_lambda (torch.Tensor): prior value of lambda (default: None)
     """
 
@@ -21,9 +24,12 @@ class BSUTest(torch.optim.Optimizer):
                  params: params_t,
                  lr: Union[float, torch.Tensor] = 1e-3,
                  scale: float = 1,
+                 gamma: float = 0,
+                 noise: float = 0,
                  temperature: float = 1e-8,
                  num_mcmc_samples: int = 1,
                  init_lambda: int = 0,
+                 quantization: Optional[int] = None,
                  prior_lambda: Optional[torch.Tensor] = None,
                  ):
         if not 0.0 <= lr:
@@ -36,12 +42,20 @@ class BSUTest(torch.optim.Optimizer):
         if not 0.0 <= init_lambda:
             raise ValueError(f"Invalid initial lambda: {init_lambda}")
         if not 0.0 <= scale:
-            raise ValueError(f"Invalid gamma: {scale}.")
+            raise ValueError(f"Invalid scale factor: {scale}.")
+        if not 0.0 <= gamma:
+            raise ValueError(f"Invalid gamma: {gamma}.")
+        if not 0.0 <= noise:
+            raise ValueError(f"Invalid noise: {noise}.")
 
         defaults = dict(lr=lr,
                         scale=scale,
+                        gamma=gamma,
+                        noise=noise,
                         temperature=temperature,
-                        num_mcmc_samples=num_mcmc_samples)
+                        num_mcmc_samples=num_mcmc_samples,
+                        quantization=quantization,
+                        )
         super().__init__(params, defaults)
 
         ### LAMBDA INIT ###
@@ -84,11 +98,14 @@ class BSUTest(torch.optim.Optimizer):
             # Parameters to optimize
             parameters = group['params']
             # Parameters of the optimizer
-            eps = 1e-10
+            eps = 1e-8
             temperature = group['temperature']
             num_mcmc_samples = group['num_mcmc_samples']
             lr = group['lr']
             scale = group['scale']
+            gamma = group['gamma']
+            noise = group['noise']
+            quantization = group['quantization']
 
             # State of the optimizer
             # lambda represents the intertia with each neuron
@@ -125,8 +142,8 @@ class BSUTest(torch.optim.Optimizer):
                     # Compute the gradient
                     g = parameters_to_vector(
                         torch.autograd.grad(loss, parameters)).detach()
-                    s = ((1 - torch.pow(relaxed_w, 2) + eps) /
-                         (temperature * (1 - torch.pow(mu, 2) + eps)))
+                    s = ((1 - relaxed_w**2 + eps) /
+                         (temperature * (1 - mu**2 + eps)))
                     gradient_estimate.add_(s * g)
                 gradient_estimate.mul_(input_size).div_(
                     num_mcmc_samples if num_mcmc_samples > 0 else 1)
@@ -134,20 +151,24 @@ class BSUTest(torch.optim.Optimizer):
             # Update lambda with metaplasticity
             def meta(x, p): return 1/(torch.cosh(x)**p)
 
-            # LEARNING
-            # if gradient and lambda have opposite signs, we apply lr
-            opposite_sign = torch.where(lambda_ * gradient_estimate < 0,
-                                        lr * gradient_estimate,
-                                        torch.zeros_like(lambda_))
+            condition = torch.where(torch.sign(lambda_) != torch.sign(
+                gradient_estimate),
+                torch.ones_like(lambda_),  # STRENGTHENING
+                scale)  # WEAKENING
 
-            # FORGETTING
-            # if gradient and lambda have the same sign, we apply scale
-            same_sign = torch.where(lambda_ * gradient_estimate >= 0,
-                                    lr * scale * gradient_estimate,
-                                    torch.zeros_like(lambda_))
+            grad = meta(lambda_, 2) * lr * gradient_estimate * condition
 
-            # when lambda and the gradient have opposite signs, we apply lr
-            lambda_ = lambda_ - meta(lambda_, 2) * (opposite_sign + same_sign)
+            lambda_ = lambda_ - grad
+
+            if noise != 0:
+                # create a normal distribution with mean lambda and std noise
+                lambda_ += torch.distributions.normal.Normal(
+                    0, noise).sample(lambda_.shape).to(lambda_.device)
+
+            if quantization is not None:
+                # we want "quantization" states between each integer. For example, if quantization = 2, we want 0, 0.5, 1, 1.5, 2
+                lambda_ = torch.round(
+                    lambda_ * quantization) / quantization
 
             self.state['lambda'] = lambda_
             self.state['mu'] = torch.tanh(lambda_)

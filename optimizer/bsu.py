@@ -4,7 +4,7 @@ from typing import Optional, Union
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 
 
-class BinarySynapticUncertainty(torch.optim.Optimizer):
+class BinarySynapticUncertainty_OLD(torch.optim.Optimizer):
     """ BinarySynapticUncertainty Optimizer for PyTorch
 
     Args: 
@@ -107,6 +107,7 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
             num_mcmc_samples = group['num_mcmc_samples']
             lr = group['lr']
             gamma = group['gamma']
+            noise = group['noise']
 
             # State of the optimizer
             # lambda represents the intertia with each neuron
@@ -156,10 +157,11 @@ class BinarySynapticUncertainty(torch.optim.Optimizer):
                 torch.cosh(torch.mul(m, x)).pow(2)
 
             # Update lambda with metaplasticity
-            lambda_ = lambda_ - lr * metaplastic_func(metaplasticity, lambda_) * \
-                gradient_estimate + gamma * \
-                metaplastic_func(regularization_metaplasticity, prior -
-                                 lambda_) * (lambda_)
+            lambda_ = lambda_ - (lr * metaplastic_func(metaplasticity, lambda_) *
+                                 gradient_estimate + gamma *
+                                 metaplastic_func(regularization_metaplasticity, prior -
+                                 lambda_) * (lambda_))
+
             # Use the prior lambda to coerce lambda
             self.state['lambda'] = lambda_
             self.state['mu'] = torch.tanh(lambda_)

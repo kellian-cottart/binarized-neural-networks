@@ -9,9 +9,6 @@ class BiNN(DNN):
 
     Neural Network with binary weights and activations, using hidden weights called "degrees of certainty" (DOCs) to approximate real-valued weights.
 
-    Axel Laborieux et al., Synaptic metaplasticity in binarized neural
-networks
-
     Args:
         layers (list): List of layer sizes (including input and output layers)
         init (str): Initialization method for weights

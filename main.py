@@ -10,7 +10,7 @@ import tqdm
 from models.layers.activation import Sign
 
 SEED = 1000  # Random seed
-N_NETWORKS = 5  # Number of networks to train
+N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
 
@@ -41,7 +41,10 @@ if __name__ == "__main__":
                 "batchnorm": True,
                 "bnmomentum": 0,
                 "bneps": 0,
+                "init": "uniform",
+                "std": 0,
                 "bias": False,
+                "latent_weights": False,
                 "running_stats": False,
                 "affine": False,
                 "activation_function": Sign.apply,
@@ -52,13 +55,15 @@ if __name__ == "__main__":
                 'batch_size': 128,
             },
             "criterion": torch.functional.F.nll_loss,
-            "optimizer": BSUTest,
+            "optimizer": BinaryHomosynapticUncertainty,
             "optimizer_parameters": {
-                "lr": 0.025,
-                "scale": 0.921,
+                "lr": 0.03,
+                "scale": 0.924,
                 "temperature": 1,
                 "init_lambda": 0,
                 "num_mcmc_samples": 1,
+                "noise": 0,
+                "quantization": 2,
             },
             "task": "PermutedMNIST",
             "n_tasks": 10,  # PermutedMNIST: number of tasks, Sequential: number of mnist, fashion_mnist pairs
@@ -99,7 +104,7 @@ if __name__ == "__main__":
             ident = f"{name} - {index}"
 
             ### INSTANTIATE THE TRAINER ###
-            if data["optimizer"] in [BinarySynapticUncertainty, BayesBiNN, BinarySynapticUncertaintyTaskBoundaries, BSUTest]:
+            if data["optimizer"] in [BinarySynapticUncertainty_OLD, BayesBiNN, BinarySynapticUncertaintyTaskBoundaries, BinaryHomosynapticUncertainty]:
                 net_trainer = trainer.BayesTrainer(batch_size=batch_size,
                                                    model=model, **data, device=DEVICE)
             else:
@@ -127,18 +132,18 @@ if __name__ == "__main__":
             for i, task in enumerate(train_loader):
                 pbar = tqdm.trange(data["training_parameters"]["n_epochs"])
                 for epoch in pbar:
-                    # If BSUTest, visualize lambda
-                    if data["optimizer"] == BSUTest and epoch % 10 == 0:
+                    # If BinaryHomosynapticUncertainty, visualize lambda
+                    if data["optimizer"] == BinaryHomosynapticUncertainty and epoch % 10 == 0:
                         net_trainer.optimizer.visualize_lambda(
                             path=os.path.join(main_folder, "lambda"),
-                            threshold=100,
+                            threshold=25,
                         )
                     if data["optimizer"] == BinaryMetaplasticUncertainty and epoch % 10 == 0:
                         for param in model.parameters():
                             visualize_lambda(
                                 lambda_=param,
                                 path=os.path.join(main_folder, "lambda"),
-                                threshold=100,
+                                threshold=25,
                             )
                     net_trainer.epoch_step(task)  # Epoch of optimization
                     # If permutedMNIST, permute the datasets and test
@@ -153,8 +158,6 @@ if __name__ == "__main__":
                 ### TASK BOUNDARIES ###
                 if data["optimizer"] in [BinarySynapticUncertaintyTaskBoundaries, BayesBiNN]:
                     net_trainer.optimizer.update_prior_lambda()
-                if data["optimizer"] == MetaplasticAdam:
-                    net_trainer.reset_optimizer(data['optimizer_parameters'])
 
             ### SAVING DATA ###
             os.makedirs(main_folder, exist_ok=True)
@@ -184,3 +187,12 @@ if __name__ == "__main__":
         title = name + "-tasks"
         visualize_sequential(title, accuracies, folder=main_folder, sequential=True if data['task'] ==
                              "Sequential" else False)
+        # if number of tasks is 100, export the accuracy of the first 10 and last 10 tasks
+        if data['n_tasks'] >= 10:
+            title = name + "-tasks-1-10"
+            visualize_task_frame(
+                title, accuracies, folder=main_folder, t_start=1, t_end=10)
+        if data['n_tasks'] == 100:
+            title = name + "-tasks-91-100"
+            visualize_task_frame(
+                title, accuracies, folder=main_folder, t_start=91, t_end=100)

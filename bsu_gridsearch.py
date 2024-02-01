@@ -22,7 +22,7 @@ N_TRIALS = 500  # Number of trials
 ### PATHS ###
 SAVE_FOLDER = "saved"
 DATASETS_PATH = "datasets"
-STUDY = "gridsearch/asymmetric-PermutedMNIST"
+STUDY = "gridsearch/asymmetric-PermutedMNIST-2"
 ALL_GPU = True
 
 
@@ -51,8 +51,8 @@ def train_iteration(trial):
     )
 
     ### PARAMETERS ###
-    lr = trial.suggest_float("lr", 1e-2, 1e2, log=True)
-    scale = trial.suggest_float("scale", 0.5, 3, log=False)
+    lr = trial.suggest_float("lr", 1e-3, 1, log=True)
+    scale = trial.suggest_float("scale", 0.7, 1, log=False)
     temperature = trial.suggest_categorical("temperature", [1])
     seed = trial.suggest_categorical("seed", [1000])
     epochs = trial.suggest_categorical("epochs", [20])

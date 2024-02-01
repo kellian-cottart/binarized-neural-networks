@@ -100,6 +100,72 @@ def visualize_sequential(title, l_accuracies, folder, sequential=False):
     plt.savefig(versionned, bbox_inches='tight')
 
 
+def visualize_task_frame(title, l_accuracies, folder, t_start, t_end):
+    """ Visualize the accuracy of each task between t_start and t_end
+
+    Args:
+        title (str): title of the figure
+        l_accuracies (list): list of list of accuracies for each task at each epoch
+        folder (str): folder to save the figure
+        t_start (int): start task
+        t_end (int): end task (included)
+    """
+    # Compute the number of epochs
+    n_epochs = len(l_accuracies[0]) // len(l_accuracies[0][0])
+
+    # l_accuracies is a vector of n network accuracies
+    # l_accuracies[0] is the accuracy of the first network for each task
+    l_accuracies = torch.tensor(l_accuracies).detach().cpu()
+    mean_acc = torch.mean(l_accuracies, dim=0)
+    std_acc = l_accuracies.std(dim=0)
+
+    # Get the last epochs at t_end
+    final_epoch = t_end * n_epochs - 1
+    mean_acc = mean_acc[final_epoch]
+    std_acc = std_acc[final_epoch]
+
+    # Retrieve only the tasks between t_start and t_end
+    mean_acc = mean_acc[t_start-1:t_end+1] * 100
+    std_acc = std_acc[t_start-1:t_end+1] * 100
+
+    plt.figure(figsize=(6, 3))
+    # Scatter with line
+    plt.plot(range(len(mean_acc)), mean_acc, zorder=3,
+             label="BSU", marker='o', color='purple')
+    # Fill between std
+    plt.fill_between(range(len(mean_acc)), mean_acc-std_acc,
+                     mean_acc+std_acc, alpha=0.3, zorder=2, color='purple')
+    # Add MNIST baseline
+    plt.axhline(y=98.2, color='blue', linestyle='--',
+                linewidth=1, label="MNIST baseline")
+    plt.legend(loc="lower right")
+    # grid but only horizontal
+    plt.grid(axis='y', linestyle='--', linewidth=0.5)
+
+    plt.xlim(t_start, t_end)
+    plt.xlabel('Task')
+    plt.ylabel('Accuracy %')
+    # ticks every 5% accuracy
+    plt.yticks(torch.arange(0, 101, 5).detach().cpu())
+    # xtickslabels from t_start to t_end as string
+    plt.xticks(torch.arange(0, t_end+1-t_start).detach().cpu(),
+               [str(i) for i in range(t_start, t_end+1)])
+    plt.xlim(0, t_end-t_start)
+    plt.ylim(60, 100)
+    plt.grid(True, zorder=0)
+    # increase the size of the ticks
+    ax = plt.gca()
+    ax.tick_params(axis='both', which='major', labelsize=12)
+
+    ### SAVE ###
+    # PDF
+    versionned = versionning(folder, title, ".pdf")
+    plt.savefig(versionned, bbox_inches='tight')
+    # SVG
+    versionned = versionning(folder, title, ".svg")
+    plt.savefig(versionned, bbox_inches='tight')
+
+
 def visualize_weights(title, weights, folder):
     """Visualize the weights of the model to assess the consolidation of the knowledge
     """
@@ -148,7 +214,7 @@ def visualize_lambda(lambda_, path, threshold=10):
 
     plt.bar(torch.linspace(-threshold, threshold, bins).detach().cpu(),
             hist * 100 / shape,
-            width=1.5,
+            width=0.1,
             zorder=2)
     plt.xlabel('Value of $\lambda$ ')
     plt.ylabel('% of $\lambda$')

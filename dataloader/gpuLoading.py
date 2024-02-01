@@ -107,7 +107,6 @@ class GPULoading:
         # Normalize the pixels in train_x and test_x using transform
         transform = transforms.Compose([
             transforms.ToTensor(),
-            transforms.Lambda(lambda x: x/255.),
             transforms.Normalize((0,), (1,))
         ])
 
