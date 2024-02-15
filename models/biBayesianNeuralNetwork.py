@@ -4,7 +4,7 @@ from .layers import *
 from .deepNeuralNetwork import *
 
 
-class BiNNBayesianNN(DNN):
+class BiBayesianNN(DNN):
     """ Binary Bayesian Neural Network
 
     Args:

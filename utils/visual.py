@@ -214,7 +214,7 @@ def visualize_lambda(lambda_, path, threshold=10):
 
     plt.bar(torch.linspace(-threshold, threshold, bins).detach().cpu(),
             hist * 100 / shape,
-            width=0.1,
+            width=1.5,
             zorder=2)
     plt.xlabel('Value of $\lambda$ ')
     plt.ylabel('% of $\lambda$')

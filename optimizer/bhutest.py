@@ -4,7 +4,7 @@ from typing import Optional, Union
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 
 
-class BinaryHomosynapticUncertainty(torch.optim.Optimizer):
+class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
     """ BinarySynapticUncertainty Optimizer for PyTorch
 
     Args: 
@@ -148,7 +148,8 @@ class BinaryHomosynapticUncertainty(torch.optim.Optimizer):
                     # Compute the gradient
                     g = parameters_to_vector(
                         torch.autograd.grad(loss, parameters)).detach()
-                    gradient_estimate.add_(s * g)
+                    s = meta((lambda_+delta)/temperature, 2) / temperature
+                    gradient_estimate.add_(g*s)
                 gradient_estimate.mul_(input_size).div_(
                     num_mcmc_samples if num_mcmc_samples > 0 else 1)
 
@@ -156,10 +157,7 @@ class BinaryHomosynapticUncertainty(torch.optim.Optimizer):
                 gradient_estimate),
                 torch.ones_like(lambda_),  # STRENGTHENING
                 scale)  # WEAKENING
-
-            grad = lr * gradient_estimate * condition
-
-            lambda_ = lambda_ - grad
+            lambda_ = lambda_ - lr * gradient_estimate * condition
 
             if noise != 0:
                 # create a normal distribution with mean lambda and std noise

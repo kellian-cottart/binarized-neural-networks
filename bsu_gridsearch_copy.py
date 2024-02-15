@@ -22,7 +22,7 @@ N_TRIALS = 500  # Number of trials
 ### PATHS ###
 SAVE_FOLDER = "saved"
 DATASETS_PATH = "datasets"
-STUDY = "gridsearch/asymmetric-PermutedMNIST-ReLU-512HL"
+STUDY = "gridsearch/asymmetric-PermutedMNIST-ReLU-200HL-Quantized1"
 ALL_GPU = True
 
 
@@ -35,7 +35,7 @@ def train_iteration(trial):
 
     ### NETWORK CONFIGURATION ###
     model = models.BiNN(
-        layers=[INPUT_SIZE, 512, 512, 10],  # Size of the layers
+        layers=[INPUT_SIZE, 200, 200, 10],  # Size of the layers
         device=DEVICE,  # Device to use
         init="uniform",  # Initialization of the weights
         std=0,  # Standard deviation of the weights
@@ -52,13 +52,13 @@ def train_iteration(trial):
 
     ### PARAMETERS ###
     lr = trial.suggest_float("lr", 1e-3, 1e1, log=True)
-    scale = trial.suggest_float("scale", 0.1, 1, log=False)
+    scale = trial.suggest_float("scale", 0.5, 1, log=False)
     temperature = trial.suggest_categorical("temperature", [1])
     seed = trial.suggest_categorical("seed", [1000])
     epochs = trial.suggest_categorical("epochs", [20])
     task = trial.suggest_categorical("task", ["PermutedMNIST"])
-    quantization = trial.suggest_categorical("quantization", [None])
-    threshold = trial.suggest_categorical("threshold", [None])
+    quantization = trial.suggest_categorical("quantization", [1])
+    threshold = trial.suggest_categorical("threshold", [8])
 
     torch.manual_seed(seed)
     if torch.cuda.is_available() and ALL_GPU:
@@ -190,7 +190,7 @@ if __name__ == "__main__":
         direction="maximize",
         # prune at quartile
         pruner=optuna.pruners.HyperbandPruner(
-            min_resource=5, reduction_factor=2
+            min_resource=4, reduction_factor=2
         ),
         storage=f"sqlite:///{os.path.join('gridsearch', 'gridsearch-2.sqlite3')}",
         study_name=STUDY,

@@ -156,11 +156,14 @@ class BinarySynapticUncertainty_OLD(torch.optim.Optimizer):
             def metaplastic_func(m, x): return 1 / \
                 torch.cosh(torch.mul(m, x)).pow(2)
 
+            # Normal noise to add to the gradient
+            uniform = torch.rand_like(gradient_estimate) * noise
+
             # Update lambda with metaplasticity
             lambda_ = lambda_ - (lr * metaplastic_func(metaplasticity, lambda_) *
                                  gradient_estimate + gamma *
                                  metaplastic_func(regularization_metaplasticity, prior -
-                                 lambda_) * (lambda_))
+                                 lambda_) * (lambda_)) * uniform
 
             # Use the prior lambda to coerce lambda
             self.state['lambda'] = lambda_

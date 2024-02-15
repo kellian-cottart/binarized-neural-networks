@@ -9,7 +9,7 @@ import json
 import tqdm
 from models.layers.activation import Sign
 
-SEED = 1000  # Random seed
+SEED = 9999  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
@@ -33,9 +33,9 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "nn_type": models.BiNN,
+            "nn_type": models.BiBayesianNN,
             "nn_parameters": {
-                "layers": [INPUT_SIZE, 2048, 2048, 10],
+                "layers": [INPUT_SIZE, 512, 512, 10],
                 "device": DEVICE,
                 "dropout": False,
                 "batchnorm": True,
@@ -47,34 +47,31 @@ if __name__ == "__main__":
                 "latent_weights": False,
                 "running_stats": False,
                 "affine": False,
-                "activation_function": Sign.apply,
+                "activation_function": torch.functional.F.relu,
                 "output_function": "log_softmax",
+                "n_samples": 1,
             },
             "training_parameters": {
                 'n_epochs': 20,
                 'batch_size': 128,
             },
             "criterion": torch.functional.F.nll_loss,
-            "optimizer": BinaryHomosynapticUncertainty,
+            "optimizer": BinaryMetaplasticUncertainty,
             "optimizer_parameters": {
-                "lr": 0.03,
-                "scale": 0.924,
-                "temperature": 1,
-                "init_lambda": 0,
-                "num_mcmc_samples": 1,
-                "noise": 0,
-                "quantization": 2,
+                "lr": 1,
+                "scale": scale,
             },
             "task": "PermutedMNIST",
             "n_tasks": 10,  # PermutedMNIST: number of tasks, Sequential: number of mnist, fashion_mnist pairs
             "padding": PADDING,
-        }
+        } for scale in [0.9, 0.925, 0.95, 1]
     ]
     for index, data in enumerate(networks_data):
 
         ### NAME INITIALIZATION ###
         # name should be optimizer-layer2-layer3-...-layerN-1-task-metaplac ity
-        name = f"{data['optimizer'].__name__}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers'][1:-1]])}-{data['task']}"
+        name = f"{data['optimizer'].__name__}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers'][1:-1]])}-{data['task']}-{data['nn_parameters']['activation_function'].__name__}"
+
         # add some parameters to the name
         for key, value in data['optimizer_parameters'].items():
             name += f"-{key}-{value}"
@@ -104,7 +101,7 @@ if __name__ == "__main__":
             ident = f"{name} - {index}"
 
             ### INSTANTIATE THE TRAINER ###
-            if data["optimizer"] in [BinarySynapticUncertainty_OLD, BayesBiNN, BinarySynapticUncertaintyTaskBoundaries, BinaryHomosynapticUncertainty]:
+            if data["optimizer"] in [BinarySynapticUncertainty_OLD, BayesBiNN, BinarySynapticUncertaintyTaskBoundaries, BinaryHomosynapticUncertainty, BinaryHomosynapticUncertaintyTest]:
                 net_trainer = trainer.BayesTrainer(batch_size=batch_size,
                                                    model=model, **data, device=DEVICE)
             else:
@@ -133,7 +130,7 @@ if __name__ == "__main__":
                 pbar = tqdm.trange(data["training_parameters"]["n_epochs"])
                 for epoch in pbar:
                     # If BinaryHomosynapticUncertainty, visualize lambda
-                    if data["optimizer"] == BinaryHomosynapticUncertainty and epoch % 10 == 0:
+                    if data["optimizer"] in [BinaryHomosynapticUncertainty, BinaryHomosynapticUncertaintyTest] and epoch % 10 == 0:
                         net_trainer.optimizer.visualize_lambda(
                             path=os.path.join(main_folder, "lambda"),
                             threshold=25,
