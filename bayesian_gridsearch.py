@@ -17,7 +17,7 @@ SEED = 1000  # Random seed
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 PADDING = 2  # from 28x28 to 32x32
 INPUT_SIZE = (28+PADDING*2)**2
-N_TRIALS = 750  # Number of trials
+N_TRIALS = 500  # Number of trials
 
 ### PATHS ###
 SAVE_FOLDER = "saved"
