@@ -22,7 +22,7 @@ N_TRIALS = 500  # Number of trials
 ### PATHS ###
 SAVE_FOLDER = "saved"
 DATASETS_PATH = "datasets"
-STUDY = "gridsearch/asymmetrictanh-PermutedMNIST-Sign-Tanh"
+STUDY = "gridsearch/asymmetrictanh-PermutedMNIST-Sign-Sign"
 ALL_GPU = True
 
 
@@ -100,7 +100,7 @@ def train_iteration(trial):
             "gamma": 0,
             "num_mcmc_samples": 1,
             "init_lambda": 0,
-            "update": 1,
+            "update": 4,
             "noise": noise,
             "quantization": quantization,
             "threshold": threshold,

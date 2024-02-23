@@ -14,7 +14,7 @@ from models.layers.activation import Sign
 
 ### GENERAL CONFIGURATION ###
 SEED = 1000  # Random seed
-DEVICE = "cuda:0"  # Device to use
+DEVICE = "cuda:1"  # Device to use
 PADDING = 2  # from 28x28 to 32x32
 INPUT_SIZE = (28+PADDING*2)**2  # Size of the input
 N_TRIALS = 500  # Number of trials
@@ -22,7 +22,7 @@ N_TRIALS = 500  # Number of trials
 ### PATHS ###
 SAVE_FOLDER = "saved"
 DATASETS_PATH = "datasets"
-STUDY = "gridsearch/asymmetrictanh-PermutedMNIST-Sign-Tanh"
+STUDY = "gridsearch/asymmetrictanh-PermutedMNIST-Sign-Sign"
 ALL_GPU = True
 
 
@@ -100,7 +100,7 @@ def train_iteration(trial):
             "gamma": 0,
             "num_mcmc_samples": 1,
             "init_lambda": 0,
-            "update": 1,
+            "update": 3,
             "noise": noise,
             "quantization": quantization,
             "threshold": threshold,

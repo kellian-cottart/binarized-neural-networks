@@ -30,6 +30,7 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                  temperature: float = 1,
                  num_mcmc_samples: int = 1,
                  init_lambda: int = 0,
+                 update: Optional[int] = 1,
                  quantization: Optional[int] = None,
                  threshold: Optional[int] = None,
                  prior_lambda: Optional[torch.Tensor] = None,
@@ -56,6 +57,7 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                         num_mcmc_samples=num_mcmc_samples,
                         threshold=threshold,
                         quantization=quantization,
+                        update=update,
                         )
         super().__init__(params, defaults)
 
@@ -107,6 +109,7 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
             noise = group['noise']
             quantization = group['quantization']
             threshold = group['threshold']
+            update = group['update']
 
             # State of the optimizer
             # lambda represents the intertia with each neuron
@@ -151,8 +154,23 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                 gradient_estimate.mul_(input_size).div_(
                     num_mcmc_samples if num_mcmc_samples > 0 else 1)
 
-            lambda_ -= lr * (1/(1+scale*torch.functional.F.hardtanh(lambda_, min_val=-1, max_val=1) *
-                                torch.sign(gradient_estimate)))*gradient_estimate - lr * gamma * 1/(torch.cosh(1/lambda_)**2) * (prior - lambda_)
+            if update == 1:
+                # LAMBDA UPDATE WITH TANH + SIGN ON GRADIENT
+                lambda_ -= lr * (1/(1+scale*torch.functional.F.tanh(lambda_) *
+                                    torch.sign(gradient_estimate)))*gradient_estimate - lr * gamma * 1/(torch.cosh(1/lambda_)**2) * (prior - lambda_)
+            elif update == 2:
+                # LAMBDA UPDATE WITH HARDTANH + SIGN ON GRADIENT
+                lambda_ -= lr * (1/(1+scale*torch.functional.F.hardtanh(lambda_, min_val=-1, max_val=1) *
+                                    torch.sign(gradient_estimate)))*gradient_estimate - lr * gamma * 1/(torch.cosh(1/lambda_)**2) * (prior - lambda_)
+            elif update == 3:
+                # LAMBDA UPDATE WITH SIGN + SIGN ON GRADIENT
+                lambda_ -= lr * (1/(1+scale*torch.sign(lambda_) *
+                                    torch.sign(gradient_estimate)))*gradient_estimate - lr * gamma * 1/(torch.cosh(1/lambda_)**2) * (prior - lambda_)
+            elif update == 4:
+                # LAMBDA UPDATE WITH TANH + NOTHING ON GRADIENT
+                lambda_ -= lr * (1/(1+scale*torch.tanh(lambda_) * gradient_estimate)) * \
+                    gradient_estimate - lr * gamma * 1 / \
+                    (torch.cosh(1/lambda_)**2) * (prior - lambda_)
 
             if noise != 0:
                 # create a normal distribution with mean lambda and std noise
