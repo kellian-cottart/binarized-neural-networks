@@ -10,13 +10,13 @@ class BinaryHomosynapticUncertainty(torch.optim.Optimizer):
     Args: 
         params (iterable): iterable of parameters to optimize or dicts defining parameter groups
         lr (float): learning rate of the optimizer (default: 1e-3)
-        scale (float): LTP/LTD ratio (default: 1) A higher value will increase the Long Term Depression (LTD) and decrease the Long Term Potentiation (LTP)
+        scale (float): LTD/LTP ratio (default: 1) A higher value will increase the Long Term Potentiation (LTP) and decrease the Long Term Depression (LTD)
         gamma (float): prior learning rate term (default: 0)
         noise (float): noise added to the gradient (default: 0)
         temperature (float): temperature value of the Gumbel soft-max trick (Maddison et al., 2017)
         num_mcmc_samples (int): number of MCMC samples to compute the gradient (default: 1, if 0: computes the point estimate)
         init_lambda (int): initial value of lambda (default: 0)
-        quantization (int): quantization of lambda (8 for 8 bits, 4 for 4 bits, etc.) (default: None)
+        quantization (int): quantization of lambda (8 for 8 states between each integer) (default: None)
         threshold (int): threshold to stop values of lambda (default: None)
         prior_lambda (torch.Tensor): prior value of lambda (default: None)
     """
@@ -138,8 +138,8 @@ class BinaryHomosynapticUncertainty(torch.optim.Optimizer):
                     # Compute the exploration noise
                     delta = torch.log(epsilon / (1 - epsilon)) / 2
                     # Compute the relaxed weights
-                    relaxed_w = torch.tanh(
-                        (lambda_ + delta) / temperature)
+                    z = (lambda_ + delta) / temperature
+                    relaxed_w = torch.tanh(z)
                     # Update the parameters
                     vector_to_parameters(relaxed_w, parameters)
                     # Compute the loss
@@ -148,14 +148,15 @@ class BinaryHomosynapticUncertainty(torch.optim.Optimizer):
                     # Compute the gradient
                     g = parameters_to_vector(
                         torch.autograd.grad(loss, parameters)).detach()
+                    s = meta(z, 2) / temperature
                     gradient_estimate.add_(s * g)
                 gradient_estimate.mul_(input_size).div_(
                     num_mcmc_samples if num_mcmc_samples > 0 else 1)
 
             condition = torch.where(torch.sign(lambda_) != torch.sign(
                 gradient_estimate),
-                torch.ones_like(lambda_),  # STRENGTHENING
-                scale)  # WEAKENING
+                scale,  # STRENGTHENING
+                torch.ones_like(lambda_))  # WEAKENING
 
             grad = lr * gradient_estimate * condition
 

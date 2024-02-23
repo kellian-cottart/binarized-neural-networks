@@ -9,7 +9,7 @@ import json
 import tqdm
 from models.layers.activation import Sign
 
-SEED = 9999  # Random seed
+SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
@@ -33,9 +33,9 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "nn_type": models.BiBayesianNN,
+            "nn_type": models.BiNN,
             "nn_parameters": {
-                "layers": [INPUT_SIZE, 512, 512, 10],
+                "layers": [INPUT_SIZE, 2048, 2048, 10],
                 "device": DEVICE,
                 "dropout": False,
                 "batchnorm": True,
@@ -47,24 +47,28 @@ if __name__ == "__main__":
                 "latent_weights": False,
                 "running_stats": False,
                 "affine": False,
-                "activation_function": torch.functional.F.relu,
+                "activation_function": Sign.apply,
                 "output_function": "log_softmax",
-                "n_samples": 1,
             },
             "training_parameters": {
                 'n_epochs': 20,
                 'batch_size': 128,
+                "test_mcmc_samples": 1,
             },
             "criterion": torch.functional.F.nll_loss,
-            "optimizer": BinaryMetaplasticUncertainty,
+            "optimizer": BinaryHomosynapticUncertaintyTest,
             "optimizer_parameters": {
-                "lr": 1,
-                "scale": scale,
+                "lr": 0.0374,
+                "scale": 0.06,
+                "gamma": 0,
+                "noise": 0,
+                "quantization": None,
+                "threshold": None,
             },
             "task": "PermutedMNIST",
             "n_tasks": 10,  # PermutedMNIST: number of tasks, Sequential: number of mnist, fashion_mnist pairs
             "padding": PADDING,
-        } for scale in [0.9, 0.925, 0.95, 1]
+        }
     ]
     for index, data in enumerate(networks_data):
 

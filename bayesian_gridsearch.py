@@ -17,12 +17,12 @@ SEED = 1000  # Random seed
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 PADDING = 2  # from 28x28 to 32x32
 INPUT_SIZE = (28+PADDING*2)**2
-N_TRIALS = 500  # Number of trials
+N_TRIALS = 750  # Number of trials
 
 ### PATHS ###
 SAVE_FOLDER = "saved"
 DATASETS_PATH = "datasets"
-STUDY = "gridsearch/asymmetric-PermutedMNIST-ReLU-200HL-Quantized1"
+STUDY = "gridsearch/asymmetrictanh-PermutedMNIST-Sign-Hardtanh"
 ALL_GPU = True
 
 
@@ -35,7 +35,7 @@ def train_iteration(trial):
 
     ### NETWORK CONFIGURATION ###
     model = models.BiNN(
-        layers=[INPUT_SIZE, 200, 200, 10],  # Size of the layers
+        layers=[INPUT_SIZE, 2048, 2048, 10],  # Size of the layers
         device=DEVICE,  # Device to use
         init="uniform",  # Initialization of the weights
         std=0,  # Standard deviation of the weights
@@ -46,19 +46,20 @@ def train_iteration(trial):
         affine=False,  # Affine
         bias=False,  # Bias
         latent_weights=False,  # Latent weights
-        activation_function=torch.functional.F.relu,  # Activation function
+        activation_function=Sign.apply,  # Activation function
         output_function="log_softmax",  # Output function
     )
 
     ### PARAMETERS ###
-    lr = trial.suggest_float("lr", 1e-3, 1e1, log=True)
-    scale = trial.suggest_float("scale", 0.5, 1, log=False)
+    lr = trial.suggest_float("lr", 1e-4, 1, log=True)
+    scale = trial.suggest_float("scale", 1e-5, 1, log=True)
     temperature = trial.suggest_categorical("temperature", [1])
     seed = trial.suggest_categorical("seed", [1000])
     epochs = trial.suggest_categorical("epochs", [20])
     task = trial.suggest_categorical("task", ["PermutedMNIST"])
-    quantization = trial.suggest_categorical("quantization", [1])
-    threshold = trial.suggest_categorical("threshold", [8])
+    quantization = trial.suggest_categorical("quantization", [None])
+    threshold = trial.suggest_categorical("threshold", [None])
+    noise = trial.suggest_categorical("noise", [0])
 
     torch.manual_seed(seed)
     if torch.cuda.is_available() and ALL_GPU:
@@ -70,7 +71,7 @@ def train_iteration(trial):
         "epochs": epochs,
         "task": task,
         "n_tasks": 10,
-        "optimizer": "BinaryHomosynapticUncertainty",
+        "optimizer": "BinaryHomosynapticUncertaintyTest",
     }
 
     if config["optimizer"] == "BinarySynapticUncertainty":
@@ -81,6 +82,8 @@ def train_iteration(trial):
         optimizer = BayesBiNN
     elif config["optimizer"] == "BinaryHomosynapticUncertainty":
         optimizer = BinaryHomosynapticUncertainty
+    elif config["optimizer"] == "BinaryHomosynapticUncertaintyTest":
+        optimizer = BinaryHomosynapticUncertaintyTest
     else:
         raise ValueError(
             f"Optimizer {config['optimizer']} not recognized")
@@ -94,9 +97,10 @@ def train_iteration(trial):
             "lr": lr,
             "scale": scale,
             "temperature": temperature,
+            "gamma": 0,
             "num_mcmc_samples": 1,
             "init_lambda": 0,
-            "noise": 0,
+            "noise": noise,
             "quantization": quantization,
             "threshold": threshold,
         },
@@ -144,7 +148,7 @@ def train_iteration(trial):
             # update the progress bar
             # bayes_trainer.pbar_update(
             #     pbar, epoch, config["epochs"])
-            # create all tasks that weren't evaluated to 0.1
+            # 1. Create a mean loss for task accuracies
             other_tasks_stack = torch.zeros(
                 len(bayes_trainer.testing_accuracy[-1]) - i - 1)
             # set to 0.1
@@ -152,6 +156,9 @@ def train_iteration(trial):
             ongoing_accuracy = torch.cat(
                 (torch.stack(bayes_trainer.testing_accuracy[-1][:i+1]), other_tasks_stack))
             ongoing_accuracy = ongoing_accuracy.mean()
+
+            # 2. Maybe a second loss that evaluates the plasticity of the network
+
             trial.report(
                 ongoing_accuracy.item(),
                 step=i*config["epochs"]+epoch,
@@ -190,7 +197,7 @@ if __name__ == "__main__":
         direction="maximize",
         # prune at quartile
         pruner=optuna.pruners.HyperbandPruner(
-            min_resource=4, reduction_factor=2
+            min_resource=5, reduction_factor=2
         ),
         storage=f"sqlite:///{os.path.join('gridsearch', 'gridsearch-2.sqlite3')}",
         study_name=STUDY,

@@ -22,8 +22,8 @@ class BayesBiNN(torch.optim.Optimizer):
     def __init__(self,
                  params: params_t,
                  lr: Union[float, torch.Tensor] = 1e-4,
-                 beta: float = 0.99,
-                 temperature: float = 1e-8,
+                 beta: float = 0,
+                 temperature: float = 1,
                  num_mcmc_samples: int = 1,
                  prior_lambda: Optional[torch.Tensor] = None,
                  init_lambda: int = 10,
@@ -143,10 +143,8 @@ class BayesBiNN(torch.optim.Optimizer):
             ### PARAMETER UPDATE ###
             momentum = momentum*beta + (1-beta)*gradient_estimate
             bias_correction = 1 - beta ** step
-            step_size = lr / bias_correction
-            lambda_ = lambda_ - step_size * momentum + step_size * scale * \
-                (prior_lambda - lambda_)
-            self.state['lambda'] = lambda_
+
+            self.state['lambda'] -= lr * momentum / bias_correction
             self.state['momentum'] = momentum
             self.state['mu'] = torch.tanh(lambda_)
         return torch.mean(torch.tensor(running_loss))

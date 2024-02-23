@@ -27,7 +27,7 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                  scale: float = 1,
                  gamma: float = 0,
                  noise: float = 0,
-                 temperature: float = 1e-8,
+                 temperature: float = 1,
                  num_mcmc_samples: int = 1,
                  init_lambda: int = 0,
                  quantization: Optional[int] = None,
@@ -43,8 +43,6 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                 f"Invalid number of MCMC samples: {num_mcmc_samples}")
         if not 0.0 <= init_lambda:
             raise ValueError(f"Invalid initial lambda: {init_lambda}")
-        if not 0.0 <= scale:
-            raise ValueError(f"Invalid scale factor: {scale}.")
         if not 0.0 <= gamma:
             raise ValueError(f"Invalid gamma: {gamma}.")
         if not 0.0 <= noise:
@@ -69,7 +67,6 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
         self.state['lambda'] = torch.distributions.normal.Normal(
             0, init_lambda).sample(param.shape).to(param.device) if init_lambda != 0 else torch.zeros_like(param)
         # Set all other parameters
-        self.state['mu'] = torch.tanh(self.state['lambda'])
         self.state['step'] = 0
         self.state['prior_lambda'] = prior_lambda if prior_lambda is not None else torch.zeros_like(
             param)
@@ -101,7 +98,7 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
             # Parameters to optimize
             parameters = group['params']
             # Parameters of the optimizer
-            eps = 1e-8
+            eps = 1e-10
             temperature = group['temperature']
             num_mcmc_samples = group['num_mcmc_samples']
             lr = group['lr']
@@ -114,10 +111,10 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
             # State of the optimizer
             # lambda represents the intertia with each neuron
             lambda_ = self.state['lambda']
-            mu = self.state['mu']
             prior = self.state['prior_lambda']
-            # Update lambda with metaplasticity
-            def meta(x, p): return 1/(torch.cosh(x)**p)
+
+            def meta(x, n):
+                return 1/torch.cosh(x)**n
 
             if num_mcmc_samples <= 0:
                 ### POINT ESTIMATE ###
@@ -135,11 +132,11 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                     ### Gumbel soft-max trick ###
                     # Add eps to avoid log(0)
                     epsilon = torch.rand_like(lambda_) + eps
-                    # Compute the exploration noise
+                    # Compute the logistic noise
                     delta = torch.log(epsilon / (1 - epsilon)) / 2
                     # Compute the relaxed weights
-                    relaxed_w = torch.tanh(
-                        (lambda_ + delta) / temperature)
+                    z = (lambda_ + delta) / temperature
+                    relaxed_w = torch.tanh(z)
                     # Update the parameters
                     vector_to_parameters(relaxed_w, parameters)
                     # Compute the loss
@@ -148,34 +145,58 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                     # Compute the gradient
                     g = parameters_to_vector(
                         torch.autograd.grad(loss, parameters)).detach()
-                    s = meta((lambda_+delta)/temperature, 2) / temperature
-                    gradient_estimate.add_(g*s)
+                    s = meta(z, 2) / \
+                        temperature*(meta(lambda_, 2))
+                    gradient_estimate.add_(s*g)
                 gradient_estimate.mul_(input_size).div_(
                     num_mcmc_samples if num_mcmc_samples > 0 else 1)
 
-            condition = torch.where(torch.sign(lambda_) != torch.sign(
-                gradient_estimate),
-                torch.ones_like(lambda_),  # STRENGTHENING
-                scale)  # WEAKENING
-            lambda_ = lambda_ - lr * gradient_estimate * condition
+            lambda_ -= lr * (1/(1+scale*torch.functional.F.hardtanh(lambda_, min_val=-1, max_val=1) *
+                                torch.sign(gradient_estimate)))*gradient_estimate - lr * gamma * 1/(torch.cosh(1/lambda_)**2) * (prior - lambda_)
 
             if noise != 0:
                 # create a normal distribution with mean lambda and std noise
                 lambda_ += torch.distributions.normal.Normal(
                     0, noise).sample(lambda_.shape).to(lambda_.device)
-
             if quantization is not None:
                 # we want "quantization" states between each integer. For example, if quantization = 2, we want 0, 0.5, 1, 1.5, 2
                 lambda_ = torch.round(
                     lambda_ * quantization) / quantization
-
             if threshold is not None:
                 # we want to clamp the values of lambda between -threshold and threshold
                 lambda_ = torch.clamp(lambda_, -threshold, threshold)
 
             self.state['lambda'] = lambda_
-            self.state['mu'] = torch.tanh(lambda_)
         return torch.mean(torch.tensor(running_loss))
+
+    def visualize_grad(self, grad, threshold=1):
+        """ Plot a graph with the distribution in lambda values with respect to certain thresholds
+
+        Args:
+            lambda_ (torch.Tensor): Lambda values
+            path (str): Path to save the graph
+            threshold (int): Threshold to plot the distribution
+        """
+        import matplotlib.pyplot as plt
+        from matplotlib.ticker import AutoMinorLocator
+        plt.figure()
+        plt.grid()
+        bins = 100
+        hist = torch.histc(grad, bins=bins, min=-threshold,
+                           max=threshold).detach().cpu()
+
+        plt.bar(torch.linspace(-threshold, threshold, bins).detach().cpu(),
+                hist * 100 / len(grad),
+                width=0.01,
+                zorder=2)
+        plt.xlabel('Value of alpha*grad')
+        plt.ylabel('% of alpha*grad')
+        plt.gca().xaxis.set_minor_locator(AutoMinorLocator(5))
+        plt.gca().yaxis.set_minor_locator(AutoMinorLocator(5))
+        plt.gca().tick_params(which='both', width=1)
+        plt.gca().tick_params(which='major', length=6)
+        plt.ylim(0, 100)
+        plt.show()
 
     def visualize_lambda(self, path, threshold=10):
         """ Plot a graph with the distribution in lambda values with respect to certain thresholds

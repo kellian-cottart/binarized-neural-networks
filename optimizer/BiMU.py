@@ -10,16 +10,18 @@ class BinaryMetaplasticUncertainty(torch.optim.Optimizer):
         params (iterable): iterable of parameters to optimize or dicts defining parameter groups
         lr (float): learning rate of the optimizer (default: 1e-3)
         gamma (float): coefficient of forgetting (default: 1e-6)
-        temperature (float): temperature of the relaxation (changes the shape of the sigmoid)
-        n_samples (int): number of MCMC n_samples to compute the gradient (default: 1)
-        eps (float): term added to improve
-            numerical stability
+        noise (float): standard deviation of the normal distribution for the noise (default: 0)
+        quantization (int): number of states between each integer (default: None)
+        threshold (float): threshold for the values of the parameters (default: None)
     """
 
     def __init__(self,
                  params: params_t,
                  lr: Union[float, torch.Tensor] = 1e-3,
                  scale: float = 1,
+                 noise: float = 0,
+                 quantization: Union[int, None] = None,
+                 threshold: Union[float, None] = None
                  ):
         if not 0.0 <= lr:
             raise ValueError(f"Invalid learning rate: {lr}")
@@ -27,7 +29,11 @@ class BinaryMetaplasticUncertainty(torch.optim.Optimizer):
             raise ValueError(f"Invalid gamma: {scale}.")
 
         defaults = dict(lr=lr,
-                        scale=scale)
+                        scale=scale,
+                        noise=noise,
+                        quantization=quantization,
+                        threshold=threshold
+                        )
         super().__init__(params, defaults)
 
     def step(self, closure=None):
@@ -53,7 +59,10 @@ class BinaryMetaplasticUncertainty(torch.optim.Optimizer):
             BiMU(params,
                  grads,
                  lr=group['lr'],
-                 scale=group['scale']
+                 scale=group['scale'],
+                 noise=group['noise'],
+                 quantization=group['quantization'],
+                 threshold=group['threshold']
                  )
         return loss
 
@@ -63,15 +72,28 @@ def BiMU(
     grads: List[torch.Tensor],
     lr: float,
     scale: float = 1,
+    noise: float = 0,
+    quantization: Union[int, None] = None,
+    threshold: Union[float, None] = None
 ):
     """ Perform a single optimization step"""
     for i, param in enumerate(params):
         # scale the gradient w.r.t the number of input samples
         grad = grads[i] * param.data.shape[0]
-        condition = torch.where(torch.sign(param.data) != torch.sign(
-            grad),
-            torch.ones_like(param.data),  # STRENGTHENING
-            scale)  # WEAKENING
-        # sigma = 1 / torch.cosh(param.data)
-        param.data = param.data - lr * grad * \
-            condition * (1 - torch.tanh(param.data)**2)
+
+        sigma = torch.cosh(param.data)**2
+
+        param.data -= lr * sigma*(1/(1+scale*torch.sign(param.data) *
+                                     torch.sign(grad)))*grad
+
+        if noise != 0:
+            # create a normal distribution with mean lambda and std noise
+            param.data += torch.distributions.normal.Normal(
+                0, noise).sample(param.data.shape).to(param.data.device)
+        if quantization is not None:
+            # we want "quantization" states between each integer. For example, if quantization = 2, we want 0, 0.5, 1, 1.5, 2
+            param.data = torch.round(
+                param.data * quantization) / quantization
+        if threshold is not None:
+            # we want to clamp the values of lambda between -threshold and threshold
+            param.data = torch.clamp(param.data, -threshold, threshold)
