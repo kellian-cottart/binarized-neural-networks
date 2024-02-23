@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import idx2numpy
 from torchvision import transforms
+import pickle
 
 
 class GPUTensorDataset(torch.utils.data.Dataset):
@@ -80,8 +81,8 @@ class GPULoading:
         self.device = device
         self.as_dataset = as_dataset
 
-    def __call__(self, batch_size, path_train_x, path_train_y, path_test_x, path_test_y, *args, **kwargs):
-        """ Load a local dataset
+    def mnist(self, batch_size, path_train_x, path_train_y, path_test_x, path_test_y, *args, **kwargs):
+        """ Load a local dataset on GPU corresponding either to MNIST or FashionMNIST
 
         Args:
             batch_size (int): Batch size
@@ -115,15 +116,19 @@ class GPULoading:
         test_x = transform(test_x).squeeze(0).to(
             self.device)
 
+        side_size = int(np.sqrt(train_x.shape[1]))
         # De-flatten the images
-        train_x = train_x.view(train_x.shape[0], 28, 28)
-        test_x = test_x.view(test_x.shape[0], 28, 28)
+        train_x = train_x.view(
+            train_x.shape[0], side_size, side_size)
+        test_x = test_x.view(
+            test_x.shape[0], side_size, side_size)
         # Regular padding
         train_x = torch.nn.functional.pad(
             train_x, (self.padding, self.padding, self.padding, self.padding))
         test_x = torch.nn.functional.pad(
             test_x, (self.padding, self.padding, self.padding, self.padding))
-        # Flatten the images
+
+        # Flatten the images back to their original shape
         train_x = train_x.reshape(train_x.shape[0], -1)
         test_x = test_x.reshape(test_x.shape[0], -1)
 
@@ -153,4 +158,68 @@ class GPULoading:
                 train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
             test_dataset = torch.utils.data.DataLoader(
                 test_dataset, batch_size=max_batch_size, shuffle=False)
+        return train_dataset, test_dataset
+
+    def cifar10(self, batch_size, path_databatch, path_testbatch, *args, **kwargs):
+        """ Load a local dataset on GPU corresponding to CIFAR10 """
+        # Deal with the training data
+        train_x = []
+        train_y = []
+        for path in path_databatch:
+            with open(path, 'rb') as f:
+                dict = pickle.load(f, encoding='bytes')
+            train_x.append(dict[b'data'])
+            train_y.append(dict[b'labels'])
+        train_x = np.concatenate(train_x)
+        train_y = np.concatenate(train_y)
+
+        # Deal with the test data
+        with open(path_testbatch, 'rb') as f:
+            dict = pickle.load(f, encoding='bytes')
+        test_x = dict[b'data']
+        test_y = dict[b'labels']
+
+        # Establish the transformation)
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0,), (1,))
+        ])
+
+        # Convert the data to tensor and normalize it
+        train_x = transform(train_x)
+        test_x = transform(test_x)
+
+        # Deflatten the data
+        train_x = train_x.view(-1, 3, 32, 32)
+        test_x = test_x.view(-1, 3, 32, 32)
+
+        # Add padding if necessary
+        train_x = torch.nn.functional.pad(
+            train_x, (self.padding, self.padding, self.padding, self.padding))
+        test_x = torch.nn.functional.pad(
+            test_x, (self.padding, self.padding, self.padding, self.padding))
+
+        # Flatten the images back to their original shape
+        train_x = train_x.view(train_x.shape[0], -1)
+        test_x = test_x.view(test_x.shape[0], -1)
+
+        train_dataset = GPUTensorDataset(
+            train_x, torch.Tensor(train_y).type(
+                torch.LongTensor), device=self.device)
+        test_dataset = GPUTensorDataset(test_x.float(), torch.Tensor(test_y).type(
+            torch.LongTensor), device=self.device)
+        max_batch_size = len(test_dataset)
+        if not self.as_dataset:
+            # create a DataLoader to load the data in batches
+            train_dataset = GPUDataLoader(
+                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+            test_dataset = GPUDataLoader(
+                test_dataset, batch_size=max_batch_size, shuffle=False)
+        else:
+            # create a DataLoader to load the data in batches
+            train_dataset = torch.utils.data.DataLoader(
+                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+            test_dataset = torch.utils.data.DataLoader(
+                test_dataset, batch_size=max_batch_size, shuffle=False)
+
         return train_dataset, test_dataset
