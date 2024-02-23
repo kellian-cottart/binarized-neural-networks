@@ -81,6 +81,40 @@ class GPULoading:
         self.device = device
         self.as_dataset = as_dataset
 
+    def batching(self, train_x, train_y, test_x, test_y, batch_size):
+        """ Create a DataLoader to load the data in batches"""
+        train_dataset = GPUTensorDataset(
+            train_x, torch.Tensor(train_y).type(
+                torch.LongTensor), device=self.device)
+        test_dataset = GPUTensorDataset(test_x.float(), torch.Tensor(test_y).type(
+            torch.LongTensor), device=self.device)
+        max_batch_size = len(test_dataset)
+        if not self.as_dataset:
+            # create a DataLoader to load the data in batches
+            train_dataset = GPUDataLoader(
+                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+            test_dataset = GPUDataLoader(
+                test_dataset, batch_size=max_batch_size, shuffle=False)
+        else:
+            # create a DataLoader to load the data in batches
+            train_dataset = torch.utils.data.DataLoader(
+                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+            test_dataset = torch.utils.data.DataLoader(
+                test_dataset, batch_size=max_batch_size, shuffle=False)
+        return train_dataset, test_dataset
+
+    def pad(self, train_x, test_x):
+        # Add padding if necessary
+        train_x = torch.nn.functional.pad(
+            train_x, (self.padding, self.padding, self.padding, self.padding))
+        test_x = torch.nn.functional.pad(
+            test_x, (self.padding, self.padding, self.padding, self.padding))
+
+        # Flatten the images back to their original shape
+        train_x = train_x.view(train_x.shape[0], -1)
+        test_x = test_x.view(test_x.shape[0], -1)
+        return train_x, test_x
+
     def mnist(self, batch_size, path_train_x, path_train_y, path_test_x, path_test_y, *args, **kwargs):
         """ Load a local dataset on GPU corresponding either to MNIST or FashionMNIST
 
@@ -122,15 +156,8 @@ class GPULoading:
             train_x.shape[0], side_size, side_size)
         test_x = test_x.view(
             test_x.shape[0], side_size, side_size)
-        # Regular padding
-        train_x = torch.nn.functional.pad(
-            train_x, (self.padding, self.padding, self.padding, self.padding))
-        test_x = torch.nn.functional.pad(
-            test_x, (self.padding, self.padding, self.padding, self.padding))
 
-        # Flatten the images back to their original shape
-        train_x = train_x.reshape(train_x.shape[0], -1)
-        test_x = test_x.reshape(test_x.shape[0], -1)
+        train_x, test_x = self.pad(train_x, test_x)
 
         if "permute_idx" in kwargs and kwargs["permute_idx"] is not None:
             # permute_idx is the permutation to apply to the pixels of the images
@@ -140,25 +167,7 @@ class GPULoading:
             # Permute the pixels of the test examples
             test_x = test_x[:, permute_idx]
 
-        train_dataset = GPUTensorDataset(
-            train_x, torch.from_numpy(train_y).type(
-                torch.LongTensor), device=self.device)
-        test_dataset = GPUTensorDataset(test_x.float(), torch.from_numpy(test_y).type(
-            torch.LongTensor), device=self.device)
-        max_batch_size = len(test_dataset)
-        if not self.as_dataset:
-            # create a DataLoader to load the data in batches
-            train_dataset = GPUDataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-            test_dataset = GPUDataLoader(
-                test_dataset, batch_size=max_batch_size, shuffle=False)
-        else:
-            # create a DataLoader to load the data in batches
-            train_dataset = torch.utils.data.DataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-            test_dataset = torch.utils.data.DataLoader(
-                test_dataset, batch_size=max_batch_size, shuffle=False)
-        return train_dataset, test_dataset
+        return self.batching(train_x, train_y, test_x, test_y, batch_size)
 
     def cifar10(self, batch_size, path_databatch, path_testbatch, *args, **kwargs):
         """ Load a local dataset on GPU corresponding to CIFAR10 """
@@ -179,7 +188,7 @@ class GPULoading:
         test_x = dict[b'data']
         test_y = dict[b'labels']
 
-        # Establish the transformation)
+        # Establish the transformation
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0,), (1,))
@@ -193,33 +202,43 @@ class GPULoading:
         train_x = train_x.view(-1, 3, 32, 32)
         test_x = test_x.view(-1, 3, 32, 32)
 
-        # Add padding if necessary
-        train_x = torch.nn.functional.pad(
-            train_x, (self.padding, self.padding, self.padding, self.padding))
-        test_x = torch.nn.functional.pad(
-            test_x, (self.padding, self.padding, self.padding, self.padding))
+        train_x, test_x = self.pad(train_x, test_x)
 
-        # Flatten the images back to their original shape
-        train_x = train_x.view(train_x.shape[0], -1)
-        test_x = test_x.view(test_x.shape[0], -1)
+        return self.batching(train_x, train_y, test_x, test_y, batch_size)
 
-        train_dataset = GPUTensorDataset(
-            train_x, torch.Tensor(train_y).type(
-                torch.LongTensor), device=self.device)
-        test_dataset = GPUTensorDataset(test_x.float(), torch.Tensor(test_y).type(
-            torch.LongTensor), device=self.device)
-        max_batch_size = len(test_dataset)
-        if not self.as_dataset:
-            # create a DataLoader to load the data in batches
-            train_dataset = GPUDataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-            test_dataset = GPUDataLoader(
-                test_dataset, batch_size=max_batch_size, shuffle=False)
-        else:
-            # create a DataLoader to load the data in batches
-            train_dataset = torch.utils.data.DataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-            test_dataset = torch.utils.data.DataLoader(
-                test_dataset, batch_size=max_batch_size, shuffle=False)
+    def cifar100(self, batch_size, path_databatch, path_testbatch):
+        """ Load a local dataset on GPU corresponding to CIFAR100 """
+        with open(path_databatch[0], "rb") as f:
+            data = pickle.load(f, encoding="bytes")
+            train_x = data[b"data"]
+            train_y = data[b"fine_labels"]
+        with open(path_testbatch, "rb") as f:
+            data = pickle.load(f, encoding="bytes")
+            test_x = data[b"data"]
+            test_y = data[b"fine_labels"]
 
-        return train_dataset, test_dataset
+        # Establish the transformation
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0,), (1,))
+        ])
+
+        # Convert the data to tensor and normalize it
+        train_x = transform(train_x)
+        test_x = transform(test_x)
+
+        # Deflatten the data
+        train_x = train_x.view(-1, 3, 32, 32)
+        test_x = test_x.view(-1, 3, 32, 32)
+
+        train_x, test_x = self.pad(train_x, test_x)
+
+        # train_dataset, test_dataset = self.batching(
+        #     train_x, train_y, test_x, test_y, batch_size)
+        # for x, y in train_dataset:
+        #     print(x.shape, y.shape)
+        #     import matplotlib.pyplot as plt
+        #     plt.imshow(x[0].view(3, 32, 32).permute(1, 2, 0).cpu().numpy())
+        #     break
+        # exit()
+        return self.batching(train_x, train_y, test_x, test_y, batch_size)

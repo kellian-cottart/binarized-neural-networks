@@ -39,7 +39,7 @@ if __name__ == "__main__":
         {
             "nn_type": models.BiNN,
             "nn_parameters": {
-                "layers": [2048, 2048, 10],
+                "layers": [2048, 2048],
                 "device": DEVICE,
                 "dropout": False,
                 "batchnorm": True,
@@ -69,7 +69,7 @@ if __name__ == "__main__":
                 "quantization": None,
                 "threshold": None,
             },
-            "task": "CIFAR10",
+            "task": "CIFAR100",
             "n_tasks": 1,
             # PermutedMNIST: number of tasks,
             # Sequential: number of mnist, fashion_mnist pairs
@@ -120,6 +120,12 @@ if __name__ == "__main__":
                 input_size = cifar10_train.dataset[0][0].shape[0]
                 train_loader = [cifar10_train]
                 test_loader = [cifar10_test]
+            elif data["task"] == "CIFAR100":
+                cifar100_train, cifar100_train = cifar100(
+                    loader, batch_size=batch_size)
+                input_size = cifar100_train.dataset[0][0].shape[0]
+                train_loader = [cifar100_train]
+                test_loader = [cifar100_train]
             else:
                 raise ValueError(
                     f"Task {data['task']} is not implemented.")
@@ -131,6 +137,9 @@ if __name__ == "__main__":
                     torch.cuda.manual_seed(SEED + iteration)
             # add input size to the layer of the network parameters
             data['nn_parameters']['layers'].insert(0, input_size)
+            # add output size to the layer of the network parameters
+            data['nn_parameters']['layers'].append(
+                len(train_loader[0].dataset.targets.unique()))
             # instantiate the network
             model = data['nn_type'](**data['nn_parameters'])
             ident = f"{name} - {index}"
