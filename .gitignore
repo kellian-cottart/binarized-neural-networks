@@ -1,9 +1,9 @@
-saved
+saved*/
 datasets
 wandb
 utils/test
 gridsearch
-
+nohup.*
 __pycache__/
 *.py[cod]
 *$py.class

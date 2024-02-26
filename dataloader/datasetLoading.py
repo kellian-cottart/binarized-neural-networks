@@ -1,5 +1,6 @@
 from torchvision import datasets
 import os
+import torch
 
 PATH_MNIST_X_TRAIN = "datasets/MNIST/raw/train-images-idx3-ubyte"
 PATH_MNIST_Y_TRAIN = "datasets/MNIST/raw/train-labels-idx1-ubyte"
@@ -70,3 +71,54 @@ def cifar100(loader, batch_size):
         path_testbatch=PATH_CIFAR100_TESTBATCH,
     )
     return cifar100_train, cifar100_test
+
+
+def task_selection(loader, task, n_tasks, batch_size, *args, **kwargs):
+    """ Select the task to load
+
+    Args:
+        task (str): Name of the task
+        n_tasks (int): Number of tasks
+        batch_size (int): Batch size
+        shape (tuple): Shape of the input
+
+    """
+    ### INIT DATASET ###
+    if task == "Sequential":
+        mnist_train, mnist_test = mnist(loader, batch_size)
+        fashion_train, fashion_test = fashion_mnist(
+            loader, batch_size)
+        train_loader = [mnist_train, fashion_train]
+        test_loader = [mnist_test, fashion_test]
+        shape = mnist_train.dataset[0][0].shape
+        target_size = len(mnist_train.dataset.targets.unique())
+    elif task == "PermutedMNIST" or task == "MNIST":
+        # load mnist
+        mnist_train, mnist_test = mnist(loader, batch_size)
+        shape = mnist_train.dataset[0][0].shape
+        target_size = len(mnist_train.dataset.targets.unique())
+        train_loader = [mnist_train]
+        test_loader = [mnist_test]
+    elif task == "CIFAR10":
+        cifar10_train, cifar10_test = cifar10(
+            loader, batch_size=batch_size)
+        shape = cifar10_train.dataset[0][0].shape
+        target_size = len(cifar10_train.dataset.targets.unique())
+        train_loader = [cifar10_train]
+        test_loader = [cifar10_test]
+    elif task == "CIFAR100":
+        cifar100_train, cifar100_train = cifar100(
+            loader, batch_size=batch_size)
+        shape = cifar100_train.dataset[0][0].shape
+        target_size = len(cifar100_train.dataset.targets.unique())
+        train_loader = [cifar100_train]
+        test_loader = [cifar100_train]
+    else:
+        raise ValueError(
+            f"Task {task} is not implemented.")
+
+    # if there are less than 4 elements in shape, add channels as 1
+    if len(shape) < 3:
+        shape = (1, *shape)
+
+    return train_loader, test_loader, shape, target_size

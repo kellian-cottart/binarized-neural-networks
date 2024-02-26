@@ -13,11 +13,11 @@ SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
-PADDING = 0
+PADDING = 4
 
 
 ### PATHS ###
-SAVE_FOLDER = "saved"
+SAVE_FOLDER = "saved_convolutional_models"
 DATASETS_PATH = "datasets"
 ALL_GPU = True
 
@@ -27,7 +27,6 @@ if __name__ == "__main__":
     if torch.cuda.is_available() and ALL_GPU:
         torch.cuda.manual_seed(SEED)
         torch.set_default_device(DEVICE)
-        torch.set_default_dtype(torch.float32)
 
     ### INIT DATALOADER ###
     loader = GPULoading(padding=PADDING,
@@ -37,10 +36,15 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "nn_type": models.BiNN,
+            "nn_type": models.ConvBiNN,
             "nn_parameters": {
-                "layers": [2048, 2048],
-                "device": DEVICE,
+                "features": [64, 32],
+                "layers": [2048, 512],
+                "kernel_size": 3,
+                "padding": 0,
+                "stride": 1,
+                "activation_function": Sign.apply,
+                "output_function": "log_softmax",
                 "dropout": False,
                 "batchnorm": True,
                 "bnmomentum": 0,
@@ -51,8 +55,7 @@ if __name__ == "__main__":
                 "latent_weights": False,
                 "running_stats": False,
                 "affine": False,
-                "activation_function": Sign.apply,
-                "output_function": "log_softmax",
+                "device": DEVICE,
             },
             "training_parameters": {
                 'n_epochs': 20,
@@ -62,26 +65,23 @@ if __name__ == "__main__":
             "criterion": torch.functional.F.nll_loss,
             "optimizer": BinaryHomosynapticUncertaintyTest,
             "optimizer_parameters": {
-                "lr": 0.0374,
-                "scale": 0.06,
+                "lr": 0.05,
+                "scale": 0,
                 "gamma": 0,
                 "noise": 0,
                 "quantization": None,
                 "threshold": None,
+                "update": 1,
             },
             "task": "CIFAR100",
-            "n_tasks": 1,
-            # PermutedMNIST: number of tasks,
-            # Sequential: number of mnist, fashion_mnist pairs
-            # CIFAR10: 1
+            "n_tasks": 10,
         }
     ]
+
     for index, data in enumerate(networks_data):
 
         ### NAME INITIALIZATION ###
-        # name should be optimizer-layer2-layer3-...-layerN-1-task-metaplac ity
-        name = f"{data['optimizer'].__name__}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers'][1:-1]])}-{data['task']}-{data['nn_parameters']['activation_function'].__name__}"
-
+        name = f"{data['optimizer'].__name__}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers']])}-{data['task']}-{data['nn_parameters']['activation_function'].__name__}"
         # add some parameters to the name
         for key, value in data['optimizer_parameters'].items():
             name += f"-{key}-{value}"
@@ -93,53 +93,22 @@ if __name__ == "__main__":
         ### ACCURACY INITIALIZATION ###
         accuracies = []
         batch_size = data['training_parameters']['batch_size']
+        train_loader, test_loader, shape, target_size = task_selection(loader=loader,
+                                                                       task=data["task"],
+                                                                       n_tasks=data["n_tasks"],
+                                                                       batch_size=batch_size)
 
         ### FOR EACH NETWORK IN THE DICT ###
         for iteration in range(N_NETWORKS):
-
-            ### INIT DATASET ###
-            if data["task"] == "Sequential":
-                mnist_train, mnist_test = mnist(loader, batch_size)
-                input_size = mnist_train.dataset[0][0].shape[0]
-
-                fashion_train, fashion_test = fashion_mnist(
-                    loader, batch_size)
-                train_loader = [mnist_train, fashion_train]
-                test_loader = [mnist_test, fashion_test]
-            elif data["task"] == "PermutedMNIST":
-                mnist_train, mnist_test = mnist(loader, batch_size)
-                input_size = mnist_train.dataset[0][0].shape[0]
-                permutations = [torch.randperm(input_size)
-                                for _ in range(data["n_tasks"])]
-                train_loader = net_trainer.yield_permutation(
-                    mnist_train, permutations)
-                test_loader = [mnist_test]
-            elif data["task"] == "CIFAR10":
-                cifar10_train, cifar10_test = cifar10(
-                    loader, batch_size=batch_size)
-                input_size = cifar10_train.dataset[0][0].shape[0]
-                train_loader = [cifar10_train]
-                test_loader = [cifar10_test]
-            elif data["task"] == "CIFAR100":
-                cifar100_train, cifar100_train = cifar100(
-                    loader, batch_size=batch_size)
-                input_size = cifar100_train.dataset[0][0].shape[0]
-                train_loader = [cifar100_train]
-                test_loader = [cifar100_train]
-            else:
-                raise ValueError(
-                    f"Task {data['task']} is not implemented.")
-
             ### INIT NETWORK ###
             if iteration != 0:
                 torch.manual_seed(SEED + iteration)
                 if torch.cuda.is_available():
                     torch.cuda.manual_seed(SEED + iteration)
             # add input size to the layer of the network parameters
-            data['nn_parameters']['layers'].insert(0, input_size)
+            data['nn_parameters']['features'].insert(0, shape[0])
             # add output size to the layer of the network parameters
-            data['nn_parameters']['layers'].append(
-                len(train_loader[0].dataset.targets.unique()))
+            data['nn_parameters']['layers'].append(target_size)
             # instantiate the network
             model = data['nn_type'](**data['nn_parameters'])
             ident = f"{name} - {index}"
@@ -152,6 +121,11 @@ if __name__ == "__main__":
                 net_trainer = trainer.GPUTrainer(batch_size=batch_size,
                                                  model=model, **data, device=DEVICE)
             print(net_trainer.model)
+
+            if data["task"] == "PermutedMNIST":
+                permutations = [torch.randperm(torch.prod(torch.tensor(shape)))
+                                for _ in range(data["n_tasks"])]
+                train_loader = train_loader[0].permute_dataset(permutations)
 
             for i, task in enumerate(train_loader):
                 pbar = tqdm.trange(data["training_parameters"]["n_epochs"])
@@ -170,10 +144,9 @@ if __name__ == "__main__":
                                 threshold=25,
                             )
                     net_trainer.epoch_step(task)  # Epoch of optimization
-                    # If permutedMNIST, permute the datasets and test
                     if data["task"] == "PermutedMNIST":
-                        net_trainer.evaluate(net_trainer.yield_permutation(
-                            test_loader[0], permutations))
+                        net_trainer.evaluate(test_loader[0].permute_dataset(
+                            permutations))
                     else:
                         net_trainer.evaluate(test_loader)
                     # update the progress bar

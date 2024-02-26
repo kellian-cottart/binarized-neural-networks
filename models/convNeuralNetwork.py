@@ -1,12 +1,13 @@
 import torch
 
 
-class DNN(torch.nn.Module):
-    """ Neural Network Base Class
+class ConvNN(torch.nn.Module):
+    """ Convolutional Neural Network Base Class
     """
 
     def __init__(self,
-                 layers: list = [1024, 1024],
+                 layers: list = [1024, 1024, 10],
+                 features: list = [3, 64, 128, 256],
                  init: str = "uniform",
                  std: float = 0.01,
                  device: str = "cuda:0",
@@ -19,12 +20,16 @@ class DNN(torch.nn.Module):
                  bnmomentum: float = 0.15,
                  activation_function: torch.nn.functional = torch.nn.functional.relu,
                  output_function: str = "softmax",
+                 kernel_size: int = 5,
+                 padding: int = 4,
+                 stride: int = 4,
                  *args,
                  **kwargs):
         """ NN initialization
 
         Args: 
-            layers (list): List of layer sizes (including input and output layers)
+            layers (list): List of layer sizes for the classifier
+            features (list): List of layer sizes for the feature extractor
             init (str): Initialization method for weights
             std (float): Standard deviation for initialization
             device (str): Device to use for computation (e.g. 'cuda' or 'cpu')
@@ -38,9 +43,10 @@ class DNN(torch.nn.Module):
             activation_function (torch.nn.functional): Activation function
             output_function (str): Output function
         """
-        super(DNN, self).__init__()
+        super(ConvNN, self).__init__()
         self.device = device
         self.layers = torch.nn.ModuleList().to(self.device)
+        self.features = torch.nn.ModuleList().to(self.device)
         self.dropout = dropout
         self.batchnorm = batchnorm
         self.bneps = bneps
@@ -49,18 +55,41 @@ class DNN(torch.nn.Module):
         self.affine = affine
         self.activation_function = activation_function
         self.output_function = output_function
+        # Conv parameters
+        self.kernel_size = kernel_size
+        self.padding = padding
+        self.stride = stride
+
         ### LAYER INITIALIZATION ###
-        self._layer_init(layers, bias)
+        self._features_init(features, bias)
+        self._classifier_init(layers, bias)
         ### WEIGHT INITIALIZATION ###
         self._weight_init(init, std)
 
-    def _layer_init(self, layers, bias=False):
+    def _features_init(self, features, bias=False):
+        """ Initialize layers of the network for convolutional layers
+
+            Args:
+                layers (list): List of layer sizes
+                bias (bool): Whether to use bias or not
+        """
+        # Add conv layers to the network as well as batchnorm and maxpool
+        for i, _ in enumerate(features[:-1]):
+            # Conv layers with BatchNorm and MaxPool
+            self.features.append(
+                torch.nn.Conv2d(features[i], features[i+1], kernel_size=self.kernel_size, padding=self.padding, stride=self.stride, bias=bias))
+            self.features.append(
+                torch.nn.MaxPool2d(kernel_size=2))
+            self.features.append(torch.nn.BatchNorm2d(features[i+1]))
+
+    def _classifier_init(self, layers, bias=False):
         """ Initialize layers of NN
 
         Args:
             dropout (bool): Whether to use dropout
             bias (bool): Whether to use bias
         """
+        # Add the fully connected layers to predict the output
         for i, _ in enumerate(layers[:-1]):
             # Linear layers with BatchNorm
             if self.dropout and i != 0:
@@ -86,8 +115,9 @@ class DNN(torch.nn.Module):
             init (str): Initialization method for weights
             std (float): Standard deviation for initialization
         """
-        for layer in self.layers:
-            if isinstance(layer, torch.nn.Linear):
+
+        for layer in self.layers + self.features:
+            if isinstance(layer, torch.nn.Linear) or isinstance(layer, torch.nn.Conv2d):
                 if init == 'gauss':
                     torch.nn.init.normal_(
                         layer.weight, mean=0.0, std=std)
@@ -107,11 +137,19 @@ class DNN(torch.nn.Module):
             torch.Tensor: Output tensor
 
         """
-        # Flatten input if necessary
-        if len(x.shape) > 2:
-            x = x.view(x.size(0), -1)
+        ### FORWARD PASS FEATURES ###
+        # if size is not 4D, add a dimension for the channels
+        if len(x.size()) == 3:
+            x = x.unsqueeze(1)
+        for layer in self.features:
+            x = layer(x)
+            if isinstance(layer, torch.nn.BatchNorm2d):
+                x = self.activation_function(x)
+        # Flatten the output of the convolutional layers
+        x = x.view(x.size(0), -1)
+
+        ### FORWARD PASS CLASSIFIER ###
         unique_layers = set(type(layer) for layer in self.layers)
-        ### FORWARD PASS ###
         for i, layer in enumerate(self.layers):
             x = layer(x)
             if layer is not self.layers[-1] and (i+1) % len(unique_layers) == 0:
@@ -122,4 +160,5 @@ class DNN(torch.nn.Module):
             x = torch.nn.functional.log_softmax(x, dim=1)
         if self.output_function == "sigmoid":
             x = torch.nn.functional.sigmoid(x)
+
         return x

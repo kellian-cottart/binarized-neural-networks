@@ -120,12 +120,8 @@ class GPUTrainer:
             if "scheduler" in dir(self):
                 self.scheduler.step()
 
-            ### TASK EVALUATION (+ PERMUTATION IF NEEDED) ###
-            if permutations is not None:
-                self.evaluate(self.yield_permutation(
-                    test_loader[0], permutations))
-            else:
-                self.evaluate(test_loader)
+            ### TASK EVALUATION ###
+            self.evaluate(test_loader)
 
             ### PROGRESS BAR ###
             self.pbar_update(pbar, epoch, n_epochs, name_loader)
@@ -203,17 +199,3 @@ class GPUTrainer:
         """Load the model
         """
         self.model.load_state_dict(torch.load(path))
-
-    @staticmethod
-    def yield_permutation(loader, permutations):
-        """Yield the permuted inputs
-
-        Args:
-            loader (torch.DataLoader): Loader to use containing MNIST
-
-        Yields:
-            iterator: Iterator over the permuted loaders 
-        """
-        for permutation in permutations:
-            loader.__unpermute__()
-            yield loader.__permute__(permutation)

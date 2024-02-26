@@ -55,16 +55,23 @@ class GPUDataLoader():
         """ Return the number of batches """
         return len(self.dataset)//self.batch_size
 
-    def __permute__(self, permutation):
-        """ Permute the pixels of the images """
-        self.dataset.original = self.dataset.data
-        self.dataset.data = self.dataset.data[:, permutation]
-        return self
+    def permute_dataset(self, permutations):
+        """ Yield a list of DataLoader with permuted pixels of the current dataset
+        As much memory efficient as possible
 
-    def __unpermute__(self):
-        """ Unpermute the pixels of the images """
-        if "original" in dir(self.dataset):
-            self.dataset.data = self.dataset.original
+        Args:
+            permutations (list): List of permutations
+
+        Returns:
+            list: List of DataLoader with permuted pixels
+        """
+        for perm in permutations:
+            if "reference" in self.__dict__:
+                self.dataset.data = self.reference
+            self.reference = self.dataset.data
+            self.dataset.data = self.dataset.data.view(
+                self.dataset.data.shape[0], -1)[:, perm].view(self.reference.shape)
+            yield self
 
 
 class GPULoading:
@@ -94,13 +101,13 @@ class GPULoading:
             train_dataset = GPUDataLoader(
                 train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
             test_dataset = GPUDataLoader(
-                test_dataset, batch_size=max_batch_size, shuffle=False)
+                test_dataset, batch_size=max_batch_size, shuffle=True)
         else:
             # create a DataLoader to load the data in batches
             train_dataset = torch.utils.data.DataLoader(
                 train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
             test_dataset = torch.utils.data.DataLoader(
-                test_dataset, batch_size=max_batch_size, shuffle=False)
+                test_dataset, batch_size=max_batch_size, shuffle=True)
         return train_dataset, test_dataset
 
     def pad(self, train_x, test_x):
@@ -109,10 +116,6 @@ class GPULoading:
             train_x, (self.padding, self.padding, self.padding, self.padding))
         test_x = torch.nn.functional.pad(
             test_x, (self.padding, self.padding, self.padding, self.padding))
-
-        # Flatten the images back to their original shape
-        train_x = train_x.view(train_x.shape[0], -1)
-        test_x = test_x.view(test_x.shape[0], -1)
         return train_x, test_x
 
     def mnist(self, batch_size, path_train_x, path_train_y, path_test_x, path_test_y, *args, **kwargs):
@@ -134,6 +137,7 @@ class GPULoading:
             path_test_x).astype(np.float32)
         test_y = idx2numpy.convert_from_file(
             path_test_y).astype(np.float32)
+        original_shape = train_x.shape
 
         # Flatten the images
         train_x = train_x.reshape(train_x.shape[0], -1)
@@ -150,22 +154,13 @@ class GPULoading:
         test_x = transform(test_x).squeeze(0).to(
             self.device)
 
-        side_size = int(np.sqrt(train_x.shape[1]))
         # De-flatten the images
         train_x = train_x.view(
-            train_x.shape[0], side_size, side_size)
+            train_x.shape[0], original_shape[1], original_shape[2])
         test_x = test_x.view(
-            test_x.shape[0], side_size, side_size)
+            test_x.shape[0], original_shape[1], original_shape[2])
 
         train_x, test_x = self.pad(train_x, test_x)
-
-        if "permute_idx" in kwargs and kwargs["permute_idx"] is not None:
-            # permute_idx is the permutation to apply to the pixels of the images
-            permute_idx = kwargs["permute_idx"]
-            # Permute the pixels of the training examples using torch
-            train_x = train_x[:, permute_idx]
-            # Permute the pixels of the test examples
-            test_x = test_x[:, permute_idx]
 
         return self.batching(train_x, train_y, test_x, test_y, batch_size)
 
@@ -232,13 +227,4 @@ class GPULoading:
         test_x = test_x.view(-1, 3, 32, 32)
 
         train_x, test_x = self.pad(train_x, test_x)
-
-        # train_dataset, test_dataset = self.batching(
-        #     train_x, train_y, test_x, test_y, batch_size)
-        # for x, y in train_dataset:
-        #     print(x.shape, y.shape)
-        #     import matplotlib.pyplot as plt
-        #     plt.imshow(x[0].view(3, 32, 32).permute(1, 2, 0).cpu().numpy())
-        #     break
-        # exit()
         return self.batching(train_x, train_y, test_x, test_y, batch_size)
