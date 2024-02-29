@@ -87,9 +87,8 @@ class BayesTrainer(GPUTrainer):
         predictions = self.predict(inputs, n_samples=self.test_mcmc_samples)
         predictions = torch.stack(predictions, dim=0)
         predictions = torch.mean(predictions, dim=0)
-        if "output_activation" in dir(self.model) and self.model.output_activation == "sigmoid":
+        if self.model.output_function == "sigmoid":
             # apply exponential to get the probability
-            predictions = torch.functional.F.sigmoid(predictions)
             predictions = torch.where(predictions >= 0.5, torch.ones_like(
                 predictions), torch.zeros_like(predictions))
         else:

@@ -156,9 +156,8 @@ class GPUTrainer:
         ### ACCURACY COMPUTATION ###
         self.model.eval()
         predictions = self.predict(inputs)
-        if "output_activation" in dir(self.model) and self.model.output_activation == "sigmoid":
+        if self.model.output_function == "sigmoid":
             # apply exponential to get the probability
-            predictions = torch.functional.F.sigmoid(predictions)
             predictions = torch.where(predictions >= 0.5, torch.ones_like(
                 predictions), torch.zeros_like(predictions))
         else:

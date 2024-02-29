@@ -1,4 +1,5 @@
 import torch
+from typing import Union
 
 
 class ConvNN(torch.nn.Module):
@@ -21,8 +22,9 @@ class ConvNN(torch.nn.Module):
                  activation_function: torch.nn.functional = torch.nn.functional.relu,
                  output_function: str = "softmax",
                  kernel_size: int = 5,
-                 padding: int = 4,
+                 padding: Union[int, tuple] = 2,
                  stride: int = 4,
+                 dilation: int = 1,
                  *args,
                  **kwargs):
         """ NN initialization
@@ -59,6 +61,7 @@ class ConvNN(torch.nn.Module):
         self.kernel_size = kernel_size
         self.padding = padding
         self.stride = stride
+        self.dilation = dilation
 
         ### LAYER INITIALIZATION ###
         self._features_init(features, bias)
@@ -79,7 +82,7 @@ class ConvNN(torch.nn.Module):
             self.features.append(
                 torch.nn.Conv2d(features[i], features[i+1], kernel_size=self.kernel_size, padding=self.padding, stride=self.stride, bias=bias))
             self.features.append(
-                torch.nn.MaxPool2d(kernel_size=2))
+                torch.nn.MaxPool2d(kernel_size=2, stride=2))
             self.features.append(torch.nn.BatchNorm2d(features[i+1]))
 
     def _classifier_init(self, layers, bias=False):

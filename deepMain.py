@@ -10,7 +10,7 @@ import tqdm
 from models.layers.activation import Sign
 
 SEED = 1000  # Random seed
-N_NETWORKS = 1  # Number of networks to train
+N_NETWORKS = 5  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
 PADDING = 2
@@ -62,16 +62,17 @@ if __name__ == "__main__":
             "criterion": torch.functional.F.nll_loss,
             "optimizer": BinaryHomosynapticUncertaintyTest,
             "optimizer_parameters": {
-                "lr": 0.04,
-                "scale": 0.06,
+                "lr": 0.028,
+                "scale": 0.069,
                 "gamma": 0,
                 "noise": 0,
+                "temperature": 1,
                 "quantization": None,
                 "threshold": None,
-                "update": 1,
+                "update": 2
             },
             "task": "PermutedMNIST",
-            "n_tasks": 10,
+            "n_tasks": 100,
             # PermutedMNIST: number of tasks,
             # Sequential: number of mnist, fashion_mnist pairs
             # CIFAR10: 1
@@ -93,10 +94,17 @@ if __name__ == "__main__":
         ### ACCURACY INITIALIZATION ###
         accuracies = []
         batch_size = data['training_parameters']['batch_size']
+
+        ### RELOADING DATASET ###
         train_loader, test_loader, shape, target_size = task_selection(loader=loader,
                                                                        task=data["task"],
                                                                        n_tasks=data["n_tasks"],
                                                                        batch_size=batch_size)
+        # add input size to the layer of the network parameters
+        data['nn_parameters']['layers'].insert(
+            0, torch.prod(torch.tensor(shape)))
+        # add output size to the layer of the network parameters
+        data['nn_parameters']['layers'].append(target_size)
 
         ### FOR EACH NETWORK IN THE DICT ###
         for iteration in range(N_NETWORKS):
@@ -105,11 +113,6 @@ if __name__ == "__main__":
                 torch.manual_seed(SEED + iteration)
                 if torch.cuda.is_available():
                     torch.cuda.manual_seed(SEED + iteration)
-            # add input size to the layer of the network parameters
-            data['nn_parameters']['layers'].insert(
-                0, torch.prod(torch.tensor(shape)))
-            # add output size to the layer of the network parameters
-            data['nn_parameters']['layers'].append(target_size)
             # instantiate the network
             model = data['nn_type'](**data['nn_parameters'])
             ident = f"{name} - {index}"
@@ -126,9 +129,8 @@ if __name__ == "__main__":
             if data["task"] == "PermutedMNIST":
                 permutations = [torch.randperm(torch.prod(torch.tensor(shape)))
                                 for _ in range(data["n_tasks"])]
-                train_loader = train_loader[0].permute_dataset(permutations)
 
-            for i, task in enumerate(train_loader):
+            for i, task in enumerate(train_loader) if not data["task"] == "PermutedMNIST" else enumerate(train_loader[0].permute_dataset(permutations)):
                 pbar = tqdm.trange(data["training_parameters"]["n_epochs"])
                 for epoch in pbar:
                     # If BinaryHomosynapticUncertainty, visualize lambda

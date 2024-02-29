@@ -13,7 +13,7 @@ SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
-PADDING = 4
+PADDING = 0
 
 
 ### PATHS ###
@@ -38,14 +38,14 @@ if __name__ == "__main__":
         {
             "nn_type": models.ConvBiNN,
             "nn_parameters": {
-                "features": [64, 32],
-                "layers": [2048, 512],
+                "features": [256, 128, 64],
+                "layers": [400],
                 "kernel_size": 3,
                 "padding": 0,
                 "stride": 1,
                 "activation_function": Sign.apply,
                 "output_function": "log_softmax",
-                "dropout": False,
+                "dropout": True,
                 "batchnorm": True,
                 "bnmomentum": 0,
                 "bneps": 0,
@@ -59,14 +59,14 @@ if __name__ == "__main__":
             },
             "training_parameters": {
                 'n_epochs': 20,
-                'batch_size': 128,
+                'batch_size': 64,
                 "test_mcmc_samples": 1,
             },
             "criterion": torch.functional.F.nll_loss,
             "optimizer": BinaryHomosynapticUncertaintyTest,
             "optimizer_parameters": {
-                "lr": 0.05,
-                "scale": 0,
+                "lr": 0.0001,
+                "scale": 0.1,
                 "gamma": 0,
                 "noise": 0,
                 "quantization": None,
@@ -74,7 +74,7 @@ if __name__ == "__main__":
                 "update": 1,
             },
             "task": "CIFAR100",
-            "n_tasks": 10,
+            "n_tasks": 5,  # When "PermutedMNIST" is selected, this parameter is the number of tasks
         }
     ]
 
@@ -98,6 +98,11 @@ if __name__ == "__main__":
                                                                        n_tasks=data["n_tasks"],
                                                                        batch_size=batch_size)
 
+        # add input size to the layer of the network parameters
+        data['nn_parameters']['features'].insert(0, shape[0])
+        # add output size to the layer of the network parameters
+        data['nn_parameters']['layers'].append(target_size)
+
         ### FOR EACH NETWORK IN THE DICT ###
         for iteration in range(N_NETWORKS):
             ### INIT NETWORK ###
@@ -105,10 +110,6 @@ if __name__ == "__main__":
                 torch.manual_seed(SEED + iteration)
                 if torch.cuda.is_available():
                     torch.cuda.manual_seed(SEED + iteration)
-            # add input size to the layer of the network parameters
-            data['nn_parameters']['features'].insert(0, shape[0])
-            # add output size to the layer of the network parameters
-            data['nn_parameters']['layers'].append(target_size)
             # instantiate the network
             model = data['nn_type'](**data['nn_parameters'])
             ident = f"{name} - {index}"
@@ -125,9 +126,8 @@ if __name__ == "__main__":
             if data["task"] == "PermutedMNIST":
                 permutations = [torch.randperm(torch.prod(torch.tensor(shape)))
                                 for _ in range(data["n_tasks"])]
-                train_loader = train_loader[0].permute_dataset(permutations)
 
-            for i, task in enumerate(train_loader):
+            for i, task in enumerate(train_loader) if not data["task"] == "PermutedMNIST" else enumerate(train_loader[0].permute_dataset(permutations)):
                 pbar = tqdm.trange(data["training_parameters"]["n_epochs"])
                 for epoch in pbar:
                     # If BinaryHomosynapticUncertainty, visualize lambda

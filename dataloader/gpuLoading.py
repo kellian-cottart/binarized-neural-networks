@@ -56,7 +56,7 @@ class GPUDataLoader():
         return len(self.dataset)//self.batch_size
 
     def permute_dataset(self, permutations):
-        """ Yield a list of DataLoader with permuted pixels of the current dataset
+        """ Yield a list of DataLoaders with permuted pixels of the current dataset
         As much memory efficient as possible
 
         Args:
@@ -71,6 +71,20 @@ class GPUDataLoader():
             self.reference = self.dataset.data
             self.dataset.data = self.dataset.data.view(
                 self.dataset.data.shape[0], -1)[:, perm].view(self.reference.shape)
+            yield self
+
+    def class_incremental_dataset(self, n_tasks):
+        """ Yield a list of DataLoaders with data only from the t // n_tasks task of the current dataset
+        Args:
+            n_tasks (int): Number of tasks
+        """
+        for i in range(n_tasks):
+            if "reference" in self.__dict__:
+                self.dataset.data = self.reference
+            self.reference = self.dataset.data
+
+            # Select the data corresponding to the current task
+
             yield self
 
 

@@ -14,7 +14,7 @@ from models.layers.activation import Sign
 
 ### GENERAL CONFIGURATION ###
 SEED = 1000  # Random seed
-DEVICE = "cuda:1"  # Device to use
+DEVICE = "cuda:0"  # Device to use
 PADDING = 2  # from 28x28 to 32x32
 INPUT_SIZE = (28+PADDING*2)**2  # Size of the input
 N_TRIALS = 500  # Number of trials
@@ -22,7 +22,7 @@ N_TRIALS = 500  # Number of trials
 ### PATHS ###
 SAVE_FOLDER = "saved"
 DATASETS_PATH = "datasets"
-STUDY = "gridsearch/asymmetrictanh-PermutedMNIST-Sign-Sign"
+STUDY = "gridsearch/asymmetrictanh-PermutedMNIST-Tanh-None-Update-4"
 ALL_GPU = True
 
 
@@ -52,7 +52,7 @@ def train_iteration(trial):
 
     ### PARAMETERS ###
     lr = trial.suggest_float("lr", 1e-4, 1, log=True)
-    scale = trial.suggest_float("scale", 1e-5, 1, log=True)
+    scale = trial.suggest_float("scale", 0.01, 0.3, log=True)
     temperature = trial.suggest_categorical("temperature", [1])
     seed = trial.suggest_categorical("seed", [1000])
     epochs = trial.suggest_categorical("epochs", [20])
@@ -100,7 +100,7 @@ def train_iteration(trial):
             "gamma": 0,
             "num_mcmc_samples": 1,
             "init_lambda": 0,
-            "update": 3,
+            "update": 4,
             "noise": noise,
             "quantization": quantization,
             "threshold": threshold,
@@ -121,29 +121,22 @@ def train_iteration(trial):
                         as_dataset=False)
 
     ### DATA ###
-    mnist_train, mnist_test = mnist(loader, config["batch_size"])
-
-    if config["task"] == "Sequential":
-        fashion_train, fashion_test = fashion_mnist(
-            loader, config["batch_size"])
-        data_loader = [mnist_train, fashion_train]
-        test_loader = [mnist_test, fashion_test]
-    elif config["task"] == "PermutedMNIST":
-        permutations = [torch.randperm(INPUT_SIZE)
-                        for _ in range(config["n_tasks"])]
-        data_loader = bayes_trainer.yield_permutation(
-            mnist_train, permutations)
-        test_loader = [mnist_test]
-
+    train_loader, test_loader, shape, target_size = task_selection(loader=loader,
+                                                                   task=config["task"],
+                                                                   n_tasks=config["n_tasks"],
+                                                                   batch_size=config["batch_size"],)
     ### TRAINING ###
-    for i, task in enumerate(data_loader):
+    if config["task"] == "PermutedMNIST":
+        permutations = [torch.randperm(torch.prod(torch.tensor(shape)))
+                        for _ in range(config["n_tasks"])]
+    for i, task in enumerate(train_loader) if not config["task"] == "PermutedMNIST" else enumerate(train_loader[0].permute_dataset(permutations)):
         pbar = tqdm.trange(config["epochs"])
         for epoch in pbar:
             bayes_trainer.epoch_step(task)  # Epoch of optimization
             # If permutedMNIST, permute the datasets and test
             if config["task"] == "PermutedMNIST":
-                bayes_trainer.evaluate(bayes_trainer.yield_permutation(
-                    test_loader[0], permutations))
+                bayes_trainer.evaluate(test_loader[0].permute_dataset(
+                    permutations))
             else:
                 bayes_trainer.evaluate(test_loader)
             # update the progress bar

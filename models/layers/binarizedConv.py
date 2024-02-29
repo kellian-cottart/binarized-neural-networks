@@ -16,12 +16,20 @@ class BinarizedConv2d(torch.nn.Conv2d):
                  kernel_size: int,
                  stride: int,
                  padding: int,
+                 dilation: int = 1,
                  bias=False,
-                 latent_weights=True,
+                 latent_weights=False,
                  device='cuda'
                  ):
         super(BinarizedConv2d, self).__init__(
-            in_channels, out_channels, kernel_size, stride, padding, bias=bias, device=device)
+            in_channels,
+            out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            bias=bias,
+            device=device)
         self.latent_weights = latent_weights
 
     def forward(self, input):

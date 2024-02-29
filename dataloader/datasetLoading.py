@@ -107,12 +107,12 @@ def task_selection(loader, task, n_tasks, batch_size, *args, **kwargs):
         train_loader = [cifar10_train]
         test_loader = [cifar10_test]
     elif task == "CIFAR100":
-        cifar100_train, cifar100_train = cifar100(
+        cifar100_train, cifar100_test = cifar100(
             loader, batch_size=batch_size)
         shape = cifar100_train.dataset[0][0].shape
         target_size = len(cifar100_train.dataset.targets.unique())
         train_loader = [cifar100_train]
-        test_loader = [cifar100_train]
+        test_loader = [cifar100_test]
     else:
         raise ValueError(
             f"Task {task} is not implemented.")

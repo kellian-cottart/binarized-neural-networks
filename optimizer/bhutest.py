@@ -24,7 +24,7 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
     def __init__(self,
                  params: params_t,
                  lr: Union[float, torch.Tensor] = 1e-3,
-                 scale: float = 1,
+                 scale: float = 0,
                  gamma: float = 0,
                  noise: float = 0,
                  temperature: float = 1,
