@@ -10,7 +10,7 @@ import tqdm
 from models.layers.activation import Sign
 
 SEED = 1000  # Random seed
-N_NETWORKS = 5  # Number of networks to train
+N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
 PADDING = 2
@@ -63,16 +63,16 @@ if __name__ == "__main__":
             "optimizer": BinaryHomosynapticUncertaintyTest,
             "optimizer_parameters": {
                 "lr": 0.028,
-                "scale": 0.069,
+                "scale": 0.06,
                 "gamma": 0,
                 "noise": 0,
                 "temperature": 1,
                 "quantization": None,
                 "threshold": None,
-                "update": 2
+                "update": 1
             },
             "task": "PermutedMNIST",
-            "n_tasks": 100,
+            "n_tasks": 10,
             # PermutedMNIST: number of tasks,
             # Sequential: number of mnist, fashion_mnist pairs
             # CIFAR10: 1
@@ -126,11 +126,21 @@ if __name__ == "__main__":
                                                  model=model, **data, device=DEVICE)
             print(net_trainer.model)
 
+            # Regenerating the task iterator
+
+            task_iterator = None
             if data["task"] == "PermutedMNIST":
                 permutations = [torch.randperm(torch.prod(torch.tensor(shape)))
                                 for _ in range(data["n_tasks"])]
+                task_iterator = enumerate(
+                    train_loader[0].permute_dataset(permutations))
+            elif data["task"] == "CIFAR100INCREMENTAL":
+                task_iterator = enumerate(
+                    train_loader[0].class_incremental_dataset(n_tasks=data["n_tasks"], n_classes=10))
+            else:
+                task_iterator = enumerate(train_loader)
 
-            for i, task in enumerate(train_loader) if not data["task"] == "PermutedMNIST" else enumerate(train_loader[0].permute_dataset(permutations)):
+            for i, task in task_iterator:
                 pbar = tqdm.trange(data["training_parameters"]["n_epochs"])
                 for epoch in pbar:
                     # If BinaryHomosynapticUncertainty, visualize lambda

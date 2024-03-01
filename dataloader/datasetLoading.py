@@ -73,12 +73,11 @@ def cifar100(loader, batch_size):
     return cifar100_train, cifar100_test
 
 
-def task_selection(loader, task, n_tasks, batch_size, *args, **kwargs):
+def task_selection(loader, task, batch_size, *args, **kwargs):
     """ Select the task to load
 
     Args:
         task (str): Name of the task
-        n_tasks (int): Number of tasks
         batch_size (int): Batch size
         shape (tuple): Shape of the input
 
@@ -106,7 +105,7 @@ def task_selection(loader, task, n_tasks, batch_size, *args, **kwargs):
         target_size = len(cifar10_train.dataset.targets.unique())
         train_loader = [cifar10_train]
         test_loader = [cifar10_test]
-    elif task == "CIFAR100":
+    elif task == "CIFAR100" or task == "CIFAR100INCREMENTAL":
         cifar100_train, cifar100_test = cifar100(
             loader, batch_size=batch_size)
         shape = cifar100_train.dataset[0][0].shape

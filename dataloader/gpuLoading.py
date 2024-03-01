@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import idx2numpy
-from torchvision import transforms
+from torchvision.transforms import v2
 import pickle
 
 
@@ -65,26 +65,52 @@ class GPUDataLoader():
         Returns:
             list: List of DataLoader with permuted pixels
         """
+        # Save the reference data
+        self.reference_data = self.dataset.data.detach().clone()
+        # For each permutation, permute the pixels and yield the DataLoader
         for perm in permutations:
-            if "reference" in self.__dict__:
-                self.dataset.data = self.reference
-            self.reference = self.dataset.data
-            self.dataset.data = self.dataset.data.view(
-                self.dataset.data.shape[0], -1)[:, perm].view(self.reference.shape)
+            self.dataset.data = self.reference_data.view(
+                self.dataset.data.shape[0], -1)[:, perm].view(self.reference_data.shape)
             yield self
+        # Reset the dataset
+        self.dataset.data = self.reference_data
+        # remove the reference data and targets
+        del self.reference_data
 
-    def class_incremental_dataset(self, n_tasks):
+    def class_incremental_dataset(self,
+                                  n_tasks: int = 5,
+                                  n_classes: int = 10,
+                                  test: bool = False):
         """ Yield a list of DataLoaders with data only from the t // n_tasks task of the current dataset
+        Then, yields the DataLoader with the whole dataset
+
         Args:
-            n_tasks (int): Number of tasks
+            n_tasks (int): Number of tasks to split the dataset into
+            n_classes (int): Number of classes in the dataset to take per task
+            test (bool, optional): If True, works with the test set and adjusts batch size. Defaults to False.
         """
+        # Save the reference data and targets
+        self.reference_data = self.dataset.data.detach().clone()
+        self.reference_targets = self.dataset.targets.detach().clone()
         for i in range(n_tasks):
-            if "reference" in self.__dict__:
-                self.dataset.data = self.reference
-            self.reference = self.dataset.data
-
-            # Select the data corresponding to the current task
-
+            # For each task, retrieve the indexes of the n_classes classes
+            indexes = torch.nonzero(
+                (self.reference_targets >= i * n_classes) & (self.reference_targets < (i + 1) * n_classes)).squeeze()
+            self.dataset.data = self.reference_data[indexes].detach().clone()
+            self.dataset.targets = self.reference_targets[indexes].detach(
+            ).clone()
+            if test:
+                self.batch_size = len(self.dataset)
+            yield self
+        # Reset the dataset
+        self.dataset.data = self.reference_data
+        self.dataset.targets = self.reference_targets
+        if test:
+            self.batch_size = len(self.dataset)
+        # remove the reference data and targets
+        del self.reference_data
+        del self.reference_targets
+        if test:
             yield self
 
 
@@ -125,11 +151,45 @@ class GPULoading:
         return train_dataset, test_dataset
 
     def pad(self, train_x, test_x):
+        """ Add padding to the images if necessary"""
         # Add padding if necessary
         train_x = torch.nn.functional.pad(
             train_x, (self.padding, self.padding, self.padding, self.padding))
         test_x = torch.nn.functional.pad(
             test_x, (self.padding, self.padding, self.padding, self.padding))
+        return train_x, test_x
+
+    def transform(self, train_x, test_x, data_augmentation=False):
+        """ Normalize the pixels in train_x and test_x using transform
+        Does data augmentation if required
+
+        Args:
+            train_x (np.array): Training data
+            test_x (np.array): Testing data
+            data_augmentation (bool, optional): If True, applies data augmentation. Defaults to False.
+
+        Returns:
+            torch.tensor, torch.tensor: Normalized training and testing data
+        """
+        # Completely conver train_x and test_x to tensor
+        train_x = torch.from_numpy(train_x.astype(np.float32))
+        test_x = torch.from_numpy(test_x.astype(np.float32))
+
+        # Shape of images (N, C, H, W) w/ N = number of images, C = number of channels, H = height, W = width
+        transform = v2.Compose([v2.Normalize((0,), (1,))])
+
+        train_x = transform(train_x)
+        test_x = transform(test_x)
+
+        if data_augmentation:
+            transform = v2.Compose([
+                v2.RandomResizedCrop(
+                    size=(train_x.shape[-1], train_x.shape[-1]),
+                    antialias=True),
+                v2.RandomHorizontalFlip(p=0.5),
+                v2.Normalize((0,), (1,))
+            ])
+            train_x = transform(train_x)
         return train_x, test_x
 
     def mnist(self, batch_size, path_train_x, path_train_y, path_test_x, path_test_y, *args, **kwargs):
@@ -151,31 +211,9 @@ class GPULoading:
             path_test_x).astype(np.float32)
         test_y = idx2numpy.convert_from_file(
             path_test_y).astype(np.float32)
-        original_shape = train_x.shape
-
-        # Flatten the images
-        train_x = train_x.reshape(train_x.shape[0], -1)
-        test_x = test_x.reshape(test_x.shape[0], -1)
-
-        # Normalize the pixels in train_x and test_x using transform
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0,), (1,))
-        ])
-
-        train_x = transform(train_x).squeeze(0).to(
-            self.device)
-        test_x = transform(test_x).squeeze(0).to(
-            self.device)
-
-        # De-flatten the images
-        train_x = train_x.view(
-            train_x.shape[0], original_shape[1], original_shape[2])
-        test_x = test_x.view(
-            test_x.shape[0], original_shape[1], original_shape[2])
-
+        # Transform the data
+        train_x, test_x = self.transform(train_x, test_x)
         train_x, test_x = self.pad(train_x, test_x)
-
         return self.batching(train_x, train_y, test_x, test_y, batch_size)
 
     def cifar10(self, batch_size, path_databatch, path_testbatch, *args, **kwargs):
@@ -197,22 +235,13 @@ class GPULoading:
         test_x = dict[b'data']
         test_y = dict[b'labels']
 
-        # Establish the transformation
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0,), (1,))
-        ])
-
-        # Convert the data to tensor and normalize it
-        train_x = transform(train_x)
-        test_x = transform(test_x)
-
         # Deflatten the data
-        train_x = train_x.view(-1, 3, 32, 32)
-        test_x = test_x.view(-1, 3, 32, 32)
+        train_x = train_x.reshape(-1, 3, 32, 32)
+        test_x = test_x.reshape(-1, 3, 32, 32)
 
+        # Establish the transformation
+        train_x, test_x = self.transform(train_x, test_x)
         train_x, test_x = self.pad(train_x, test_x)
-
         return self.batching(train_x, train_y, test_x, test_y, batch_size)
 
     def cifar100(self, batch_size, path_databatch, path_testbatch):
@@ -226,19 +255,12 @@ class GPULoading:
             test_x = data[b"data"]
             test_y = data[b"fine_labels"]
 
-        # Establish the transformation
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0,), (1,))
-        ])
-
-        # Convert the data to tensor and normalize it
-        train_x = transform(train_x)
-        test_x = transform(test_x)
-
         # Deflatten the data
-        train_x = train_x.view(-1, 3, 32, 32)
-        test_x = test_x.view(-1, 3, 32, 32)
+        train_x = train_x.reshape(-1, 3, 32, 32)
+        test_x = test_x.reshape(-1, 3, 32, 32)
 
+        # Establish the transformation
+        train_x, test_x = self.transform(
+            train_x, test_x, data_augmentation=True)
         train_x, test_x = self.pad(train_x, test_x)
         return self.batching(train_x, train_y, test_x, test_y, batch_size)

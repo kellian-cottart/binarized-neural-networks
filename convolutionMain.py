@@ -38,11 +38,12 @@ if __name__ == "__main__":
         {
             "nn_type": models.ConvBiNN,
             "nn_parameters": {
-                "features": [256, 128, 64],
-                "layers": [400],
-                "kernel_size": 3,
-                "padding": 0,
+                "features": [128, 64, 32],
+                "layers": [512, 2048],
+                "kernel_size": (3, 3),
+                "padding": "same",
                 "stride": 1,
+                "dilation": 0,
                 "activation_function": Sign.apply,
                 "output_function": "log_softmax",
                 "dropout": True,
@@ -65,7 +66,7 @@ if __name__ == "__main__":
             "criterion": torch.functional.F.nll_loss,
             "optimizer": BinaryHomosynapticUncertaintyTest,
             "optimizer_parameters": {
-                "lr": 0.0001,
+                "lr": 0.001,
                 "scale": 0.1,
                 "gamma": 0,
                 "noise": 0,
@@ -73,8 +74,10 @@ if __name__ == "__main__":
                 "threshold": None,
                 "update": 1,
             },
-            "task": "CIFAR100",
+            "task": "CIFAR100INCREMENTAL",
             "n_tasks": 5,  # When "PermutedMNIST" is selected, this parameter is the number of tasks
+            # When "CIFAR100INCREMENTAL" is selected, this parameter is the number of classes
+            "n_classes": 20,
         }
     ]
 
@@ -123,11 +126,21 @@ if __name__ == "__main__":
                                                  model=model, **data, device=DEVICE)
             print(net_trainer.model)
 
+            # Setting the task iterator
+
+            task_iterator = None
             if data["task"] == "PermutedMNIST":
                 permutations = [torch.randperm(torch.prod(torch.tensor(shape)))
                                 for _ in range(data["n_tasks"])]
+                task_iterator = enumerate(
+                    train_loader[0].permute_dataset(permutations))
+            elif data["task"] == "CIFAR100INCREMENTAL":
+                task_iterator = enumerate(
+                    train_loader[0].class_incremental_dataset(n_tasks=data["n_tasks"], n_classes=data["n_classes"]))
+            else:
+                task_iterator = enumerate(train_loader)
 
-            for i, task in enumerate(train_loader) if not data["task"] == "PermutedMNIST" else enumerate(train_loader[0].permute_dataset(permutations)):
+            for i, task in task_iterator:
                 pbar = tqdm.trange(data["training_parameters"]["n_epochs"])
                 for epoch in pbar:
                     # If BinaryHomosynapticUncertainty, visualize lambda
@@ -147,11 +160,20 @@ if __name__ == "__main__":
                     if data["task"] == "PermutedMNIST":
                         net_trainer.evaluate(test_loader[0].permute_dataset(
                             permutations))
+                    elif data["task"] == "CIFAR100INCREMENTAL":
+                        net_trainer.evaluate(test_loader[0].class_incremental_dataset(
+                            n_tasks=data["n_tasks"], n_classes=data["n_classes"], test=True))
                     else:
                         net_trainer.evaluate(test_loader)
                     # update the progress bar
+                    name_loader = None
+                    if data["task"] == "CIFAR100INCREMENTAL":
+                        name_loader = [f"Classes {i}-{i+data['n_classes']-1}" for i in range(
+                            0, data["n_tasks"]*data["n_classes"], data["n_classes"])] + ["Classes 0-99"]
+
                     net_trainer.pbar_update(
-                        pbar, epoch, data["training_parameters"]["n_epochs"])
+                        pbar, epoch, data["training_parameters"]["n_epochs"], name_loader=name_loader)
+
                 ### TASK BOUNDARIES ###
                 if data["optimizer"] in [BinarySynapticUncertaintyTaskBoundaries, BayesBiNN]:
                     net_trainer.optimizer.update_prior_lambda()

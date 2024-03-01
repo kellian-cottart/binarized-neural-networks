@@ -35,17 +35,24 @@ class ConvBiNN(ConvNN):
             # Conv layers with BatchNorm and MaxPool
             self.features.append(
                 BinarizedConv2d(features[i], features[i+1], kernel_size=self.kernel_size, padding=self.padding, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device, latent_weights=self.latent_weights))
-            self.features.append(
-                BinarizedConv2d(features[i+1], features[i+1], kernel_size=self.kernel_size, padding=self.padding, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device, latent_weights=self.latent_weights))
-            self.features.append(
-                torch.nn.AvgPool2d(kernel_size=2))
             self.features.append(torch.nn.BatchNorm2d(features[i+1],
                                                       affine=self.affine,
                                                       track_running_stats=self.running_stats,
                                                       device=self.device,
                                                       eps=self.bneps,
                                                       momentum=self.bnmomentum))
+            self.features.append(
+                BinarizedConv2d(features[i+1], features[i+1], kernel_size=self.kernel_size, padding=self.padding, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device, latent_weights=self.latent_weights))
+            self.features.append(torch.nn.BatchNorm2d(features[i+1],
+                                                      affine=self.affine,
+                                                      track_running_stats=self.running_stats,
+                                                      device=self.device,
+                                                      eps=self.bneps,
+                                                      momentum=self.bnmomentum))
+            self.features.append(
+                torch.nn.MaxPool2d(kernel_size=2))
             self.features.append(torch.nn.Dropout2d(p=0.2))
+        self.features.append(torch.nn.Flatten())
 
     def _classifier_init(self, layers, bias=False):
         """ Initialize layers of NN
