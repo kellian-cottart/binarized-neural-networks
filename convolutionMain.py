@@ -38,15 +38,14 @@ if __name__ == "__main__":
         {
             "nn_type": models.ConvBiNN,
             "nn_parameters": {
-                "features": [128, 64, 32],
-                "layers": [512, 2048],
+                "features": [64, 128, 256],
+                "layers": [4096, 2048, 1024],
                 "kernel_size": (3, 3),
                 "padding": "same",
                 "stride": 1,
-                "dilation": 0,
                 "activation_function": Sign.apply,
                 "output_function": "log_softmax",
-                "dropout": True,
+                "dropout": False,
                 "batchnorm": True,
                 "bnmomentum": 0,
                 "bneps": 0,
@@ -59,25 +58,25 @@ if __name__ == "__main__":
                 "device": DEVICE,
             },
             "training_parameters": {
-                'n_epochs': 20,
-                'batch_size': 64,
+                'n_epochs': 50,
+                'batch_size': 128,
                 "test_mcmc_samples": 1,
             },
             "criterion": torch.functional.F.nll_loss,
             "optimizer": BinaryHomosynapticUncertaintyTest,
             "optimizer_parameters": {
-                "lr": 0.001,
-                "scale": 0.1,
+                "lr": 0.01,
+                "scale": 0,
                 "gamma": 0,
                 "noise": 0,
                 "quantization": None,
                 "threshold": None,
                 "update": 1,
             },
-            "task": "CIFAR100INCREMENTAL",
+            "task": "CIFAR10",
             "n_tasks": 5,  # When "PermutedMNIST" is selected, this parameter is the number of tasks
             # When "CIFAR100INCREMENTAL" is selected, this parameter is the number of classes
-            "n_classes": 20,
+            "n_classes": 10,
         }
     ]
 

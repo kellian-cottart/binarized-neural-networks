@@ -63,13 +63,13 @@ if __name__ == "__main__":
             "optimizer": BinaryHomosynapticUncertaintyTest,
             "optimizer_parameters": {
                 "lr": 0.028,
-                "scale": 0.06,
+                "scale": 0.069,
                 "gamma": 0,
                 "noise": 0,
                 "temperature": 1,
                 "quantization": None,
                 "threshold": None,
-                "update": 1
+                "update": 2
             },
             "task": "PermutedMNIST",
             "n_tasks": 10,
