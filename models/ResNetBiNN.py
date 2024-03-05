@@ -1,14 +1,15 @@
 import torch
 from typing import Union
+from .layers import *
+import torchvision
 
 
-class ConvNN(torch.nn.Module):
+class ResNetBiNN(torch.nn.Module):
     """ Convolutional Neural Network Base Class
     """
 
     def __init__(self,
                  layers: list = [1024, 1024, 10],
-                 features: list = [3, 64, 128, 256],
                  init: str = "uniform",
                  std: float = 0.01,
                  device: str = "cuda:0",
@@ -21,10 +22,6 @@ class ConvNN(torch.nn.Module):
                  bnmomentum: float = 0.15,
                  activation_function: torch.nn.functional = torch.nn.functional.relu,
                  output_function: str = "softmax",
-                 kernel_size: int = 5,
-                 padding: Union[int, tuple] = 2,
-                 stride: int = 4,
-                 dilation: int = 1,
                  *args,
                  **kwargs):
         """ NN initialization
@@ -45,7 +42,7 @@ class ConvNN(torch.nn.Module):
             activation_function (torch.nn.functional): Activation function
             output_function (str): Output function
         """
-        super(ConvNN, self).__init__()
+        super(ResNetBiNN, self).__init__()
         self.device = device
         self.layers = torch.nn.ModuleList().to(self.device)
         self.features = torch.nn.ModuleList().to(self.device)
@@ -57,49 +54,20 @@ class ConvNN(torch.nn.Module):
         self.affine = affine
         self.activation_function = activation_function
         self.output_function = output_function
-        # Conv parameters
-        self.kernel_size = kernel_size
-        self.padding = padding
-        self.stride = stride
-        self.dilation = dilation
-
         ### LAYER INITIALIZATION ###
-        self._features_init(features, bias)
+
+        self.features = torchvision.models.resnet18(
+            weights=torchvision.models.ResNet18_Weights.DEFAULT)
+        # Remove the last layer of the network
+        self.features = torch.nn.Sequential(
+            *list(self.features.children())[:-1])
+        # Freeze the weights of the feature extractor
+        for param in self.features.parameters():
+            param.requires_grad = False
+
         self._classifier_init(layers, bias)
         ### WEIGHT INITIALIZATION ###
         self._weight_init(init, std)
-
-    def _features_init(self, features, bias=False):
-        """ Initialize layers of the network for convolutional layers
-
-            Args:
-                layers (list): List of layer sizes
-                bias (bool): Whether to use bias or not
-        """
-        # Add conv layers to the network as well as batchnorm and maxpool
-        # Add conv layers to the network as well as batchnorm and maxpool
-        for i, _ in enumerate(features[:-1]):
-            # Conv layers with BatchNorm and MaxPool
-            self.features.append(
-                torch.nn.Conv2d(features[i], features[i+1], kernel_size=self.kernel_size, padding=self.padding, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device))
-            self.features.append(torch.nn.BatchNorm2d(features[i+1],
-                                                      affine=self.affine,
-                                                      track_running_stats=self.running_stats,
-                                                      device=self.device,
-                                                      eps=self.bneps,
-                                                      momentum=self.bnmomentum))
-            self.features.append(
-                torch.nn.Conv2d(features[i+1], features[i+1], kernel_size=self.kernel_size, padding=self.padding, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device))
-            self.features.append(torch.nn.BatchNorm2d(features[i+1],
-                                                      affine=self.affine,
-                                                      track_running_stats=self.running_stats,
-                                                      device=self.device,
-                                                      eps=self.bneps,
-                                                      momentum=self.bnmomentum))
-            self.features.append(
-                torch.nn.MaxPool2d(kernel_size=2))
-            self.features.append(torch.nn.Dropout2d(p=0.2))
-        self.features.append(torch.nn.Flatten())
 
     def _classifier_init(self, layers, bias=False):
         """ Initialize layers of NN
@@ -113,11 +81,12 @@ class ConvNN(torch.nn.Module):
             # Linear layers with BatchNorm
             if self.dropout and i != 0:
                 self.layers.append(torch.nn.Dropout(p=0.2))
-            self.layers.append(torch.nn.Linear(
+            self.layers.append(BinarizedLinear(
                 layers[i],
                 layers[i+1],
                 bias=bias,
-                device=self.device))
+                device=self.device,
+                latent_weights=False))
             if self.batchnorm:
                 self.layers.append(torch.nn.BatchNorm1d(
                     layers[i+1],
@@ -135,8 +104,8 @@ class ConvNN(torch.nn.Module):
             std (float): Standard deviation for initialization
         """
 
-        for layer in self.layers + self.features:
-            if isinstance(layer, torch.nn.Linear) or isinstance(layer, torch.nn.Conv2d):
+        for layer in self.layers:
+            if isinstance(layer, torch.nn.Linear):
                 if init == 'gauss':
                     torch.nn.init.normal_(
                         layer.weight, mean=0.0, std=std)
@@ -157,16 +126,9 @@ class ConvNN(torch.nn.Module):
 
         """
         ### FORWARD PASS FEATURES ###
-        # if size is not 4D, add a dimension for the channels
-        if len(x.size()) == 3:
-            x = x.unsqueeze(1)
-        for layer in self.features:
-            x = layer(x)
-            if isinstance(layer, torch.nn.BatchNorm2d):
-                x = self.activation_function(x)
-        # Flatten the output of the convolutional layers
+        x = self.features.forward(x)
+        # Flatten the output of the feature extractor
         x = x.view(x.size(0), -1)
-
         ### FORWARD PASS CLASSIFIER ###
         unique_layers = set(type(layer) for layer in self.layers)
         for i, layer in enumerate(self.layers):

@@ -61,7 +61,8 @@ class BayesTrainer(GPUTrainer):
                 self.optimizer.state['mu']),
                 torch.ones_like(self.optimizer.state['mu'])))
         # Retrieve the parameters of the networks
-        parameters = self.optimizer.param_groups[0]['params']
+        parameters = [p for p in self.optimizer.param_groups[0]
+                      ['params'] if p.requires_grad]
         predictions = []
         # We iterate over the parameters
         for n in noise:
@@ -93,6 +94,7 @@ class BayesTrainer(GPUTrainer):
                 predictions), torch.zeros_like(predictions))
         else:
             predictions = torch.argmax(predictions, dim=1)
+
         return torch.mean((predictions == labels).float())
 
     def epoch_step(self, train_dataset, test_loader=None):

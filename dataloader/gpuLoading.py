@@ -125,8 +125,6 @@ class GPUDataLoader():
         # remove the reference data and targets
         del self.reference_data
         del self.reference_targets
-        if test:
-            yield self
 
 
 class GPULoading:
@@ -161,17 +159,16 @@ class GPULoading:
         # Data augmentation
         transform = v2.Compose([
             v2.RandomChoice([
-                v2.RandomRotation(degrees=[-45, 45]),
                 v2.RandomResizedCrop(
                     size=(train_x.shape[-1], train_x.shape[-1]),
                     antialias=True,
-                    scale=(0.8, 1),
+                    scale=(0.75, 1),
                 ),
-
+                v2.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)),
             ]),
             v2.RandomVerticalFlip(p=0.5),
             v2.RandomHorizontalFlip(p=0.5),
-            v2.RandomAffine(degrees=0, translate=(0.1, 0.1)),
+            v2.RandomAffine(degrees=(-15, 15), translate=(0, 0.1)),
         ])
 
         # Converting the data to a GPU TensorDataset (allows to load everything in the GPU memory at once)

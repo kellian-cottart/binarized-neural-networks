@@ -63,7 +63,8 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
 
         ### LAMBDA INIT ###
         # Know the size of the input
-        param = parameters_to_vector(self.param_groups[0]['params'])
+        param = parameters_to_vector(
+            [param for param in self.param_groups[0]['params'] if param.requires_grad])
 
         # gaussian distribution around 0
         self.state['lambda'] = torch.distributions.normal.Normal(
@@ -98,7 +99,8 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
             if i != 0:
                 break
             # Parameters to optimize
-            parameters = group['params']
+            parameters = [param for param in group['params']
+                          if param.requires_grad]
             # Parameters of the optimizer
             eps = 1e-10
             temperature = group['temperature']

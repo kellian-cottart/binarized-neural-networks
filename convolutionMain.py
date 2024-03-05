@@ -36,21 +36,22 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "nn_type": models.ConvBiNN,
+            "nn_type": models.ResNetBiNN,
             "nn_parameters": {
-                "features": [64, 128, 256],
-                "layers": [4096, 2048, 1024],
-                "kernel_size": (3, 3),
-                "padding": "same",
-                "stride": 1,
-                "activation_function": Sign.apply,
+                "layers": [512, 2048, 2048],
+                # "features": [64, 128, 256],
+                # "layers": [4096, 2048, 1024],
+                # "kernel_size": (3, 3),
+                # "padding": "same",
+                # "stride": 1,
+                "activation_function": torch.functional.F.relu,
                 "output_function": "log_softmax",
                 "dropout": False,
                 "batchnorm": True,
                 "bnmomentum": 0,
                 "bneps": 0,
                 "init": "uniform",
-                "std": 0,
+                "std": 0.1,
                 "bias": False,
                 "latent_weights": False,
                 "running_stats": False,
@@ -58,32 +59,33 @@ if __name__ == "__main__":
                 "device": DEVICE,
             },
             "training_parameters": {
-                'n_epochs': 50,
-                'batch_size': 128,
+                'n_epochs': 20,
+                'batch_size': 32,
                 "test_mcmc_samples": 1,
             },
             "criterion": torch.functional.F.nll_loss,
             "optimizer": BinaryHomosynapticUncertaintyTest,
             "optimizer_parameters": {
                 "lr": 0.01,
-                "scale": 0,
+                "scale": 0.07,
                 "gamma": 0,
                 "noise": 0,
                 "quantization": None,
                 "threshold": None,
                 "update": 1,
             },
-            "task": "CIFAR10",
+            "task": "CIFAR100INCREMENTAL",
             "n_tasks": 5,  # When "PermutedMNIST" is selected, this parameter is the number of tasks
             # When "CIFAR100INCREMENTAL" is selected, this parameter is the number of classes
-            "n_classes": 10,
+            "n_classes": 20,
         }
     ]
 
     for index, data in enumerate(networks_data):
 
         ### NAME INITIALIZATION ###
-        name = f"{data['optimizer'].__name__}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers']])}-{data['task']}-{data['nn_parameters']['activation_function'].__name__}"
+        name = f"{data['nn_type'].__name__}-{data['optimizer'].__name__}-{'-'.join([str(layer) for layer in data['nn_parameters']['features']]) if 'features' in data['nn_parameters'] else 'UKNW'}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers']])}-{data['task']}-{data['nn_parameters']['activation_function'].__name__}"
+
         # add some parameters to the name
         for key, value in data['optimizer_parameters'].items():
             name += f"-{key}-{value}"
@@ -100,8 +102,9 @@ if __name__ == "__main__":
                                                                        n_tasks=data["n_tasks"],
                                                                        batch_size=batch_size)
 
-        # add input size to the layer of the network parameters
-        data['nn_parameters']['features'].insert(0, shape[0])
+        if "features" in data['nn_parameters']:
+            # add input size to the layer of the network parameters
+            data['nn_parameters']['features'].insert(0, shape[0])
         # add output size to the layer of the network parameters
         data['nn_parameters']['layers'].append(target_size)
 
@@ -143,18 +146,18 @@ if __name__ == "__main__":
                 pbar = tqdm.trange(data["training_parameters"]["n_epochs"])
                 for epoch in pbar:
                     # If BinaryHomosynapticUncertainty, visualize lambda
-                    if data["optimizer"] in [BinaryHomosynapticUncertainty, BinaryHomosynapticUncertaintyTest] and epoch % 10 == 0:
-                        net_trainer.optimizer.visualize_lambda(
-                            path=os.path.join(main_folder, "lambda"),
-                            threshold=25,
-                        )
-                    if data["optimizer"] == BinaryMetaplasticUncertainty and epoch % 10 == 0:
-                        for param in model.parameters():
-                            visualize_lambda(
-                                lambda_=param,
-                                path=os.path.join(main_folder, "lambda"),
-                                threshold=25,
-                            )
+                    # if data["optimizer"] in [BinaryHomosynapticUncertainty, BinaryHomosynapticUncertaintyTest] and epoch % 10 == 0:
+                    #     net_trainer.optimizer.visualize_lambda(
+                    #         path=os.path.join(main_folder, "lambda"),
+                    #         threshold=25,
+                    #     )
+                    # if data["optimizer"] == BinaryMetaplasticUncertainty and epoch % 10 == 0:
+                    #     for param in model.parameters():
+                    #         visualize_lambda(
+                    #             lambda_=param,
+                    #             path=os.path.join(main_folder, "lambda"),
+                    #             threshold=25,
+                    #         )
                     net_trainer.epoch_step(task)  # Epoch of optimization
                     if data["task"] == "PermutedMNIST":
                         net_trainer.evaluate(test_loader[0].permute_dataset(
@@ -168,7 +171,7 @@ if __name__ == "__main__":
                     name_loader = None
                     if data["task"] == "CIFAR100INCREMENTAL":
                         name_loader = [f"Classes {i}-{i+data['n_classes']-1}" for i in range(
-                            0, data["n_tasks"]*data["n_classes"], data["n_classes"])] + ["Classes 0-99"]
+                            0, data["n_tasks"]*data["n_classes"], data["n_classes"])]
 
                     net_trainer.pbar_update(
                         pbar, epoch, data["training_parameters"]["n_epochs"], name_loader=name_loader)
