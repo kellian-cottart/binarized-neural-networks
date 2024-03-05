@@ -22,7 +22,7 @@ class GPUTensorDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         """ Return a (data, target) pair """
-        if self.transform:
+        if self.transform is not None:
             return self.transform(self.data[index]), self.targets[index]
         return self.data[index], self.targets[index]
 
@@ -158,24 +158,16 @@ class GPULoading:
         """
         # Data augmentation
         transform = v2.Compose([
-            v2.RandomChoice([
-                v2.RandomResizedCrop(
-                    size=(train_x.shape[-1], train_x.shape[-1]),
-                    antialias=True,
-                    scale=(0.75, 1),
-                ),
-                v2.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)),
-            ]),
-            v2.RandomVerticalFlip(p=0.5),
-            v2.RandomHorizontalFlip(p=0.5),
-            v2.RandomAffine(degrees=(-15, 15), translate=(0, 0.1)),
+            v2.RandomCrop(train_x.shape[-1],
+                          padding=4, padding_mode='reflect'),
+            v2.RandomHorizontalFlip(),
         ])
 
         # Converting the data to a GPU TensorDataset (allows to load everything in the GPU memory at once)
         train_dataset = GPUTensorDataset(
             train_x, torch.Tensor(train_y).type(
                 torch.LongTensor), device=self.device, transform=transform if data_augmentation else None)
-        test_dataset = GPUTensorDataset(test_x.float(), torch.Tensor(test_y).type(
+        test_dataset = GPUTensorDataset(test_x, torch.Tensor(test_y).type(
             torch.LongTensor), device=self.device)
         max_batch_size = len(test_dataset)
 
@@ -212,12 +204,26 @@ class GPULoading:
         Returns:
             torch.tensor, torch.tensor: Normalized training and testing data
         """
+
         # Completely convert train_x and test_x to float torch tensors
         # division by 255 is only scaling from uint to float
         train_x = torch.from_numpy(train_x).float() / 255
         test_x = torch.from_numpy(test_x).float() / 255
+
+        if len(train_x.size()) == 3:
+            train_x = train_x.unsqueeze(1)
+            test_x = test_x.unsqueeze(1)
+
+        # Shape is (n_samples, n_channels, height, width)
+        # Compute the mean and the std of the pixels
+        mean = train_x.mean(dim=(0, 2, 3))
+        std = train_x.std(dim=(0, 2, 3))
         # Normalize the pixels
-        transform = v2.Compose([v2.Normalize((0,), (1,))])
+        transform = v2.Compose(
+            [v2.ToImage(),
+             v2.ToDtype(torch.float32, scale=True),
+             v2.Normalize(mean, std, inplace=True)])
+
         return transform(train_x), transform(test_x)
 
     def mnist(self, batch_size, path_train_x, path_train_y, path_test_x, path_test_y, *args, **kwargs):

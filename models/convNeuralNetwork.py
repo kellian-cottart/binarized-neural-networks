@@ -157,9 +157,6 @@ class ConvNN(torch.nn.Module):
 
         """
         ### FORWARD PASS FEATURES ###
-        # if size is not 4D, add a dimension for the channels
-        if len(x.size()) == 3:
-            x = x.unsqueeze(1)
         for layer in self.features:
             x = layer(x)
             if isinstance(layer, torch.nn.BatchNorm2d):

@@ -13,7 +13,7 @@ SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
-PADDING = 0
+PADDING = 4
 
 
 ### PATHS ###
@@ -36,14 +36,14 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "nn_type": models.ResNetBiNN,
+            "nn_type": models.ConvBiNN,
             "nn_parameters": {
-                "layers": [512, 2048, 2048],
-                # "features": [64, 128, 256],
-                # "layers": [4096, 2048, 1024],
-                # "kernel_size": (3, 3),
-                # "padding": "same",
-                # "stride": 1,
+                "layers": [512, 2048],
+                "features": [64, 128, 256],
+                "layers": [4096, 2048, 1024],
+                "kernel_size": (3, 3),
+                "padding": "same",
+                "stride": 1,
                 "activation_function": torch.functional.F.relu,
                 "output_function": "log_softmax",
                 "dropout": False,
@@ -53,31 +53,32 @@ if __name__ == "__main__":
                 "init": "uniform",
                 "std": 0.1,
                 "bias": False,
-                "latent_weights": False,
+                "latent_weights": True,
                 "running_stats": False,
                 "affine": False,
                 "device": DEVICE,
             },
             "training_parameters": {
                 'n_epochs': 20,
-                'batch_size': 32,
+                'batch_size': 64,
                 "test_mcmc_samples": 1,
             },
             "criterion": torch.functional.F.nll_loss,
-            "optimizer": BinaryHomosynapticUncertaintyTest,
+            "optimizer": MetaplasticAdam,
             "optimizer_parameters": {
-                "lr": 0.01,
-                "scale": 0.07,
-                "gamma": 0,
-                "noise": 0,
-                "quantization": None,
-                "threshold": None,
-                "update": 1,
+                "lr": 0.0001,
+                "metaplasticity": 1.3,
+                # "scale": 0.07,
+                # "gamma": 0,
+                # "noise": 0,
+                # "quantization": None,
+                # "threshold": None,
+                # "update": 1,
             },
-            "task": "CIFAR100INCREMENTAL",
-            "n_tasks": 5,  # When "PermutedMNIST" is selected, this parameter is the number of tasks
+            "task": "PermutedMNIST",
+            "n_tasks": 2,  # When "PermutedMNIST" is selected, this parameter is the number of tasks
             # When "CIFAR100INCREMENTAL" is selected, this parameter is the number of classes
-            "n_classes": 20,
+            # "n_classes": 50,
         }
     ]
 
@@ -145,19 +146,18 @@ if __name__ == "__main__":
             for i, task in task_iterator:
                 pbar = tqdm.trange(data["training_parameters"]["n_epochs"])
                 for epoch in pbar:
-                    # If BinaryHomosynapticUncertainty, visualize lambda
-                    # if data["optimizer"] in [BinaryHomosynapticUncertainty, BinaryHomosynapticUncertaintyTest] and epoch % 10 == 0:
-                    #     net_trainer.optimizer.visualize_lambda(
-                    #         path=os.path.join(main_folder, "lambda"),
-                    #         threshold=25,
-                    #     )
-                    # if data["optimizer"] == BinaryMetaplasticUncertainty and epoch % 10 == 0:
-                    #     for param in model.parameters():
-                    #         visualize_lambda(
-                    #             lambda_=param,
-                    #             path=os.path.join(main_folder, "lambda"),
-                    #             threshold=25,
-                    #         )
+                    if data["optimizer"] in [BinaryHomosynapticUncertainty, BinaryHomosynapticUncertaintyTest] and epoch % 10 == 0:
+                        net_trainer.optimizer.visualize_lambda(
+                            path=os.path.join(main_folder, "lambda"),
+                            threshold=25,
+                        )
+                    if data["optimizer"] == BinaryMetaplasticUncertainty and epoch % 10 == 0:
+                        for param in model.parameters():
+                            visualize_lambda(
+                                lambda_=param,
+                                path=os.path.join(main_folder, "lambda"),
+                                threshold=25,
+                            )
                     net_trainer.epoch_step(task)  # Epoch of optimization
                     if data["task"] == "PermutedMNIST":
                         net_trainer.evaluate(test_loader[0].permute_dataset(

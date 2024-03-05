@@ -71,9 +71,6 @@ class GPUTrainer:
         ### SEND BATCH ###
         self.model.train()
         for inputs, targets in train_dataset:
-            if len(inputs.shape) == 4:
-                # remove all dimensions of size 1
-                inputs = inputs.squeeze()
             self.batch_step(inputs.to(self.device), targets.to(self.device))
 
     @torch.no_grad()

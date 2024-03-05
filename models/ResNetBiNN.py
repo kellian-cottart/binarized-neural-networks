@@ -57,13 +57,13 @@ class ResNetBiNN(torch.nn.Module):
         ### LAYER INITIALIZATION ###
 
         self.features = torchvision.models.resnet18(
-            weights=torchvision.models.ResNet18_Weights.DEFAULT)
+            weights=torchvision.models.ResNet18_Weights.DEFAULT).to(self.device)
         # Remove the last layer of the network
         self.features = torch.nn.Sequential(
             *list(self.features.children())[:-1])
         # Freeze the weights of the feature extractor
-        for param in self.features.parameters():
-            param.requires_grad = False
+        # for param in self.features.parameters():
+        #     param.requires_grad = False
 
         self._classifier_init(layers, bias)
         ### WEIGHT INITIALIZATION ###

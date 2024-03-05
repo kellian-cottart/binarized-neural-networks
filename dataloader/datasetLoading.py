@@ -83,41 +83,35 @@ def task_selection(loader, task, batch_size, *args, **kwargs):
 
     """
     ### INIT DATASET ###
+    train_loader = []
+    test_loader = []
     if task == "Sequential":
-        mnist_train, mnist_test = mnist(loader, batch_size)
+        train, test = mnist(loader, batch_size)
         fashion_train, fashion_test = fashion_mnist(
             loader, batch_size)
-        train_loader = [mnist_train, fashion_train]
-        test_loader = [mnist_test, fashion_test]
-        shape = mnist_train.dataset[0][0].shape
-        target_size = len(mnist_train.dataset.targets.unique())
-    elif task == "PermutedMNIST" or task == "MNIST":
-        # load mnist
-        mnist_train, mnist_test = mnist(loader, batch_size)
-        shape = mnist_train.dataset[0][0].shape
-        target_size = len(mnist_train.dataset.targets.unique())
-        train_loader = [mnist_train]
-        test_loader = [mnist_test]
+        train_loader.append(train)
+        train_loader.append(fashion_train)
+        test_loader.append(test)
+        test_loader.append(fashion_test)
+    elif task == "MNIST" or task == "PermutedMNIST":
+        train, test = mnist(
+            loader, batch_size=batch_size)
+        train_loader.append(train)
+        test_loader.append(test)
     elif task == "CIFAR10" or task == "CIFAR10INCREMENTAL":
-        cifar10_train, cifar10_test = cifar10(
+        train, test = cifar10(
             loader, batch_size=batch_size)
-        shape = cifar10_train.dataset[0][0].shape
-        target_size = len(cifar10_train.dataset.targets.unique())
-        train_loader = [cifar10_train]
-        test_loader = [cifar10_test]
+        train_loader.append(train)
+        test_loader.append(test)
     elif task == "CIFAR100" or task == "CIFAR100INCREMENTAL":
-        cifar100_train, cifar100_test = cifar100(
+        train, test = cifar100(
             loader, batch_size=batch_size)
-        shape = cifar100_train.dataset[0][0].shape
-        target_size = len(cifar100_train.dataset.targets.unique())
-        train_loader = [cifar100_train]
-        test_loader = [cifar100_test]
+        train_loader.append(train)
+        test_loader.append(test)
     else:
         raise ValueError(
             f"Task {task} is not implemented.")
 
-    # if there are less than 4 elements in shape, add channels as 1
-    if len(shape) < 3:
-        shape = (1, *shape)
-
+    shape = train.dataset[0][0].shape
+    target_size = len(train.dataset.targets.unique())
     return train_loader, test_loader, shape, target_size

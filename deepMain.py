@@ -11,7 +11,7 @@ from models.layers.activation import Sign
 
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
-DEVICE = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
 PADDING = 2
 
@@ -72,7 +72,7 @@ if __name__ == "__main__":
                 "update": 1,
             },
             "task": "PermutedMNIST",
-            "n_tasks": 100,
+            "n_tasks": 10,
             # PermutedMNIST: number of tasks,
             # Sequential: number of mnist, fashion_mnist pairs
             # CIFAR10: 1
