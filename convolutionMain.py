@@ -13,7 +13,7 @@ SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
-PADDING = 4
+PADDING = 0
 
 
 ### PATHS ###
@@ -36,14 +36,14 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "nn_type": models.ConvBiNN,
+            "nn_type": models.ResNetBiNN,
             "nn_parameters": {
-                "layers": [512, 2048],
-                "features": [64, 128, 256],
-                "layers": [4096, 2048, 1024],
-                "kernel_size": (3, 3),
-                "padding": "same",
-                "stride": 1,
+                "layers": [512, 2048, 2048],
+                # "features": [64, 128, 256],
+                # "layers": [4096, 2048, 1024],
+                # "kernel_size": (3, 3),
+                # "padding": "same",
+                # "stride": 1,
                 "activation_function": torch.functional.F.relu,
                 "output_function": "log_softmax",
                 "dropout": False,
@@ -67,7 +67,7 @@ if __name__ == "__main__":
             "optimizer": MetaplasticAdam,
             "optimizer_parameters": {
                 "lr": 0.0001,
-                "metaplasticity": 1.3,
+                "metaplasticity": 1.5,
                 # "scale": 0.07,
                 # "gamma": 0,
                 # "noise": 0,
@@ -75,10 +75,10 @@ if __name__ == "__main__":
                 # "threshold": None,
                 # "update": 1,
             },
-            "task": "PermutedMNIST",
+            "task": "CIFAR100INCREMENTAL",
             "n_tasks": 2,  # When "PermutedMNIST" is selected, this parameter is the number of tasks
             # When "CIFAR100INCREMENTAL" is selected, this parameter is the number of classes
-            # "n_classes": 50,
+            "n_classes": 50,
         }
     ]
 
@@ -144,6 +144,7 @@ if __name__ == "__main__":
                 task_iterator = enumerate(train_loader)
 
             for i, task in task_iterator:
+
                 pbar = tqdm.trange(data["training_parameters"]["n_epochs"])
                 for epoch in pbar:
                     if data["optimizer"] in [BinaryHomosynapticUncertainty, BinaryHomosynapticUncertaintyTest] and epoch % 10 == 0:

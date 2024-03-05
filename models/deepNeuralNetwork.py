@@ -110,6 +110,7 @@ class DNN(torch.nn.Module):
         # Flatten input if necessary
         if len(x.shape) > 2:
             x = x.view(x.size(0), -1)
+
         unique_layers = set(type(layer) for layer in self.layers)
         ### FORWARD PASS ###
         for i, layer in enumerate(self.layers):
