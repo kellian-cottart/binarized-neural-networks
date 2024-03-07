@@ -37,7 +37,7 @@ class MetaplasticAdam(torch.optim.Optimizer):
             loss = closure()
 
         for group in self.param_groups:
-            for p in group['params']:
+            for i, p in enumerate(group['params']):
                 if p.grad is None:
                     continue
                 grad = p.grad.data
@@ -72,8 +72,8 @@ class MetaplasticAdam(torch.optim.Optimizer):
                     grad.add_(group['weight_decay'], p.data)
 
                 # Decay the first and second moment running average coefficient
-                exp_avg.mul_(beta1).add_(1 - beta1, grad)
-                exp_avg_sq.mul_(beta2).addcmul_(1 - beta2, grad, grad)
+                exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
+                exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
                 if amsgrad:
                     # Maintains the maximum of all 2nd moment running avg. till now
                     torch.max(max_exp_avg_sq, exp_avg_sq, out=max_exp_avg_sq)
@@ -91,16 +91,13 @@ class MetaplasticAdam(torch.optim.Optimizer):
                 # exp_avg has the same sign as exp_avg/denom
                 condition_consolidation = (
                     torch.mul(binary_weight_before_update, exp_avg) > 0.0)
-
-                # decayed_exp_avg = torch.where(p.data.abs()>group['metaplasticity'], torch.zeros_like(p.data), exp_avg)
-
                 if p.dim() == 1:  # True if p is bias, false if p is weight
-                    p.data.addcdiv_(-step_size, exp_avg, denom)
+                    p.data.addcdiv_(exp_avg, denom, value=-step_size,)
                 else:
                     decayed_exp_avg = torch.mul(torch.ones_like(
                         p.data)-torch.pow(torch.tanh(group['metaplasticity']*torch.abs(p.data)), 2), exp_avg)
-                    # assymetric lr for metaplasticity
-                    p.data.addcdiv_(-step_size, torch.where(condition_consolidation,
-                                    decayed_exp_avg, exp_avg), denom)
+                    # asymmetric lr for metaplasticity
+                    p.data.addcdiv_(torch.where(condition_consolidation,
+                                    decayed_exp_avg, exp_avg), denom, value=-step_size)
 
         return loss

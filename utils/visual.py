@@ -28,9 +28,9 @@ def visualize_sequential(title, l_accuracies, folder, sequential=False):
     ### CREATE FIGURE ###
     plt.figure()
     plt.xlim(0, len(l_accuracies[0])-1)
-    plt.xlabel('Epochs')
-    plt.ylabel('Test Accuracies')
-    plt.ylim(0, 1)
+    plt.xlabel('Epochs [-]')
+    plt.ylabel('Test Accuracies [%]')
+    plt.ylim(0, 100)
 
     # Set minor ticks
     ax = plt.gca()
@@ -38,12 +38,12 @@ def visualize_sequential(title, l_accuracies, folder, sequential=False):
     ax.tick_params(which='both', width=1)
     ax.tick_params(which='major', length=6)
     # major ticks every 0.1
-    ax.yaxis.set_major_locator(plt.MultipleLocator(0.1))
+    ax.yaxis.set_major_locator(plt.MultipleLocator(10))
 
     ### COMPUTE MEAN AND STD ###
     # Transform the list of list of accuracies into a tensor of tensor of accuracies
     l_accuracies = torch.tensor(l_accuracies).detach().cpu()
-    mean_accuracies = l_accuracies.mean(dim=0)
+    mean_accuracies = l_accuracies.mean(dim=0)*100
     std_accuracies = l_accuracies.std(dim=0)
 
     ### PLOT ###
@@ -68,18 +68,18 @@ def visualize_sequential(title, l_accuracies, folder, sequential=False):
 
     if sequential:
         # Legend is name of the task - Accuracy of end of task 1 - Accuracy of end of task 2
-        legend = [f"MNIST - T1 End: {mean_accuracies[n_epochs_task-1, 0]*100:.2f}% - T2 End: {mean_accuracies[-1, 0]*100:.2f}%",
-                  f"Fashion MNIST - T1 End: {mean_accuracies[n_epochs_task-1, 1]*100:.2f}% - T2 End: {mean_accuracies[-1, 1]*100:.2f}%",
+        legend = [f"MNIST - T1 End: {mean_accuracies[n_epochs_task-1, 0]:.2f}% - T2 End: {mean_accuracies[-1, 0]:.2f}%",
+                  f"Fashion MNIST - T1 End: {mean_accuracies[n_epochs_task-1, 1]:.2f}% - T2 End: {mean_accuracies[-1, 1]:.2f}%",
                   "Task change"]
-        plt.axhline(y=0.982, color='blue', linestyle='--', linewidth=0.75)
-        plt.axhline(y=0.899, color='orange', linestyle='--', linewidth=0.75)
+        plt.axhline(y=98.2, color='blue', linestyle='--', linewidth=0.75)
+        plt.axhline(y=89.9, color='orange', linestyle='--', linewidth=0.75)
         legend += ["Baseline MNIST - 98.2%", "Baseline Fashion MNIST - 89.9%"]
     else:
         # legend is the number of the task - Accuracy of the end of this task - accuracy at the end of all tasks
-        legend = [f"T{i+1} - T End: {mean_accuracies[(i+1)*n_epochs_task-1, i]*100:.2f}% - All End: {mean_accuracies[-1, i]*100:.2f}%" for i in range(
+        legend = [f"T{i+1} - T End: {mean_accuracies[(i+1)*n_epochs_task-1, i]:.2f}% - All End: {mean_accuracies[-1, i]:.2f}%" for i in range(
             len(mean_accuracies[0]))] + ["Task change"]
-        plt.axhline(y=0.982, color='blue', linestyle='--', linewidth=0.75)
-        legend += ["Baseline - 98.2%"]
+        # plt.axhline(y=98.2, color='blue', linestyle='--', linewidth=0.75)
+        # legend += ["Baseline - 98.2%"]
 
     ### LEGEND ###
     plt.legend(

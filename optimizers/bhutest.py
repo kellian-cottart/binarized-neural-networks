@@ -230,39 +230,52 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
         from matplotlib.ticker import AutoMinorLocator
         import os
         from utils.visual import versionning
-        plt.figure()
-        plt.grid()
-        bins = 100
-        hist = torch.histc(self.state['lambda'], bins=bins, min=-threshold,
-                           max=threshold).detach().cpu()
 
-        plt.bar(torch.linspace(-threshold, threshold, bins).detach().cpu(),
-                hist * 100 / len(self.state['lambda']),
-                width=1.5,
-                zorder=2)
-        plt.xlabel('Value of $\lambda$ ')
-        plt.ylabel('% of $\lambda$')
-        plt.gca().xaxis.set_minor_locator(AutoMinorLocator(5))
-        plt.gca().yaxis.set_minor_locator(AutoMinorLocator(5))
-        plt.gca().tick_params(which='both', width=1)
-        plt.gca().tick_params(which='major', length=6)
-        plt.ylim(0, 100)
+        params = [torch.zeros_like(param) for param in self.param_groups[0]
+                  ['params'] if param.requires_grad]
+        vector_to_parameters(
+            self.state['lambda'], params)
 
-        textsize = 6
-        transform = plt.gca().transAxes
+        # figure with as many subplots as lambdas
+        fig, ax = plt.subplots(len(params), 1, figsize=(5, 5*len(params)))
+        for i, lbda in enumerate(params):
 
-        plt.text(0.5, 0.95, f"$\lambda$  Lambda values above {threshold}: {(self.state['lambda'] > threshold).sum() * 100 / len(self.state['lambda']):.2f}%",
-                 fontsize=textsize, ha='center', va='center', transform=transform)
-        plt.text(0.5, 0.9, f"$\lambda$ values above 2: {((self.state['lambda'] > 2) & (self.state['lambda'] < threshold)).sum() * 100 / len(self.state['lambda']):.2f}%",
-                 fontsize=textsize, ha='center', va='center', transform=transform)
-        plt.text(0.5, 0.85, f"$\lambda$  values below -2: {((self.state['lambda'] < -2) & (self.state['lambda'] > -threshold)).sum() * 100 / len(self.state['lambda']):.2f}%",
-                 fontsize=textsize, ha='center', va='center', transform=transform)
-        plt.text(0.5, 0.8, f"$\lambda$ values below -{threshold}: {(self.state['lambda'] < -threshold).sum() * 100 / len(self.state['lambda']):.2f}%",
-                 fontsize=textsize, ha='center', va='center', transform=transform)
-        plt.text(0.5, 0.75, f"$\lambda$ values between -2 and 2: {((self.state['lambda'] < 2) & (self.state['lambda'] > -2)).sum() * 100 / len(self.state['lambda']):.2f}%",
-                 fontsize=textsize, ha='center', va='center', transform=transform)
+            title = r"$\lambda$" + \
+                f"[{'x'.join([str(s) for s in lbda.shape][::-1])}]"
+
+            bins = 50
+            hist = torch.histc(lbda, bins=bins, min=-threshold,
+                               max=threshold).detach().cpu()
+
+            length = torch.prod(torch.tensor(lbda.shape)).item()
+            # plot the histogram
+            ax[i].bar(torch.linspace(-threshold, threshold, bins).detach().cpu(),
+                      hist * 100 / length,
+                      width=2*threshold/bins,
+                      zorder=2)
+            ax[i].set_xlabel('$\lambda$ [-]')
+            ax[i].set_ylabel('Histogram of $\lambda$ [%]')
+            ax[i].xaxis.set_minor_locator(AutoMinorLocator(5))
+            ax[i].yaxis.set_minor_locator(AutoMinorLocator(5))
+            ax[i].tick_params(which='both', width=1)
+            ax[i].tick_params(which='major', length=6)
+            ax[i].set_ylim(0, 100)
+            ax[i].set_title(title, fontsize=8)
+
+            textsize = 6
+            transform = ax[i].transAxes
+            ax[i].text(0.5, 0.95, f"$\lambda$  Lambda values above {threshold}: {(lbda > threshold).sum() * 100 / length:.2f}%",
+                       fontsize=textsize, ha='center', va='center', transform=transform)
+            ax[i].text(0.5, 0.9, f"$\lambda$ values above 2: {((lbda > 2) & (lbda < threshold)).sum() * 100 / length:.2f}%",
+                       fontsize=textsize, ha='center', va='center', transform=transform)
+            ax[i].text(0.5, 0.85, f"$\lambda$  values below -2: {((lbda < -2) & (lbda > -threshold)).sum() * 100 / length:.2f}%",
+                       fontsize=textsize, ha='center', va='center', transform=transform)
+            ax[i].text(0.5, 0.8, f"$\lambda$ values below -{threshold}: {(lbda < -threshold).sum() * 100 / length:.2f}%",
+                       fontsize=textsize, ha='center', va='center', transform=transform)
+            ax[i].text(0.5, 0.75, f"$\lambda$ values between -2 and 2: {((lbda < 2) & (lbda > -2)).sum() * 100 / length:.2f}%",
+                       fontsize=textsize, ha='center', va='center', transform=transform)
 
         os.makedirs(path, exist_ok=True)
-        plt.savefig(versionning(path, "lambda-visualization",
+        fig.savefig(versionning(path, "lambda-visualization",
                     ".pdf"), bbox_inches='tight')
         plt.close()

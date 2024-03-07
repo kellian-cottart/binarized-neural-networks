@@ -69,7 +69,7 @@ class BayesTrainer(GPUTrainer):
             # Sample neural networks weights
             torch.nn.utils.vector_to_parameters(2*n-1, parameters)
             # Predict with this sampled network
-            prediction = self.model.forward(inputs).to(self.device)
+            prediction = self.model.forward(inputs.to(self.device))
             predictions.append(prediction)
         return predictions
 
@@ -94,7 +94,6 @@ class BayesTrainer(GPUTrainer):
                 predictions), torch.zeros_like(predictions))
         else:
             predictions = torch.argmax(predictions, dim=1)
-
         return torch.mean((predictions == labels).float())
 
     def epoch_step(self, train_dataset, test_loader=None):

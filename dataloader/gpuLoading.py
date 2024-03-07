@@ -2,7 +2,9 @@ import torch
 import numpy as np
 import idx2numpy
 from torchvision.transforms import v2
+from torchvision import models, datasets
 import pickle
+import os
 
 
 class GPUTensorDataset(torch.utils.data.Dataset):
@@ -15,15 +17,12 @@ class GPUTensorDataset(torch.utils.data.Dataset):
         transform (torchvision.transforms.Compose, optional): Data augmentation transform. Defaults to None.  
     """
 
-    def __init__(self, data, targets, device="cuda:0", transform=None):
+    def __init__(self, data, targets, device="cuda:0"):
         self.data = data.to(device)
         self.targets = targets.to(device)
-        self.transform = transform
 
     def __getitem__(self, index):
         """ Return a (data, target) pair """
-        if self.transform is not None:
-            return self.transform(self.data[index]), self.targets[index]
         return self.data[index], self.targets[index]
 
     def __len__(self):
@@ -42,11 +41,13 @@ class GPUDataLoader():
         transform (torchvision.transforms.Compose, optional): Data augmentation transform. Defaults to None.
     """
 
-    def __init__(self, dataset, batch_size, shuffle=True, drop_last=True):
+    def __init__(self, dataset, batch_size, shuffle=True, drop_last=True, transform=None, device="cuda:0"):
         self.dataset = dataset
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.drop_last = drop_last
+        self.transform = transform
+        self.device = device
 
     def __iter__(self):
         """ Return an iterator over the dataset """
@@ -59,10 +60,16 @@ class GPUDataLoader():
         """ Return a (data, target) pair """
         if self.index >= len(self.dataset):
             raise StopIteration
-        data = self.dataset.data[self.perm[self.index:self.index +
-                                           self.batch_size]].clone()
-        targets = self.dataset.targets[self.perm[self.index:self.index +
-                                                 self.batch_size]].clone()
+        # Get the indexes of the current batch
+        indexes = self.perm[self.index:self.index +
+                            self.batch_size].to(self.dataset.data.device)
+        # Get the data and the targets
+        data = self.dataset.data[indexes]
+        targets = self.dataset.targets[indexes]
+        # Apply the transform if necessary
+        if self.transform:
+            data = self.transform(data)
+        # Increment the index
         self.index += self.batch_size
         return data, targets
 
@@ -94,15 +101,13 @@ class GPUDataLoader():
 
     def class_incremental_dataset(self,
                                   n_tasks: int = 5,
-                                  n_classes: int = 10,
-                                  test: bool = False):
+                                  n_classes: int = 10):
         """ Yield a list of DataLoaders with data only from the t // n_tasks task of the current dataset
         Then, yields the DataLoader with the whole dataset
 
         Args:
             n_tasks (int): Number of tasks to split the dataset into
             n_classes (int): Number of classes in the dataset to take per task
-            test (bool, optional): If True, works with the test set and adjusts batch size. Defaults to False.
         """
         # Save the reference data and targets
         self.reference_data = self.dataset.data.detach().clone()
@@ -114,14 +119,10 @@ class GPUDataLoader():
             self.dataset.data = self.reference_data[indexes].detach().clone()
             self.dataset.targets = self.reference_targets[indexes].detach(
             ).clone()
-            if test:
-                self.batch_size = len(self.dataset)
             yield self
         # Reset the dataset
         self.dataset.data = self.reference_data
         self.dataset.targets = self.reference_targets
-        if test:
-            self.batch_size = len(self.dataset)
         # remove the reference data and targets
         del self.reference_data
         del self.reference_targets
@@ -158,41 +159,30 @@ class GPULoading:
         """
         # Data augmentation
         transform = v2.Compose([
-            v2.RandomCrop(train_x.shape[-1],
-                          padding=4, padding_mode='reflect'),
             v2.RandomHorizontalFlip(),
+            v2.Normalize((0,), (1,))
         ])
 
         # Converting the data to a GPU TensorDataset (allows to load everything in the GPU memory at once)
         train_dataset = GPUTensorDataset(
             train_x, torch.Tensor(train_y).type(
-                torch.LongTensor), device=self.device, transform=transform if data_augmentation else None)
+                torch.LongTensor), device=self.device if not data_augmentation else "cpu")
         test_dataset = GPUTensorDataset(test_x, torch.Tensor(test_y).type(
-            torch.LongTensor), device=self.device)
-        max_batch_size = len(test_dataset)
+            torch.LongTensor), device=self.device if not data_augmentation else "cpu")
 
         if not self.as_dataset:
             # create a DataLoader to load the data in batches
             train_dataset = GPUDataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True, transform=transform if data_augmentation else None, device=self.device)
             test_dataset = GPUDataLoader(
-                test_dataset, batch_size=max_batch_size, shuffle=True)
+                test_dataset, batch_size=batch_size, shuffle=False, device=self.device)
         else:
             # create a DataLoader to load the data in batches
             train_dataset = torch.utils.data.DataLoader(
                 train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
             test_dataset = torch.utils.data.DataLoader(
-                test_dataset, batch_size=max_batch_size, shuffle=True)
+                test_dataset, batch_size=batch_size, shuffle=False)
         return train_dataset, test_dataset
-
-    def pad(self, train_x, test_x):
-        """ Add padding to the images if necessary"""
-        # Add padding if necessary
-        train_x = torch.nn.functional.pad(
-            train_x, (self.padding, self.padding, self.padding, self.padding))
-        test_x = torch.nn.functional.pad(
-            test_x, (self.padding, self.padding, self.padding, self.padding))
-        return train_x, test_x
 
     def normalization(self, train_x, test_x):
         """ Normalize the pixels in train_x and test_x using transform
@@ -214,15 +204,13 @@ class GPULoading:
             train_x = train_x.unsqueeze(1)
             test_x = test_x.unsqueeze(1)
 
-        # Shape is (n_samples, n_channels, height, width)
-        # Compute the mean and the std of the pixels
-        mean = train_x.mean(dim=(0, 2, 3))
-        std = train_x.std(dim=(0, 2, 3))
-        # Normalize the pixels
+        # Normalize the pixels to 0, 1
         transform = v2.Compose(
             [v2.ToImage(),
              v2.ToDtype(torch.float32, scale=True),
-             v2.Normalize(mean, std, inplace=True)])
+             v2.Normalize((0,), (1,), inplace=True),
+             v2.Pad(self.padding, fill=0, padding_mode='constant'),
+             ])
 
         return transform(train_x), transform(test_x)
 
@@ -247,7 +235,6 @@ class GPULoading:
             path_test_y).astype(np.float32)
         # Normalize and pad the data
         train_x, test_x = self.normalization(train_x, test_x)
-        train_x, test_x = self.pad(train_x, test_x)
         return self.batching(train_x, train_y, test_x, test_y, batch_size)
 
     def cifar10(self, batch_size, path_databatch, path_testbatch, *args, **kwargs):
@@ -262,23 +249,19 @@ class GPULoading:
             train_y.append(dict[b'labels'])
         train_x = np.concatenate(train_x)
         train_y = np.concatenate(train_y)
-
         # Deal with the test data
         with open(path_testbatch, 'rb') as f:
             dict = pickle.load(f, encoding='bytes')
         test_x = dict[b'data']
         test_y = dict[b'labels']
-
         # Deflatten the data
         train_x = train_x.reshape(-1, 3, 32, 32)
         test_x = test_x.reshape(-1, 3, 32, 32)
-
         # Normalize and pad the data
         train_x, test_x = self.normalization(train_x, test_x)
-        train_x, test_x = self.pad(train_x, test_x)
         return self.batching(train_x, train_y, test_x, test_y, batch_size, data_augmentation=True)
 
-    def cifar100(self, batch_size, path_databatch, path_testbatch):
+    def cifar100(self, batch_size, path_databatch, path_testbatch, *args, **kwargs):
         """ Load a local dataset on GPU corresponding to CIFAR100 """
         with open(path_databatch[0], "rb") as f:
             data = pickle.load(f, encoding="bytes")
@@ -288,13 +271,88 @@ class GPULoading:
             data = pickle.load(f, encoding="bytes")
             test_x = data[b"data"]
             test_y = data[b"fine_labels"]
-
-        # Deflatten the data
         train_x = train_x.reshape(-1, 3, 32, 32)
         test_x = test_x.reshape(-1, 3, 32, 32)
+        if "resize" in kwargs:
+            folder = "datasets/cifar100_resnet18"
+            if not os.path.isfile(f"{folder}/cifar100_features_train.pt"):
+                self.feature_extraction(
+                    folder, train_x, train_y, test_x, test_y)
+            train_x = torch.load(f"{folder}/cifar100_features_train.pt")
+            train_y = torch.load(f"{folder}/cifar100_target_train.pt")
+            test_x = torch.load(f"{folder}/cifar100_features_test.pt")
+            test_y = torch.load(f"{folder}/cifar100_target_test.pt")
+            # Normalize and pad the data
+            return self.batching(train_x, train_y, test_x, test_y, batch_size)
+        else:
+            # Normalize and pad the data
+            train_x, test_x = self.normalization(train_x, test_x)
+            return self.batching(train_x, train_y, test_x, test_y, batch_size, data_augmentation=True)
 
-        # Normalize and pad the data
-        train_x, test_x = self.normalization(
-            train_x, test_x)
-        train_x, test_x = self.pad(train_x, test_x)
-        return self.batching(train_x, train_y, test_x, test_y, batch_size, data_augmentation=True)
+    def feature_extraction(self, folder, train_x, train_y, test_x, test_y):
+        # The idea here is to use the resnet18 as feature extractor
+        # Then create a new dataset with the extracted features from CIFAR100
+        resnet18 = models.resnet18(
+            weights=models.ResNet18_Weights.DEFAULT
+        )
+        # Remove the classification layer
+        resnet18 = torch.nn.Sequential(
+            *list(resnet18.children())[:-1])
+        # Freeze the weights of the feature extractor
+        for param in resnet18.parameters():
+            param.requires_grad = False
+        # Transforms to apply to augment the data
+        transform_train = v2.Compose([
+            v2.Resize(220, antialias=True),
+            v2.RandomHorizontalFlip(p=0.5),
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Normalize(mean=(0.0,), std=(1.0,))
+        ])
+        transform_test = v2.Compose([
+            v2.Resize(220, antialias=True),
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Normalize(mean=(0.0,), std=(1.0,))
+        ])
+        # Extract the features
+        features_train = []
+        target_train = []
+        features_test = []
+        target_test = []
+        # Normalize
+        train_x = torch.from_numpy(train_x).float() / 255
+        test_x = torch.from_numpy(test_x).float() / 255
+        if len(train_x.size()) == 3:
+            train_x = train_x.unsqueeze(1)
+            test_x = test_x.unsqueeze(1)
+        # Converting the data to a GPU TensorDataset (allows to load everything in the GPU memory at once)
+        train_dataset = GPUTensorDataset(
+            train_x, torch.Tensor(train_y).type(
+                torch.LongTensor), device=self.device)
+        test_dataset = GPUTensorDataset(test_x, torch.Tensor(test_y).type(
+            torch.LongTensor), device=self.device)
+        train_dataset = GPUDataLoader(
+            train_dataset, batch_size=1024, shuffle=True, drop_last=True, transform=transform_train, device=self.device)
+        test_dataset = GPUDataLoader(
+            test_dataset, batch_size=1024, shuffle=True, device=self.device, transform=transform_test)
+        # Make 10 passes to extract the features
+        for _ in range(10):
+            for data, target in train_dataset:
+                features_train.append(resnet18(data))
+                target_train.append(target)
+            for data, target in test_dataset:
+                features_test.append(resnet18(data))
+                target_test.append(target)
+
+        # Concatenate the features
+        features_train = torch.cat(features_train)
+        target_train = torch.cat(target_train)
+        features_test = torch.cat(features_test)
+        target_test = torch.cat(target_test)
+        # Save the features
+        os.makedirs(folder)
+        torch.save(features_train, f"{folder}/cifar100_features_train.pt")
+        torch.save(target_train, f"{folder}/cifar100_target_train.pt")
+        torch.save(features_test, f"{folder}/cifar100_features_test.pt")
+        torch.save(target_test, f"{folder}/cifar100_target_test.pt")

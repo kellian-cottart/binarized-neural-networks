@@ -4,7 +4,7 @@ from .layers import *
 import torchvision
 
 
-class ResNetBiNN(torch.nn.Module):
+class ResNet18(torch.nn.Module):
     """ Convolutional Neural Network Base Class
     """
 
@@ -22,6 +22,8 @@ class ResNetBiNN(torch.nn.Module):
                  bnmomentum: float = 0.15,
                  activation_function: torch.nn.functional = torch.nn.functional.relu,
                  output_function: str = "softmax",
+                 binary: bool = False,
+                 freeze: bool = False,
                  *args,
                  **kwargs):
         """ NN initialization
@@ -42,7 +44,7 @@ class ResNetBiNN(torch.nn.Module):
             activation_function (torch.nn.functional): Activation function
             output_function (str): Output function
         """
-        super(ResNetBiNN, self).__init__()
+        super(ResNet18, self).__init__()
         self.device = device
         self.layers = torch.nn.ModuleList().to(self.device)
         self.features = torch.nn.ModuleList().to(self.device)
@@ -54,16 +56,21 @@ class ResNetBiNN(torch.nn.Module):
         self.affine = affine
         self.activation_function = activation_function
         self.output_function = output_function
+        self.binary = binary
+        self.freeze = freeze
         ### LAYER INITIALIZATION ###
 
         self.features = torchvision.models.resnet18(
             weights=torchvision.models.ResNet18_Weights.DEFAULT).to(self.device)
-        # Remove the last layer of the network
+
+        # Remove the classification layer
         self.features = torch.nn.Sequential(
-            *list(self.features.children())[:-1])
+            *list(self.features.children())[:-1]).to(self.device)
+
         # Freeze the weights of the feature extractor
-        # for param in self.features.parameters():
-        #     param.requires_grad = False
+        if self.freeze:
+            for param in self.features.parameters():
+                param.requires_grad = False
 
         self._classifier_init(layers, bias)
         ### WEIGHT INITIALIZATION ###
@@ -81,12 +88,19 @@ class ResNetBiNN(torch.nn.Module):
             # Linear layers with BatchNorm
             if self.dropout and i != 0:
                 self.layers.append(torch.nn.Dropout(p=0.2))
-            self.layers.append(BinarizedLinear(
-                layers[i],
-                layers[i+1],
-                bias=bias,
-                device=self.device,
-                latent_weights=False))
+            if self.binary:
+                self.layers.append(BinarizedLinear(
+                    layers[i],
+                    layers[i+1],
+                    bias=bias,
+                    device=self.device,
+                    latent_weights=True))
+            else:
+                self.layers.append(torch.nn.Linear(
+                    layers[i],
+                    layers[i+1],
+                    bias=bias,
+                    device=self.device))
             if self.batchnorm:
                 self.layers.append(torch.nn.BatchNorm1d(
                     layers[i+1],

@@ -3,14 +3,14 @@ from dataloader import *
 import models
 import torch
 import trainer
-from optimizer import *
+from optimizers import *
 import os
 import json
 import tqdm
 from models.layers.activation import Sign
 
 SEED = 1000  # Random seed
-N_NETWORKS = 1  # Number of networks to train
+N_NETWORKS = 2  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
 PADDING = 2
@@ -56,27 +56,37 @@ if __name__ == "__main__":
             },
             "training_parameters": {
                 'n_epochs': 20,
-                'batch_size': 128,
+                'batch_size': 256,
                 "test_mcmc_samples": 1,
+                'resize': True
             },
             "criterion": torch.functional.F.nll_loss,
-            "optimizer": MetaplasticAdam,
+            # "optimizer": torch.optim.Adam,
+            # "optimizer_parameters": {
+            #     "lr": 0.001,
+            #     "weight_decay": 0,
+            # },
+            "optimizer": BinaryHomosynapticUncertaintyTest,
             "optimizer_parameters": {
-                "lr": 0.005,
-                "metaplasticity": 1.5,
+                "lr": 1,
+                "scale": 1.5,
+                "gamma": 0,
+                "noise": 0,
+                "quantization": None,
+                "threshold": None,
+                "update": 1,
+                "num_mcmc_samples": 1,
             },
-            "task": "Sequential",
-            "n_tasks": 10,
-            # PermutedMNIST: number of tasks,
-            # Sequential: number of mnist, fashion_mnist pairs
-            # CIFAR10: 1
+            "task": "CIFAR100",
+            "n_tasks": 2,  # When "PermutedMNIST" is selected, this parameter is the number of tasks
+            "n_classes": 50,
         }
     ]
 
     for index, data in enumerate(networks_data):
 
         ### NAME INITIALIZATION ###
-        name = f"{data['optimizer'].__name__}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers'][1:-1]])}-{data['task']}-{data['nn_parameters']['activation_function'].__name__}"
+        name = f"{data['optimizer'].__name__}{'-'.join([str(layer) for layer in data['nn_parameters']['layers'][1:-1]])}-{data['task']}-{data['nn_parameters']['activation_function'].__name__}"
         # add some parameters to the name
         for key, value in data['optimizer_parameters'].items():
             name += f"-{key}-{value}"
@@ -88,12 +98,13 @@ if __name__ == "__main__":
         ### ACCURACY INITIALIZATION ###
         accuracies = []
         batch_size = data['training_parameters']['batch_size']
-
+        resize = data['training_parameters']['resize'] if "resize" in data["training_parameters"] else False
         ### RELOADING DATASET ###
         train_loader, test_loader, shape, target_size = task_selection(loader=loader,
                                                                        task=data["task"],
                                                                        n_tasks=data["n_tasks"],
-                                                                       batch_size=batch_size)
+                                                                       batch_size=batch_size,
+                                                                       resize=resize)
         # add input size to the layer of the network parameters
         data['nn_parameters']['layers'].insert(
             0, torch.prod(torch.tensor(shape)))
@@ -120,21 +131,19 @@ if __name__ == "__main__":
                                                  model=model, **data, device=DEVICE)
             print(net_trainer.model)
 
-            # Regenerating the task iterator
-
+            # Setting the task iterator
             task_iterator = None
             if data["task"] == "PermutedMNIST":
                 permutations = [torch.randperm(torch.prod(torch.tensor(shape)))
                                 for _ in range(data["n_tasks"])]
-                task_iterator = enumerate(
-                    train_loader[0].permute_dataset(permutations))
-            elif data["task"] == "CIFAR100INCREMENTAL":
-                task_iterator = enumerate(
-                    train_loader[0].class_incremental_dataset(n_tasks=data["n_tasks"], n_classes=data["n_classes"]))
+                task_iterator = train_loader[0].permute_dataset(permutations)
+            elif "CIFAR" in data["task"] and data["n_tasks"] > 1:
+                task_iterator = train_loader[0].class_incremental_dataset(
+                    n_tasks=data["n_tasks"], n_classes=data["n_classes"])
             else:
-                task_iterator = enumerate(train_loader)
+                task_iterator = train_loader
 
-            for i, task in task_iterator:
+            for i, task in enumerate(task_iterator):
                 pbar = tqdm.trange(data["training_parameters"]["n_epochs"])
                 for epoch in pbar:
                     # If BinaryHomosynapticUncertainty, visualize lambda
@@ -150,10 +159,17 @@ if __name__ == "__main__":
                                 path=os.path.join(main_folder, "lambda"),
                                 threshold=25,
                             )
-                    net_trainer.epoch_step(task)  # Epoch of optimization
+                    net_trainer.epoch_step(task)
+                    # update the progress bar
+                    name_loader = None
                     if data["task"] == "PermutedMNIST":
                         net_trainer.evaluate(test_loader[0].permute_dataset(
                             permutations))
+                    elif "CIFAR" in data["task"] and data["n_tasks"] > 1:
+                        net_trainer.evaluate(test_loader[0].class_incremental_dataset(
+                            n_tasks=data["n_tasks"], n_classes=data["n_classes"]))
+                        name_loader = [f"Classes {i}-{i+data['n_classes']-1}" for i in range(
+                            0, data["n_tasks"]*data["n_classes"], data["n_classes"])]
                     else:
                         net_trainer.evaluate(test_loader)
                     # update the progress bar

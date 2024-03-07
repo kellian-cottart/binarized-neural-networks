@@ -159,8 +159,6 @@ class BinarySynapticUncertaintyTaskBoundaries(torch.optim.Optimizer):
                 gradient_estimate + gamma * \
                 metaplastic_func(regularization_metaplasticity, prior -
                                  lambda_) * (lambda_)
-            # if self.state['step'] % 100 == 0:
-            #     visualize_lambda(lambda_)
             self.state['lambda'] = lambda_
             self.state['mu'] = torch.tanh(lambda_)
         return torch.mean(torch.tensor(running_loss))

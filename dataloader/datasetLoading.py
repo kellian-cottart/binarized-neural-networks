@@ -22,7 +22,7 @@ PATH_CIFAR100_DATABATCH = [f"{PATH_CIFAR100}/train"]
 PATH_CIFAR100_TESTBATCH = f"{PATH_CIFAR100}/test"
 
 
-def mnist(loader, batch_size, permute_idx=None):
+def mnist(loader, batch_size, *args, **kwargs):
     if not os.path.exists(PATH_MNIST_X_TRAIN):
         datasets.MNIST("datasets", download=True)
 
@@ -32,12 +32,12 @@ def mnist(loader, batch_size, permute_idx=None):
         path_train_y=PATH_MNIST_Y_TRAIN,
         path_test_x=PATH_MNIST_X_TEST,
         path_test_y=PATH_MNIST_Y_TEST,
-        permute_idx=permute_idx,
+        *args, **kwargs
     )
     return mnist_train, mnist_test
 
 
-def fashion_mnist(loader, batch_size):
+def fashion_mnist(loader, batch_size, *args, **kwargs):
     if not os.path.exists(PATH_FASHION_MNIST_X_TRAIN):
         datasets.FashionMNIST("datasets", download=True)
 
@@ -47,28 +47,31 @@ def fashion_mnist(loader, batch_size):
         path_train_y=PATH_FASHION_MNIST_Y_TRAIN,
         path_test_x=PATH_FASHION_MNIST_X_TEST,
         path_test_y=PATH_FASHION_MNIST_Y_TEST,
+        *args, **kwargs
     )
     return fashion_mnist_train, fashion_mnist_test
 
 
-def cifar10(loader, batch_size):
+def cifar10(loader, batch_size, *args, **kwargs):
     if not os.path.exists("datasets/CIFAR10/raw"):
         datasets.CIFAR10("datasets", download=True)
     cifar10_train, cifar10_test = loader.cifar10(
         batch_size=batch_size,
         path_databatch=PATH_CIFAR10_DATABATCH,
         path_testbatch=PATH_CIFAR10_TESTBATCH,
+        *args, **kwargs
     )
     return cifar10_train, cifar10_test
 
 
-def cifar100(loader, batch_size):
+def cifar100(loader, batch_size, *args, **kwargs):
     if not os.path.exists("datasets/CIFAR100/raw"):
         datasets.CIFAR100("datasets", download=True)
     cifar100_train, cifar100_test = loader.cifar100(
         batch_size=batch_size,
         path_databatch=PATH_CIFAR100_DATABATCH,
         path_testbatch=PATH_CIFAR100_TESTBATCH,
+        *args, **kwargs
     )
     return cifar100_train, cifar100_test
 
@@ -83,29 +86,30 @@ def task_selection(loader, task, batch_size, *args, **kwargs):
 
     """
     ### INIT DATASET ###
+
     train_loader = []
     test_loader = []
     if task == "Sequential":
-        train, test = mnist(loader, batch_size)
+        train, test = mnist(loader, batch_size, *args, **kwargs)
         fashion_train, fashion_test = fashion_mnist(
-            loader, batch_size)
+            loader, batch_size, *args, **kwargs)
         train_loader.append(train)
         train_loader.append(fashion_train)
         test_loader.append(test)
         test_loader.append(fashion_test)
     elif task == "MNIST" or task == "PermutedMNIST":
         train, test = mnist(
-            loader, batch_size=batch_size)
+            loader, batch_size=batch_size, *args, **kwargs)
         train_loader.append(train)
         test_loader.append(test)
-    elif task == "CIFAR10" or task == "CIFAR10INCREMENTAL":
+    elif task == "CIFAR10":
         train, test = cifar10(
-            loader, batch_size=batch_size)
+            loader, batch_size=batch_size, *args, **kwargs)
         train_loader.append(train)
         test_loader.append(test)
-    elif task == "CIFAR100" or task == "CIFAR100INCREMENTAL":
+    elif task == "CIFAR100":
         train, test = cifar100(
-            loader, batch_size=batch_size)
+            loader, batch_size=batch_size, *args, **kwargs)
         train_loader.append(train)
         test_loader.append(test)
     else:

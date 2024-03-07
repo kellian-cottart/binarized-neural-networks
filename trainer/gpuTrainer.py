@@ -91,8 +91,7 @@ class GPUTrainer:
                 for dataloader in test_loader:
                     batch = []
                     for inputs, targets in dataloader:
-                        batch.append(
-                            self.test(inputs.to(self.device), targets.to(self.device)))
+                        batch.append(self.test(inputs, targets))
                     test.append(torch.mean(torch.tensor(batch)))
                 self.testing_accuracy.append(test)
                 self.mean_testing_accuracy.append(
@@ -135,7 +134,7 @@ class GPUTrainer:
         """
         self.model.eval()
         predictions = self.model.forward(
-            inputs).to(self.device)
+            inputs.to(self.device))
         return predictions
 
     @torch.no_grad()
@@ -159,7 +158,7 @@ class GPUTrainer:
                 predictions), torch.zeros_like(predictions))
         else:
             predictions = torch.argmax(predictions, dim=1)
-        return torch.mean((predictions == labels).float())
+        return torch.mean((predictions == labels.to(self.device)).float())
 
     def pbar_update(self, pbar, epoch, n_epochs, name_loader=None):
         """Update the progress bar with the current loss and accuracy"""
@@ -182,7 +181,7 @@ class GPUTrainer:
             pbar.set_postfix(loss=self.loss.item())
             # Do a pretty print of our results
             pbar.write("=================")
-            pbar.write("Testing accuracy: ")
+            pbar.write("Testing accuracies: ")
             for key, value in kwargs.items():
                 pbar.write(f"\t{key}: {value}")
 
