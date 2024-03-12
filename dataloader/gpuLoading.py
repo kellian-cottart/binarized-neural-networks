@@ -5,6 +5,7 @@ from torchvision.transforms import v2
 from torchvision import models, datasets
 import pickle
 import os
+import time
 
 
 class GPUTensorDataset(torch.utils.data.Dataset):
@@ -88,44 +89,52 @@ class GPUDataLoader():
             list: List of DataLoader with permuted pixels
         """
         # Save the reference data
-        self.reference_data = self.dataset.data.detach().clone()
+        self.reference_data = self.dataset.data
         # For each permutation, permute the pixels and yield the DataLoader
         for perm in permutations:
-            self.dataset.data = self.reference_data.view(
+            self.dataset.data = self.dataset.data.view(
                 self.dataset.data.shape[0], -1)[:, perm].view(self.reference_data.shape)
             yield self
         # Reset the dataset
         self.dataset.data = self.reference_data
-        # remove the reference data and targets
-        del self.reference_data
 
     def class_incremental_dataset(self,
-                                  n_tasks: int = 5,
-                                  n_classes: int = 10):
-        """ Yield a list of DataLoaders with data only from the t // n_tasks task of the current dataset
+                                  permutations):
+        """ Yield a generator of DataLoaders with data only from the t // n_tasks task of the current dataset
         Then, yields the DataLoader with the whole dataset
 
         Args:
-            n_tasks (int): Number of tasks to split the dataset into
-            n_classes (int): Number of classes in the dataset to take per task
+            permutations (list): List of permutations of the classes
         """
         # Save the reference data and targets
-        self.reference_data = self.dataset.data.detach().clone()
-        self.reference_targets = self.dataset.targets.detach().clone()
-        for i in range(n_tasks):
-            # For each task, retrieve the indexes of the n_classes classes
-            indexes = torch.nonzero(
-                (self.reference_targets >= i * n_classes) & (self.reference_targets < (i + 1) * n_classes)).squeeze()
-            self.dataset.data = self.reference_data[indexes].detach().clone()
-            self.dataset.targets = self.reference_targets[indexes].detach(
-            ).clone()
+        self.reference_data = self.dataset.data
+        self.reference_targets = self.dataset.targets
+        for perm in permutations:
+            # Reference_targets is an array of 500 000 labels. We want to retrieve the indexes of the labels that are in perm
+            indexes = torch.isin(self.reference_targets, perm).nonzero(
+                as_tuple=False).squeeze()
+            self.dataset.data = self.reference_data[indexes]
+            self.dataset.targets = self.reference_targets[indexes]
             yield self
         # Reset the dataset
         self.dataset.data = self.reference_data
         self.dataset.targets = self.reference_targets
-        # remove the reference data and targets
-        del self.reference_data
-        del self.reference_targets
+
+    def stream_dataset(self, n_subsets):
+        """ Yield a generator of DataLoaders with data from the daatset split into n_subsets subsets with all classes represented in each subset."""
+        # Save the reference data and targets
+        self.reference_data = self.dataset.data
+        self.reference_targets = self.dataset.targets
+        # Split the data into n_subsets
+        subsets = torch.split(self.reference_data, len(
+            self.reference_data)//n_subsets)
+        for subset in subsets:
+            print(len(subset))
+            self.dataset.data = subset
+            yield self
+        # Reset the dataset
+        self.dataset.data = self.reference_data
+        self.dataset.targets = self.reference_targets
 
 
 class GPULoading:
@@ -257,6 +266,17 @@ class GPULoading:
         # Deflatten the data
         train_x = train_x.reshape(-1, 3, 32, 32)
         test_x = test_x.reshape(-1, 3, 32, 32)
+        if "resize" in kwargs and kwargs["resize"] == True:
+            folder = "datasets/cifar10_resnet18"
+            if not os.path.isfile(f"{folder}/cifar10_features_train.pt"):
+                self.feature_extraction(
+                    folder, train_x, train_y, test_x, test_y, task="cifar10")
+            train_x = torch.load(f"{folder}/cifar10_features_train.pt")
+            train_y = torch.load(f"{folder}/cifar10_target_train.pt")
+            test_x = torch.load(f"{folder}/cifar10_features_test.pt")
+            test_y = torch.load(f"{folder}/cifar10_target_test.pt")
+            # Normalize and pad the data
+            return self.batching(train_x, train_y, test_x, test_y, batch_size)
         # Normalize and pad the data
         train_x, test_x = self.normalization(train_x, test_x)
         return self.batching(train_x, train_y, test_x, test_y, batch_size, data_augmentation=True)
@@ -273,11 +293,11 @@ class GPULoading:
             test_y = data[b"fine_labels"]
         train_x = train_x.reshape(-1, 3, 32, 32)
         test_x = test_x.reshape(-1, 3, 32, 32)
-        if "resize" in kwargs:
+        if "resize" in kwargs and kwargs["resize"] == True:
             folder = "datasets/cifar100_resnet18"
             if not os.path.isfile(f"{folder}/cifar100_features_train.pt"):
                 self.feature_extraction(
-                    folder, train_x, train_y, test_x, test_y)
+                    folder, train_x, train_y, test_x, test_y, task="cifar100")
             train_x = torch.load(f"{folder}/cifar100_features_train.pt")
             train_y = torch.load(f"{folder}/cifar100_target_train.pt")
             test_x = torch.load(f"{folder}/cifar100_features_test.pt")
@@ -289,7 +309,7 @@ class GPULoading:
             train_x, test_x = self.normalization(train_x, test_x)
             return self.batching(train_x, train_y, test_x, test_y, batch_size, data_augmentation=True)
 
-    def feature_extraction(self, folder, train_x, train_y, test_x, test_y):
+    def feature_extraction(self, folder, train_x, train_y, test_x, test_y, task="cifar100"):
         # The idea here is to use the resnet18 as feature extractor
         # Then create a new dataset with the extracted features from CIFAR100
         resnet18 = models.resnet18(
@@ -352,7 +372,7 @@ class GPULoading:
         target_test = torch.cat(target_test)
         # Save the features
         os.makedirs(folder)
-        torch.save(features_train, f"{folder}/cifar100_features_train.pt")
-        torch.save(target_train, f"{folder}/cifar100_target_train.pt")
-        torch.save(features_test, f"{folder}/cifar100_features_test.pt")
-        torch.save(target_test, f"{folder}/cifar100_target_test.pt")
+        torch.save(features_train, f"{folder}/{task}_features_train.pt")
+        torch.save(target_train, f"{folder}/{task}_target_train.pt")
+        torch.save(features_test, f"{folder}/{task}_features_test.pt")
+        torch.save(target_test, f"{folder}/{task}_target_test.pt")

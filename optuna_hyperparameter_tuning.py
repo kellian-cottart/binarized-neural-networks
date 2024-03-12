@@ -21,14 +21,15 @@ parser.add_argument(
     "--n_trials", type=int, default=500, help="Number of trials")
 parser.add_argument(
     "--study", type=str, default="gridsearch/study-default", help="Name of the study")
-
+parser.add_argument(
+    "--db", type=str, default="gridsearch/gridsearch-2.sqlite3", help="Name of the database")
 
 ### GENERAL CONFIGURATION ###
 DEVICE = f"cuda:{parser.parse_args().device}" if parser.parse_args(
 ).device != "-1" else "cpu"  # Device to use
 print("STARTING GRIDSEARCH ON {}".format(DEVICE))
 N_TRIALS = parser.parse_args().n_trials  # Number of trials
-PADDING = 0
+PADDING = 2
 
 ### PATHS ###
 DATASETS_PATH = "datasets"
@@ -42,8 +43,9 @@ def train_iteration(trial):
         trial (optuna.Trial): Optuna trial
     """
     ### PARAMETERS ###
-    lr = trial.suggest_float("lr", 1e-3, 10, log=True)
-    scale = trial.suggest_float("scale", 1e-2, 1, log=True)
+    lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
+    scale = trial.suggest_float("scale", 0, 1, step=0.001)
+    gamma = trial.suggest_float("gamma", 0, 1, step=0.001)
     temperature = trial.suggest_categorical("temperature", [1])
     seed = trial.suggest_categorical("seed", [1000])
     epochs = trial.suggest_categorical("epochs", [20])
@@ -51,10 +53,10 @@ def train_iteration(trial):
     threshold = trial.suggest_categorical("threshold", [None])
     noise = trial.suggest_categorical("noise", [0])
     batch_size = trial.suggest_categorical(
-        "batch_size", [256, 512, 1024, 2048])
-    task = trial.suggest_categorical("task", ["CIFAR100"])
-    n_tasks = trial.suggest_categorical("n_tasks", [2])
-    n_classes = trial.suggest_categorical("n_classes", [50])
+        "batch_size", [128])
+    task = trial.suggest_categorical("task", ["PermutedMNIST"])
+    n_tasks = trial.suggest_categorical("n_tasks", [10])
+    n_classes = trial.suggest_categorical("n_classes", [10])
 
     torch.manual_seed(seed)
     if torch.cuda.is_available():
@@ -92,11 +94,12 @@ def train_iteration(trial):
         "optimizer_parameters": {
             "lr": lr,
             "scale": scale,
-            "gamma": temperature,
+            "gamma": gamma,
+            "temperature": temperature,
             "noise": noise,
             "quantization": quantization,
             "threshold": threshold,
-            "update": 1,
+            "update": 5,
             "num_mcmc_samples": 1,
         },
         "task": task,
@@ -196,7 +199,7 @@ if __name__ == "__main__":
         direction="maximize",
         pruner=optuna.pruners.HyperbandPruner(
             min_resource=5, reduction_factor=2),
-        storage=f"sqlite:///{os.path.join('gridsearch', 'gridsearch-2.sqlite3')}",
+        storage=f"sqlite:///{parser.parse_args().db}.sqlite3",
         study_name=STUDY,
         load_if_exists=True,
     )

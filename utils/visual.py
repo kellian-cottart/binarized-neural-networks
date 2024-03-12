@@ -17,13 +17,14 @@ def versionning(folder, title, format=".pdf"):
     return versionned + format
 
 
-def visualize_sequential(title, l_accuracies, folder, sequential=False):
+def visualize_sequential(title, l_accuracies, folder, epochs=None):
     """Visualize the accuracy of each task at each epoch
 
     Args:
         title (str): title of the figure
         l_accuracies (list): list of list of accuracies for each task at each epoch
         folder (str): folder to save the figure
+        epochs (int or list): number of epochs for each task
     """
     ### CREATE FIGURE ###
     plt.figure()
@@ -44,11 +45,19 @@ def visualize_sequential(title, l_accuracies, folder, sequential=False):
     # Transform the list of list of accuracies into a tensor of tensor of accuracies
     l_accuracies = torch.tensor(l_accuracies).detach().cpu()
     mean_accuracies = l_accuracies.mean(dim=0)*100
-    std_accuracies = l_accuracies.std(dim=0)
+    std_accuracies = l_accuracies.std(dim=0)*100
+
+    # Compute the average accuracy of all tasks
+    average_accuracies = mean_accuracies.mean(dim=1)
 
     ### PLOT ###
     # Plot the mean accuracy
     plt.plot(range(len(mean_accuracies)), mean_accuracies)
+
+    # Plot the average accuracy with end total accuracy
+    plt.plot(range(len(average_accuracies)),
+             average_accuracies, color='black', linestyle='--', zorder=0, linewidth=0.75)
+
     # Fill between only accepts 1D arrays for error, we need to extract each std individually
     upper_bound_tasks, lower_bound_tasks = [], []
     for task in range(len(std_accuracies[0])):
@@ -61,31 +70,29 @@ def visualize_sequential(title, l_accuracies, folder, sequential=False):
         plt.fill_between(range(len(mean_accuracies)),
                          upper_bound_tasks[i], lower_bound_tasks[i], alpha=0.2)
     # Vertical lines to separate tasks
-    n_epochs_task = len(l_accuracies[0]) // len(l_accuracies[0][0])
     for i in range(1, len(l_accuracies[0][0])):
-        plt.axvline(x=i*n_epochs_task-1, color='k',
-                    linestyle='--', linewidth=0.5)
+        n_epochs_task = epochs[i-1] if isinstance(epochs, list) else epochs
+        plt.axvline(x=i*n_epochs_task-1, color='grey',
+                    linestyle='--', linewidth=0.5, zorder=0)
 
-    if sequential:
-        # Legend is name of the task - Accuracy of end of task 1 - Accuracy of end of task 2
-        legend = [f"MNIST - T1 End: {mean_accuracies[n_epochs_task-1, 0]:.2f}% - T2 End: {mean_accuracies[-1, 0]:.2f}%",
-                  f"Fashion MNIST - T1 End: {mean_accuracies[n_epochs_task-1, 1]:.2f}% - T2 End: {mean_accuracies[-1, 1]:.2f}%",
-                  "Task change"]
-        plt.axhline(y=98.2, color='blue', linestyle='--', linewidth=0.75)
-        plt.axhline(y=89.9, color='orange', linestyle='--', linewidth=0.75)
-        legend += ["Baseline MNIST - 98.2%", "Baseline Fashion MNIST - 89.9%"]
-    else:
-        # legend is the number of the task - Accuracy of the end of this task - accuracy at the end of all tasks
-        legend = [f"T{i+1} - T End: {mean_accuracies[(i+1)*n_epochs_task-1, i]:.2f}% - All End: {mean_accuracies[-1, i]:.2f}%" for i in range(
-            len(mean_accuracies[0]))] + ["Task change"]
-        # plt.axhline(y=98.2, color='blue', linestyle='--', linewidth=0.75)
-        # legend += ["Baseline - 98.2%"]
+    # legend is the number of the task - Accuracy of the end of this task - accuracy at the end of all tasks
+    legend = []
+    for i in range(len(mean_accuracies[0])):
+        index = sum(epochs[:i+1])-1 if isinstance(epochs,
+                                                  list) else (i+1)*epochs-1
+        end = sum(epochs)-1 if isinstance(epochs,
+                                          list) else len(mean_accuracies)-1
+        legend += [
+            f"Task {i}: Epoch {index}: {mean_accuracies[index, i]:.2f}% - Epoch {end}: {mean_accuracies[-1, i]:.2f}%"]
+
+    legend += [f"Average of tasks: {average_accuracies[-1]:.2f}%"] + \
+        ["Task change"]
 
     ### LEGEND ###
     plt.legend(
         legend,
         loc="lower right",
-        prop={'size': 8 if sequential else 6},
+        prop={'size': 6},
     )
 
     # grid but only horizontal
@@ -136,8 +143,8 @@ def visualize_task_frame(title, l_accuracies, folder, t_start, t_end):
     plt.fill_between(range(len(mean_acc)), mean_acc-std_acc,
                      mean_acc+std_acc, alpha=0.3, zorder=2, color='purple')
     # Add MNIST baseline
-    plt.axhline(y=98.2, color='blue', linestyle='--',
-                linewidth=1, label="MNIST baseline")
+    # plt.axhline(y=98.2, color='blue', linestyle='--',
+    #             linewidth=1, label="MNIST baseline")
     plt.legend(loc="lower right")
     # grid but only horizontal
     plt.grid(axis='y', linestyle='--', linewidth=0.5)
@@ -146,12 +153,12 @@ def visualize_task_frame(title, l_accuracies, folder, t_start, t_end):
     plt.xlabel('Task')
     plt.ylabel('Accuracy %')
     # ticks every 5% accuracy
-    plt.yticks(torch.arange(0, 101, 5).detach().cpu())
+    plt.yticks(torch.arange(0, 101, 20).detach().cpu())
     # xtickslabels from t_start to t_end as string
     plt.xticks(torch.arange(0, t_end+1-t_start).detach().cpu(),
                [str(i) for i in range(t_start, t_end+1)])
     plt.xlim(0, t_end-t_start)
-    plt.ylim(60, 100)
+    plt.ylim(0, 100)
     plt.grid(True, zorder=0)
     # increase the size of the ticks
     ax = plt.gca()

@@ -10,10 +10,10 @@ import tqdm
 from models.layers.activation import Sign
 
 SEED = 1000  # Random seed
-N_NETWORKS = 2  # Number of networks to train
+N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
-PADDING = 2
+PADDING = 0
 
 
 ### PATHS ###
@@ -39,7 +39,7 @@ if __name__ == "__main__":
         {
             "nn_type": models.BiNN,
             "nn_parameters": {
-                "layers": [2048, 2048],
+                "layers": [1024, 1024],
                 "device": DEVICE,
                 "dropout": False,
                 "batchnorm": True,
@@ -56,40 +56,50 @@ if __name__ == "__main__":
             },
             "training_parameters": {
                 'n_epochs': 20,
-                'batch_size': 256,
+                'batch_size': 128,
                 "test_mcmc_samples": 1,
-                'resize': True
+                'resize': True,
             },
             "criterion": torch.functional.F.nll_loss,
             # "optimizer": torch.optim.Adam,
             # "optimizer_parameters": {
-            #     "lr": 0.001,
-            #     "weight_decay": 0,
+            #     "lr": 0.0001,
+            #     "weight_decay": 1e-5,
+            # },
+            # "optimizer": MetaplasticAdam,
+            # "optimizer_parameters": {
+            #     "lr": 0.0005,
+            #     "metaplasticity": 11,
             # },
             "optimizer": BinaryHomosynapticUncertaintyTest,
             "optimizer_parameters": {
-                "lr": 1,
-                "scale": 1.5,
+                "lr": 5,
+                "scale": 0,
                 "gamma": 0,
                 "noise": 0,
                 "quantization": None,
                 "threshold": None,
-                "update": 1,
+                "update": 5,
                 "num_mcmc_samples": 1,
             },
-            "task": "CIFAR100",
-            "n_tasks": 2,  # When "PermutedMNIST" is selected, this parameter is the number of tasks
-            "n_classes": 50,
+            "task": "StreamFashion",
+            "n_tasks": 1,
+            "n_classes": 1,
+            "n_subsets": 60,
         }
     ]
 
     for index, data in enumerate(networks_data):
 
         ### NAME INITIALIZATION ###
-        name = f"{data['optimizer'].__name__}{'-'.join([str(layer) for layer in data['nn_parameters']['layers'][1:-1]])}-{data['task']}-{data['nn_parameters']['activation_function'].__name__}"
+        name = f"{data['optimizer'].__name__}-BS{data['training_parameters']['batch_size']}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers']])}-{data['task']}-{data['nn_parameters']['activation_function'].__name__}"
         # add some parameters to the name
         for key, value in data['optimizer_parameters'].items():
             name += f"-{key}-{value}"
+        if "n_tasks" in data:
+            name += f"-n_tasks={data['n_tasks']}"
+        if "n_classes" in data:
+            name += f"-n_classes={data['n_classes']}"
         print(f"Training {name}...")
 
         ### FOLDER INITIALIZATION ###
@@ -137,44 +147,47 @@ if __name__ == "__main__":
                 permutations = [torch.randperm(torch.prod(torch.tensor(shape)))
                                 for _ in range(data["n_tasks"])]
                 task_iterator = train_loader[0].permute_dataset(permutations)
-            elif "CIFAR" in data["task"] and data["n_tasks"] > 1:
+            elif data["n_tasks"] > 1 and data["n_classes"] > 1:
+                # Create n_tasks subsets of n_classes (need to permute the selection of classes for each task)
+                rand = torch.randperm(target_size)
+                # n_tasks subsets of n_classes without overlapping
+                permutations = [rand[i:i+data["n_classes"]]
+                                for i in range(0, target_size, data["n_classes"])]
                 task_iterator = train_loader[0].class_incremental_dataset(
-                    n_tasks=data["n_tasks"], n_classes=data["n_classes"])
+                    permutations=permutations)
+            elif "Stream" in data["task"]:
+                task_iterator = train_loader[0].stream_dataset(
+                    data["n_subsets"])
             else:
                 task_iterator = train_loader
 
             for i, task in enumerate(task_iterator):
-                pbar = tqdm.trange(data["training_parameters"]["n_epochs"])
+                epochs = data["training_parameters"]["n_epochs"][i] if isinstance(
+                    data["training_parameters"]["n_epochs"], list) else data["training_parameters"]["n_epochs"]
+                pbar = tqdm.trange(epochs)
                 for epoch in pbar:
-                    # If BinaryHomosynapticUncertainty, visualize lambda
-                    if data["optimizer"] in [BinaryHomosynapticUncertainty, BinaryHomosynapticUncertaintyTest] and epoch % 10 == 0:
+                    # If BinaryHomosynapticUncertainty, plot lambda per layer
+                    if data["optimizer"] in [BinaryHomosynapticUncertainty, BinaryHomosynapticUncertaintyTest]:
                         net_trainer.optimizer.visualize_lambda(
                             path=os.path.join(main_folder, "lambda"),
                             threshold=25,
                         )
-                    if data["optimizer"] == BinaryMetaplasticUncertainty and epoch % 10 == 0:
-                        for param in model.parameters():
-                            visualize_lambda(
-                                lambda_=param,
-                                path=os.path.join(main_folder, "lambda"),
-                                threshold=25,
-                            )
                     net_trainer.epoch_step(task)
                     # update the progress bar
                     name_loader = None
                     if data["task"] == "PermutedMNIST":
                         net_trainer.evaluate(test_loader[0].permute_dataset(
                             permutations))
-                    elif "CIFAR" in data["task"] and data["n_tasks"] > 1:
+                    elif data["n_tasks"] > 1 and data["n_classes"] > 1:
                         net_trainer.evaluate(test_loader[0].class_incremental_dataset(
-                            n_tasks=data["n_tasks"], n_classes=data["n_classes"]))
+                            permutations=permutations))
                         name_loader = [f"Classes {i}-{i+data['n_classes']-1}" for i in range(
                             0, data["n_tasks"]*data["n_classes"], data["n_classes"])]
                     else:
                         net_trainer.evaluate(test_loader)
                     # update the progress bar
                     net_trainer.pbar_update(
-                        pbar, epoch, data["training_parameters"]["n_epochs"])
+                        pbar, epoch, data["training_parameters"]["n_epochs"], name_loader=name_loader)
                 ### TASK BOUNDARIES ###
                 if data["optimizer"] in [BinarySynapticUncertaintyTaskBoundaries, BayesBiNN]:
                     net_trainer.optimizer.update_prior_lambda()
@@ -205,8 +218,8 @@ if __name__ == "__main__":
 
         print(f"Exporting visualisation of {name} accuracy...")
         title = name + "-tasks"
-        visualize_sequential(title, accuracies, folder=main_folder, sequential=True if data['task'] ==
-                             "Sequential" else False)
+        visualize_sequential(title, accuracies, folder=main_folder,
+                             epochs=data["training_parameters"]["n_epochs"])
         # if number of tasks is 100, export the accuracy of the first 10 and last 10 tasks
         if data['n_tasks'] >= 10:
             title = name + "-tasks-1-10"

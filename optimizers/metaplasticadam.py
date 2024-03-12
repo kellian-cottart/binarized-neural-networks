@@ -4,7 +4,7 @@ from torch.optim.optimizer import _dispatch_sqrt
 
 class MetaplasticAdam(torch.optim.Optimizer):
 
-    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), metaplasticity={}, eps=1e-8,
+    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), metaplasticity=0, eps=1e-8,
                  weight_decay=0, amsgrad=False):
         if not 0.0 <= lr:
             raise ValueError("Invalid learning rate: {}".format(lr))

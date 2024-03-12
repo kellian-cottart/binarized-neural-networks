@@ -89,32 +89,30 @@ def task_selection(loader, task, batch_size, *args, **kwargs):
 
     train_loader = []
     test_loader = []
-    if task == "Sequential":
-        train, test = mnist(loader, batch_size, *args, **kwargs)
-        fashion_train, fashion_test = fashion_mnist(
+    # if "FashionMNIST-MNIST", both datasets are loaded
+    if "Fashion" in task:
+        train, test = fashion_mnist(
             loader, batch_size, *args, **kwargs)
         train_loader.append(train)
-        train_loader.append(fashion_train)
         test_loader.append(test)
-        test_loader.append(fashion_test)
-    elif task == "MNIST" or task == "PermutedMNIST":
+    if "MNIST" in task:
         train, test = mnist(
             loader, batch_size=batch_size, *args, **kwargs)
         train_loader.append(train)
         test_loader.append(test)
-    elif task == "CIFAR10":
-        train, test = cifar10(
-            loader, batch_size=batch_size, *args, **kwargs)
-        train_loader.append(train)
-        test_loader.append(test)
-    elif task == "CIFAR100":
+    if "CIFAR100" in task:
         train, test = cifar100(
             loader, batch_size=batch_size, *args, **kwargs)
         train_loader.append(train)
         test_loader.append(test)
-    else:
+    elif "CIFAR10" in task:
+        train, test = cifar10(
+            loader, batch_size=batch_size, *args, **kwargs)
+        train_loader.append(train)
+        test_loader.append(test)
+    if len(train_loader) == 0:
         raise ValueError(
-            f"Task {task} is not implemented.")
+            "No dataset selected, probably due to wrong task name")
 
     shape = train.dataset[0][0].shape
     target_size = len(train.dataset.targets.unique())
