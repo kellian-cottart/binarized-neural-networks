@@ -43,9 +43,9 @@ def train_iteration(trial):
         trial (optuna.Trial): Optuna trial
     """
     ### PARAMETERS ###
-    lr = trial.suggest_float("lr", 1e-4, 1e-1, log=True)
-    scale = trial.suggest_float("scale", 0, 1, step=0.001)
-    gamma = trial.suggest_float("gamma", 0, 1, step=0.001)
+    lr = trial.suggest_float("lr", 1e-4, 1, log=True)
+    scale = trial.suggest_float("scale", 0, 0.3, step=0.001)
+    gamma = trial.suggest_float("gamma", 0, 0.3, step=0.001)
     temperature = trial.suggest_categorical("temperature", [1])
     seed = trial.suggest_categorical("seed", [1000])
     epochs = trial.suggest_categorical("epochs", [20])
@@ -199,7 +199,7 @@ if __name__ == "__main__":
         direction="maximize",
         pruner=optuna.pruners.HyperbandPruner(
             min_resource=5, reduction_factor=2),
-        storage=f"sqlite:///{parser.parse_args().db}.sqlite3",
+        storage=f"sqlite:///{parser.parse_args().db}",
         study_name=STUDY,
         load_if_exists=True,
     )

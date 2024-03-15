@@ -52,6 +52,7 @@ if __name__ == "__main__":
                 "running_stats": False,
                 "affine": False,
                 "activation_function": Sign.apply,
+                # "activation_function": torch.functional.F.relu,
                 "output_function": "log_softmax",
             },
             "training_parameters": {
@@ -63,29 +64,26 @@ if __name__ == "__main__":
             "criterion": torch.functional.F.nll_loss,
             # "optimizer": torch.optim.Adam,
             # "optimizer_parameters": {
-            #     "lr": 0.0001,
-            #     "weight_decay": 1e-5,
+            #     "lr": 0.05,
             # },
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {
-            #     "lr": 0.0005,
-            #     "metaplasticity": 11,
+            #     "lr": 0.05,
+            #     "metaplasticity": 1.2,
             # },
             "optimizer": BinaryHomosynapticUncertaintyTest,
             "optimizer_parameters": {
                 "lr": 5,
                 "scale": 0,
                 "gamma": 0,
-                "noise": 0,
-                "quantization": None,
-                "threshold": None,
                 "update": 5,
                 "num_mcmc_samples": 1,
             },
-            "task": "StreamFashion",
+            "task": "Stream-Fashion",
             "n_tasks": 1,
             "n_classes": 1,
             "n_subsets": 60,
+            "show_train": False,
         }
     ]
 
@@ -96,6 +94,9 @@ if __name__ == "__main__":
         # add some parameters to the name
         for key, value in data['optimizer_parameters'].items():
             name += f"-{key}-{value}"
+        # add the number of epochs
+        name += f"-n_epochs={'-'.join([str(epoch) for epoch in data['training_parameters']['n_epochs']])}" if isinstance(
+            data['training_parameters']['n_epochs'], list) else f"-n_epochs={data['training_parameters']['n_epochs']}"
         if "n_tasks" in data:
             name += f"-n_tasks={data['n_tasks']}"
         if "n_classes" in data:
@@ -167,24 +168,37 @@ if __name__ == "__main__":
                 pbar = tqdm.trange(epochs)
                 for epoch in pbar:
                     # If BinaryHomosynapticUncertainty, plot lambda per layer
-                    if data["optimizer"] in [BinaryHomosynapticUncertainty, BinaryHomosynapticUncertaintyTest]:
-                        net_trainer.optimizer.visualize_lambda(
-                            path=os.path.join(main_folder, "lambda"),
-                            threshold=25,
-                        )
+                    # if data["optimizer"] in [BinaryHomosynapticUncertainty, BinaryHomosynapticUncertaintyTest]:
+                    #     visualize_lambda(
+                    #         parameters=net_trainer.optimizer.param_groups[0]['params'],
+                    #         lambda_=net_trainer.optimizer.state['lambda'],
+                    #         path=os.path.join(main_folder, "lambda"),
+                    #         threshold=10,
+                    #         task=i,
+                    #         epoch=epoch,
+                    #     )
+                    #     visualize_grad(
+                    #         parameters=net_trainer.optimizer.param_groups[0]['params'],
+                    #         grad=net_trainer.optimizer.state['lrgrad'],
+                    #         path=os.path.join(main_folder, "lrgrad"),
+                    #         threshold=1e-1,
+                    #         task=i,
+                    #         epoch=epoch,
+                    #     )
                     net_trainer.epoch_step(task)
                     # update the progress bar
                     name_loader = None
                     if data["task"] == "PermutedMNIST":
                         net_trainer.evaluate(test_loader[0].permute_dataset(
-                            permutations))
+                            permutations), train_loader=train_loader[0].permute_dataset(permutations) if "show_train" in data and data["show_train"] else None)
                     elif data["n_tasks"] > 1 and data["n_classes"] > 1:
                         net_trainer.evaluate(test_loader[0].class_incremental_dataset(
-                            permutations=permutations))
+                            permutations=permutations), train_loader=train_loader[0].class_incremental_dataset(permutations) if "show_train" in data and data["show_train"] else None)
                         name_loader = [f"Classes {i}-{i+data['n_classes']-1}" for i in range(
                             0, data["n_tasks"]*data["n_classes"], data["n_classes"])]
                     else:
-                        net_trainer.evaluate(test_loader)
+                        net_trainer.evaluate(
+                            test_loader, train_loader=train_loader if "show_train" in data and data["show_train"] else None)
                     # update the progress bar
                     net_trainer.pbar_update(
                         pbar, epoch, data["training_parameters"]["n_epochs"], name_loader=name_loader)

@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import datetime
 import torch
 from matplotlib.ticker import AutoMinorLocator
+from torch.nn.utils import parameters_to_vector, vector_to_parameters
 
 
 def versionning(folder, title, format=".pdf"):
@@ -95,9 +96,6 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None):
         prop={'size': 6},
     )
 
-    # grid but only horizontal
-    plt.grid(axis='y', linestyle='--', linewidth=0.5)
-
     ### SAVE ###
     # PDF
     versionned = versionning(folder, title, ".pdf")
@@ -146,23 +144,21 @@ def visualize_task_frame(title, l_accuracies, folder, t_start, t_end):
     # plt.axhline(y=98.2, color='blue', linestyle='--',
     #             linewidth=1, label="MNIST baseline")
     plt.legend(loc="lower right")
-    # grid but only horizontal
-    plt.grid(axis='y', linestyle='--', linewidth=0.5)
 
     plt.xlim(t_start, t_end)
-    plt.xlabel('Task')
-    plt.ylabel('Accuracy %')
-    # ticks every 5% accuracy
-    plt.yticks(torch.arange(0, 101, 20).detach().cpu())
+    plt.xlabel('Task [-]')
+    plt.ylabel('Accuracy [%]')
     # xtickslabels from t_start to t_end as string
     plt.xticks(torch.arange(0, t_end+1-t_start).detach().cpu(),
                [str(i) for i in range(t_start, t_end+1)])
     plt.xlim(0, t_end-t_start)
     plt.ylim(0, 100)
-    plt.grid(True, zorder=0)
     # increase the size of the ticks
     ax = plt.gca()
     ax.tick_params(axis='both', which='major', labelsize=12)
+    ax.yaxis.set_minor_locator(AutoMinorLocator(5))
+    ax.yaxis.set_major_locator(plt.MultipleLocator(10))
+    ax.tick_params(axis='y', which='minor', length=2)
 
     ### SAVE ###
     # PDF
@@ -202,50 +198,125 @@ def visualize_lr(lr):
     plt.show()
 
 
-def visualize_lambda(lambda_, path, threshold=10):
+def visualize_grad(parameters, grad, path, threshold=10, task=None, epoch=None):
     """ Plot a graph with the distribution in lambda values with respect to certain thresholds
 
     Args:
+        parameters (dict): Parameters of the model
+        grad (torch.Tensor): grad values
+        path (str): Path to save the graph
+        threshold (int): Threshold to plot the distribution
+        task (int): Task number
+        epoch (int): Epoch number
+    """
+
+    params = [torch.zeros_like(param)
+              for param in parameters if param.requires_grad]
+    vector_to_parameters(
+        grad, params)
+
+    # figure with as many subplots as lambdas
+    fig, ax = plt.subplots(len(params), 1, figsize=(5, 5*len(params)))
+    for i, grad in enumerate(params):
+
+        title = r'$\alpha \times s \odot g$' + \
+            f"[{'x'.join([str(s) for s in grad.shape][::-1])}]"
+
+        bins = 50
+        hist = torch.histc(grad, bins=bins, min=-threshold,
+                           max=threshold).detach().cpu()
+
+        length = torch.prod(torch.tensor(grad.shape)).item()
+        # x is the value between - threshold and -10^-10 and 10^-10 and threshold
+        x = torch.cat([torch.linspace(-threshold, -1e-10, bins//2),
+                       torch.linspace(1e-10, threshold, bins//2)]).detach().cpu()
+
+        ax[i].bar(x,
+                  hist * 100 / length,
+                  width=2*threshold/bins,
+                  zorder=2,
+                  color='purple')
+
+        ax[i].set_xscale('symlog')
+
+        # write on the graph the maximum value and the minimum value
+        ax[i].text(0.5, 0.95, f"Max: {grad.max():.2f}",
+                   fontsize=6, ha='center', va='center', transform=ax[i].transAxes)
+        ax[i].text(0.5, 0.9, f"Min: {grad.min():.2f}",
+                   fontsize=6, ha='center', va='center', transform=ax[i].transAxes)
+
+        ax[i].set_xlabel(r'$\alpha \times s \odot g$ [-]')
+        ax[i].set_ylabel(r'Histogram of $\alpha \times s \odot g$ [%]')
+        ax[i].xaxis.set_minor_locator(AutoMinorLocator(5))
+        ax[i].yaxis.set_minor_locator(AutoMinorLocator(5))
+        ax[i].tick_params(which='both', width=1)
+        ax[i].tick_params(which='major', length=6)
+        ax[i].set_ylim(0, 100)
+        ax[i].set_title(title, fontsize=8)
+
+    os.makedirs(path, exist_ok=True)
+    fig.savefig(versionning(path, f"grad-task{task}-epoch{epoch}" if epoch is not None else "grad",
+                ".pdf"), bbox_inches='tight')
+    plt.close()
+
+
+def visualize_lambda(parameters, lambda_, path, threshold=10, task=None, epoch=None):
+    """ Plot a graph with the distribution in lambda values with respect to certain thresholds
+
+    Args:
+        parameters (dict): Parameters of the model
         lambda_ (torch.Tensor): Lambda values
         path (str): Path to save the graph
         threshold (int): Threshold to plot the distribution
+        task (int): Task number
+        epoch (int): Epoch number
     """
-    plt.figure()
-    plt.grid()
-    bins = 100
-    hist = torch.histc(lambda_, bins=bins, min=-threshold,
-                       max=threshold).detach().cpu()
 
-    # total number of values in lambda
-    shape = lambda_.shape[0] * lambda_.shape[1]
+    params = [torch.zeros_like(param)
+              for param in parameters if param.requires_grad]
+    vector_to_parameters(
+        lambda_, params)
 
-    plt.bar(torch.linspace(-threshold, threshold, bins).detach().cpu(),
-            hist * 100 / shape,
-            width=1.5,
-            zorder=2)
-    plt.xlabel('Value of $\lambda$ ')
-    plt.ylabel('% of $\lambda$')
-    plt.gca().xaxis.set_minor_locator(AutoMinorLocator(5))
-    plt.gca().yaxis.set_minor_locator(AutoMinorLocator(5))
-    plt.gca().tick_params(which='both', width=1)
-    plt.gca().tick_params(which='major', length=6)
-    plt.ylim(0, 100)
+    # figure with as many subplots as lambdas
+    fig, ax = plt.subplots(len(params), 1, figsize=(5, 5*len(params)))
+    for i, lbda in enumerate(params):
 
-    textsize = 6
-    transform = plt.gca().transAxes
+        title = r"$\lambda$" + \
+            f"[{'x'.join([str(s) for s in lbda.shape][::-1])}]"
 
-    plt.text(0.5, 0.95, f"$\lambda$  Lambda values above {threshold}: {(lambda_ > threshold).sum() * 100 / shape:.2f}%",
-             fontsize=textsize, ha='center', va='center', transform=transform)
-    plt.text(0.5, 0.9, f"$\lambda$ values above 2: {((lambda_ > 2) & (lambda_ < threshold)).sum() * 100 / shape:.2f}%",
-             fontsize=textsize, ha='center', va='center', transform=transform)
-    plt.text(0.5, 0.85, f"$\lambda$  values below -2: {((lambda_ < -2) & (lambda_ > -threshold)).sum() * 100 / shape:.2f}%",
-             fontsize=textsize, ha='center', va='center', transform=transform)
-    plt.text(0.5, 0.8, f"$\lambda$ values below -{threshold}: {(lambda_ < -threshold).sum() * 100 / shape:.2f}%",
-             fontsize=textsize, ha='center', va='center', transform=transform)
-    plt.text(0.5, 0.75, f"$\lambda$ values between -2 and 2: {((lambda_ < 2) & (lambda_ > -2)).sum() * 100 / shape:.2f}%",
-             fontsize=textsize, ha='center', va='center', transform=transform)
+        bins = 50
+        hist = torch.histc(lbda, bins=bins, min=-threshold,
+                           max=threshold).detach().cpu()
+
+        length = torch.prod(torch.tensor(lbda.shape)).item()
+        # plot the histogram
+        ax[i].bar(torch.linspace(-threshold, threshold, bins).detach().cpu(),
+                  hist * 100 / length,
+                  width=2*threshold/bins,
+                  zorder=2)
+        ax[i].set_xlabel('$\lambda$ [-]')
+        ax[i].set_ylabel('Histogram of $\lambda$ [%]')
+        ax[i].xaxis.set_minor_locator(AutoMinorLocator(5))
+        ax[i].yaxis.set_minor_locator(AutoMinorLocator(5))
+        ax[i].tick_params(which='both', width=1)
+        ax[i].tick_params(which='major', length=6)
+        ax[i].set_ylim(0, 100)
+        ax[i].set_title(title, fontsize=8)
+
+        textsize = 6
+        transform = ax[i].transAxes
+        ax[i].text(0.5, 0.95, f"$\lambda$  Lambda values above {threshold}: {(lbda > threshold).sum() * 100 / length:.2f}%",
+                   fontsize=textsize, ha='center', va='center', transform=transform)
+        ax[i].text(0.5, 0.9, f"$\lambda$ values above 2: {((lbda > 2) & (lbda < threshold)).sum() * 100 / length:.2f}%",
+                   fontsize=textsize, ha='center', va='center', transform=transform)
+        ax[i].text(0.5, 0.85, f"$\lambda$  values below -2: {((lbda < -2) & (lbda > -threshold)).sum() * 100 / length:.2f}%",
+                   fontsize=textsize, ha='center', va='center', transform=transform)
+        ax[i].text(0.5, 0.8, f"$\lambda$ values below -{threshold}: {(lbda < -threshold).sum() * 100 / length:.2f}%",
+                   fontsize=textsize, ha='center', va='center', transform=transform)
+        ax[i].text(0.5, 0.75, f"$\lambda$ values between -2 and 2: {((lbda < 2) & (lbda > -2)).sum() * 100 / length:.2f}%",
+                   fontsize=textsize, ha='center', va='center', transform=transform)
 
     os.makedirs(path, exist_ok=True)
-    plt.savefig(versionning(path, "lambda-visualization",
+    fig.savefig(versionning(path, f"lambda-task{task}-epoch{epoch}" if epoch is not None else "lambda",
                 ".pdf"), bbox_inches='tight')
     plt.close()

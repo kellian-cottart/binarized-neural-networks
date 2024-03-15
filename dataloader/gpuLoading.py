@@ -79,8 +79,7 @@ class GPUDataLoader():
         return len(self.dataset)//self.batch_size
 
     def permute_dataset(self, permutations):
-        """ Yield a list of DataLoaders with permuted pixels of the current dataset
-        As much memory efficient as possible
+        """ Yield DataLoaders with permuted pixels of the current dataset
 
         Args:
             permutations (list): List of permutations
@@ -88,53 +87,46 @@ class GPUDataLoader():
         Returns:
             list: List of DataLoader with permuted pixels
         """
-        # Save the reference data
-        self.reference_data = self.dataset.data
         # For each permutation, permute the pixels and yield the DataLoader
         for perm in permutations:
-            self.dataset.data = self.dataset.data.view(
-                self.dataset.data.shape[0], -1)[:, perm].view(self.reference_data.shape)
-            yield self
-        # Reset the dataset
-        self.dataset.data = self.reference_data
+            # Create a new GPUDataset
+            dataset = GPUTensorDataset(
+                self.dataset.data.view(
+                    self.dataset.data.shape[0], -1)[:, perm].view(self.dataset.data.shape), self.dataset.targets, device=self.device)
+            yield GPUDataLoader(dataset, self.batch_size, self.shuffle, self.drop_last, self.transform, self.device)
 
-    def class_incremental_dataset(self,
-                                  permutations):
-        """ Yield a generator of DataLoaders with data only from the t // n_tasks task of the current dataset
-        Then, yields the DataLoader with the whole dataset
+    def class_incremental_dataset(self, permutations):
+        """ Yield DataLoaders with data only from the classes in permutations
 
         Args:
             permutations (list): List of permutations of the classes
+        Yields:
+            GPUDataLoader: DataLoader
         """
-        # Save the reference data and targets
-        self.reference_data = self.dataset.data
-        self.reference_targets = self.dataset.targets
         for perm in permutations:
             # Reference_targets is an array of 500 000 labels. We want to retrieve the indexes of the labels that are in perm
-            indexes = torch.isin(self.reference_targets, perm).nonzero(
+            indexes = torch.isin(self.dataset.targets, perm).nonzero(
                 as_tuple=False).squeeze()
-            self.dataset.data = self.reference_data[indexes]
-            self.dataset.targets = self.reference_targets[indexes]
-            yield self
-        # Reset the dataset
-        self.dataset.data = self.reference_data
-        self.dataset.targets = self.reference_targets
+            # Create a new GPUDataset
+            dataset = GPUTensorDataset(
+                self.dataset.data[indexes], self.dataset.targets[indexes], device=self.device)
+            yield GPUDataLoader(dataset, self.batch_size, self.shuffle, self.drop_last, self.transform, self.device)
 
     def stream_dataset(self, n_subsets):
-        """ Yield a generator of DataLoaders with data from the daatset split into n_subsets subsets with all classes represented in each subset."""
-        # Save the reference data and targets
-        self.reference_data = self.dataset.data
-        self.reference_targets = self.dataset.targets
-        # Split the data into n_subsets
-        subsets = torch.split(self.reference_data, len(
-            self.reference_data)//n_subsets)
-        for subset in subsets:
-            print(len(subset))
-            self.dataset.data = subset
-            yield self
-        # Reset the dataset
-        self.dataset.data = self.reference_data
-        self.dataset.targets = self.reference_targets
+        """ Yield DataLoaders with data from the dataset split into n_subsets subsets.
+
+        Args:
+            n_subsets (int): Number of subsets
+
+        Yields:
+            GPUDataLoader: DataLoader with data from the dataset split into n_subsets subsets
+
+        """
+        # Split the data into n_subsets with label and data
+        for i in range(n_subsets):
+            dataset = GPUTensorDataset(
+                self.dataset.data[i::n_subsets], self.dataset.targets[i::n_subsets], device=self.device)
+            yield GPUDataLoader(dataset, self.batch_size, self.shuffle, self.drop_last, self.transform, self.device)
 
 
 class GPULoading:

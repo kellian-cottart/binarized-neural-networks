@@ -67,6 +67,7 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
         # gaussian distribution around 0
         self.state['lambda'] = torch.distributions.normal.Normal(
             0, init_lambda).sample(param.shape).to(param.device) if init_lambda != 0 else torch.zeros_like(param)
+        self.state['lrgrad'] = torch.zeros_like(self.state['lambda'])
         # Set all other parameters
         self.state['step'] = 0
         self.state['prior_lambda'] = prior_lambda if prior_lambda is not None else torch.zeros_like(
@@ -172,11 +173,11 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                     gradient_estimate
             elif update == 5:
                 # LAMBDA UPDATE WITH ASYMMETRICAL RATES FOR REMEMBERING AND FORGETTING
-                lambda_ -= lr * \
+                self.state["lrgrad"] = lr * \
                     (1/(1+torch.tanh(lambda_)*torch.sign(gradient_estimate)*1/2*(
                         gamma*(torch.sign(lambda_)*torch.sign(gradient_estimate)+1) -
-                        scale*(torch.sign(lambda_)*torch.sign(gradient_estimate)-1)))) \
-                    * gradient_estimate
+                        scale*(torch.sign(lambda_)*torch.sign(gradient_estimate)-1)))) * gradient_estimate
+                lambda_ -= self.state["lrgrad"]
 
             if noise != 0:
                 # create a normal distribution with mean lambda and std noise
@@ -192,94 +193,3 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
 
             self.state['lambda'] = lambda_
         return torch.mean(torch.tensor(running_loss))
-
-    def visualize_grad(self, grad, threshold=1):
-        """ Plot a graph with the distribution in lambda values with respect to certain thresholds
-
-        Args:
-            lambda_ (torch.Tensor): Lambda values
-            path (str): Path to save the graph
-            threshold (int): Threshold to plot the distribution
-        """
-        import matplotlib.pyplot as plt
-        from matplotlib.ticker import AutoMinorLocator
-        plt.figure()
-        plt.grid()
-        bins = 100
-        hist = torch.histc(grad, bins=bins, min=-threshold,
-                           max=threshold).detach().cpu()
-
-        plt.bar(torch.linspace(-threshold, threshold, bins).detach().cpu(),
-                hist * 100 / len(grad),
-                width=0.01,
-                zorder=2)
-        plt.xlabel('Value of alpha*grad')
-        plt.ylabel('% of alpha*grad')
-        plt.gca().xaxis.set_minor_locator(AutoMinorLocator(5))
-        plt.gca().yaxis.set_minor_locator(AutoMinorLocator(5))
-        plt.gca().tick_params(which='both', width=1)
-        plt.gca().tick_params(which='major', length=6)
-        plt.ylim(0, 100)
-        plt.show()
-
-    def visualize_lambda(self, path, threshold=10):
-        """ Plot a graph with the distribution in lambda values with respect to certain thresholds
-
-        Args:
-            lambda_ (torch.Tensor): Lambda values
-            path (str): Path to save the graph
-            threshold (int): Threshold to plot the distribution
-        """
-        import matplotlib.pyplot as plt
-        from matplotlib.ticker import AutoMinorLocator
-        import os
-        from utils.visual import versionning
-
-        params = [torch.zeros_like(param) for param in self.param_groups[0]
-                  ['params'] if param.requires_grad]
-        vector_to_parameters(
-            self.state['lambda'], params)
-
-        # figure with as many subplots as lambdas
-        fig, ax = plt.subplots(len(params), 1, figsize=(5, 5*len(params)))
-        for i, lbda in enumerate(params):
-
-            title = r"$\lambda$" + \
-                f"[{'x'.join([str(s) for s in lbda.shape][::-1])}]"
-
-            bins = 50
-            hist = torch.histc(lbda, bins=bins, min=-threshold,
-                               max=threshold).detach().cpu()
-
-            length = torch.prod(torch.tensor(lbda.shape)).item()
-            # plot the histogram
-            ax[i].bar(torch.linspace(-threshold, threshold, bins).detach().cpu(),
-                      hist * 100 / length,
-                      width=2*threshold/bins,
-                      zorder=2)
-            ax[i].set_xlabel('$\lambda$ [-]')
-            ax[i].set_ylabel('Histogram of $\lambda$ [%]')
-            ax[i].xaxis.set_minor_locator(AutoMinorLocator(5))
-            ax[i].yaxis.set_minor_locator(AutoMinorLocator(5))
-            ax[i].tick_params(which='both', width=1)
-            ax[i].tick_params(which='major', length=6)
-            ax[i].set_ylim(0, 100)
-            ax[i].set_title(title, fontsize=8)
-
-            textsize = 6
-            transform = ax[i].transAxes
-            ax[i].text(0.5, 0.95, f"$\lambda$  Lambda values above {threshold}: {(lbda > threshold).sum() * 100 / length:.2f}%",
-                       fontsize=textsize, ha='center', va='center', transform=transform)
-            ax[i].text(0.5, 0.9, f"$\lambda$ values above 2: {((lbda > 2) & (lbda < threshold)).sum() * 100 / length:.2f}%",
-                       fontsize=textsize, ha='center', va='center', transform=transform)
-            ax[i].text(0.5, 0.85, f"$\lambda$  values below -2: {((lbda < -2) & (lbda > -threshold)).sum() * 100 / length:.2f}%",
-                       fontsize=textsize, ha='center', va='center', transform=transform)
-            ax[i].text(0.5, 0.8, f"$\lambda$ values below -{threshold}: {(lbda < -threshold).sum() * 100 / length:.2f}%",
-                       fontsize=textsize, ha='center', va='center', transform=transform)
-            ax[i].text(0.5, 0.75, f"$\lambda$ values between -2 and 2: {((lbda < 2) & (lbda > -2)).sum() * 100 / length:.2f}%",
-                       fontsize=textsize, ha='center', va='center', transform=transform)
-
-        os.makedirs(path, exist_ok=True)
-        fig.savefig(versionning(path, "lambda-visualization",
-                    ".pdf"), bbox_inches='tight')
-        plt.close()

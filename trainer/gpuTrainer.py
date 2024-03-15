@@ -74,11 +74,12 @@ class GPUTrainer:
             self.batch_step(inputs.to(self.device), targets.to(self.device))
 
     @torch.no_grad()
-    def evaluate(self, test_loader):
+    def evaluate(self, test_loader, train_loader=None):
         """ Evaluate the model on the test sets
 
         Args:
             test_loader (torch.utils.data.DataLoader): Testing data
+            train_loader (torch.utils.data.DataLoader, optional): Training data. Defaults to None.
 
         Returns:
             float: mean accuracy on the test sets
@@ -96,31 +97,14 @@ class GPUTrainer:
                 self.testing_accuracy.append(test)
                 self.mean_testing_accuracy.append(
                     torch.mean(torch.tensor(test)))
-
-    def fit(self, train_loader, n_epochs, test_loader=None, name_loader=None, permutations=None, **kwargs):
-        """Train the model for n_epochs
-
-        Args:
-            train_loader (torch.utils.data.DataLoader): Training data
-            n_epochs (int): Number of epochs
-            test_loader (torch.utils.data.DataLoader, optional): Testing data. Defaults to None.
-            name_loader (str, optional): Name of the test sets to print. Defaults to None.
-            permutations (list, optional): Permutations to use for the permuted MNIST. Defaults to None.
-        """
-        pbar = tqdm.trange(n_epochs)
-        for epoch in pbar:
-            ### TRAINING ###
-            self.epoch_step(train_loader)
-
-            ### SCHEDULER ###
-            if "scheduler" in dir(self):
-                self.scheduler.step()
-
-            ### TASK EVALUATION ###
-            self.evaluate(test_loader)
-
-            ### PROGRESS BAR ###
-            self.pbar_update(pbar, epoch, n_epochs, name_loader)
+            if train_loader is not None:
+                train = []
+                for dataloader in train_loader:
+                    batch = []
+                    for inputs, targets in dataloader:
+                        batch.append(self.test(inputs, targets))
+                    train.append(torch.mean(torch.tensor(batch)))
+                self.training_accuracy.append(train)
 
     @torch.no_grad()
     def predict(self, inputs):
@@ -160,7 +144,7 @@ class GPUTrainer:
             predictions = torch.argmax(predictions, dim=1)
         return torch.mean((predictions == labels.to(self.device)).float())
 
-    def pbar_update(self, pbar, epoch, n_epochs, name_loader=None):
+    def pbar_update(self, pbar, epoch, n_epochs, name_loader=None, task=None):
         """Update the progress bar with the current loss and accuracy"""
         pbar.set_description(f"Epoch {epoch+1}/{n_epochs}")
         # creation of a dictionnary with the name of the test set and the accuracy
@@ -171,17 +155,27 @@ class GPUTrainer:
                     "Not enough names for the test sets provided"
                 )
             if name_loader is None:
-                kwargs = {
-                    f"task {i+1}": f"{accuracy:.2%}" for i, accuracy in enumerate(self.testing_accuracy[-1])
-                }
+                if "training_accuracy" in dir(self) and len(self.training_accuracy) > 0:
+                    kwargs = {
+                        f"task {i+1}": f"Test: {test_acc:.2%} - Train: {train_acc:.2%}" for i, test_acc, train_acc in zip(range(len(self.testing_accuracy[-1])), self.testing_accuracy[-1], self.training_accuracy[-1])
+                    }
+                else:
+                    kwargs = {
+                        f"task {i+1}": f"Test: {accuracy:.2%}" for i, accuracy in enumerate(self.testing_accuracy[-1])
+                    }
             else:
-                kwargs = {
-                    name: f"{accuracy:.2%}" for name, accuracy in zip(name_loader, self.testing_accuracy[-1])
-                }
+                if "training_accuracy" in dir(self) and len(self.training_accuracy) > 0:
+                    kwargs = {
+                        name: f"Test: {test_acc:.2%} - Train: {train_acc:.2%}" for name, test_acc, train_acc in zip(name_loader, self.testing_accuracy[-1], self.training_accuracy[-1])
+                    }
+                else:
+                    kwargs = {
+                        name: f"Test: {accuracy:.2%}" for name, accuracy in zip(name_loader, self.testing_accuracy[-1])
+                    }
             pbar.set_postfix(loss=self.loss.item())
             # Do a pretty print of our results
-            pbar.write("=================")
-            pbar.write("Testing accuracies: ")
+            pbar.write("==================================")
+            pbar.write("Accuracies: ")
             for key, value in kwargs.items():
                 pbar.write(f"\t{key}: {value}")
 
