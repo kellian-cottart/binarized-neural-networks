@@ -90,11 +90,11 @@ class BayesTrainer(GPUTrainer):
         predictions = torch.mean(predictions, dim=0)
         if self.model.output_function == "sigmoid":
             # apply exponential to get the probability
-            predictions = torch.where(predictions >= 0.5, torch.ones_like(
+            predicted = torch.where(predictions >= 0.5, torch.ones_like(
                 predictions), torch.zeros_like(predictions))
         else:
-            predictions = torch.argmax(predictions, dim=1)
-        return torch.mean((predictions == labels).float())
+            predicted = torch.argmax(predictions, dim=1)
+        return torch.mean((predicted == labels).float()), predictions
 
     def epoch_step(self, train_dataset, test_loader=None):
         """Perform the training of a single epoch

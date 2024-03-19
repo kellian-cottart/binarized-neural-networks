@@ -33,14 +33,34 @@ class BiNN(DNN):
                 bias=bias,
                 device=self.device,
                 latent_weights=self.latent_weights))
-            if self.batchnorm:
+            if self.normalization == "batchnorm":
                 self.layers.append(torch.nn.BatchNorm1d(
-                    layers[i+1],
+                    num_features=layers[i+1],
                     affine=self.affine,
                     track_running_stats=self.running_stats,
                     device=self.device,
-                    eps=self.bneps,
-                    momentum=self.bnmomentum))
+                    eps=self.eps,
+                    momentum=self.momentum))
+            elif self.normalization == "layernorm":
+                self.layers.append(torch.nn.LayerNorm(
+                    normalized_shape=[layers[i+1]],
+                    eps=self.eps,
+                    elementwise_affine=self.affine,
+                    device=self.device))
+            elif self.normalization == "instancenorm":
+                self.layers.append(torch.nn.InstanceNorm1d(
+                    num_features=layers[i+1],
+                    eps=self.eps,
+                    momentum=self.momentum,
+                    affine=self.affine,
+                    device=self.device))
+            elif self.normalization == "groupnorm":
+                self.layers.append(torch.nn.GroupNorm(
+                    num_groups=self.gnnum_groups,
+                    num_channels=layers[i+1],
+                    eps=self.eps,
+                    affine=self.affine,
+                    device=self.device))
 
     def forward(self, x):
         """ Forward pass of DNN
@@ -56,4 +76,4 @@ class BiNN(DNN):
         return super().forward(x)
 
     def __repr__(self):
-        return f"BNN({self.layers}, dropout={self.dropout}, latent_weights={self.latent_weights}, batchnorm={self.batchnorm}, bnmomentum={self.bnmomentum}, bneps={self.bneps}, device={self.device}"
+        return f"BNN({self.layers}, dropout={self.dropout}, latent_weights={self.latent_weights}, device={self.device}, normalization={self.normalization})"

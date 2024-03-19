@@ -174,13 +174,13 @@ class GPULoading:
         if not self.as_dataset:
             # create a DataLoader to load the data in batches
             train_dataset = GPUDataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True, transform=transform if data_augmentation else None, device=self.device)
+                train_dataset, batch_size=batch_size, shuffle=True, drop_last=False, transform=transform if data_augmentation else None, device=self.device)
             test_dataset = GPUDataLoader(
                 test_dataset, batch_size=batch_size, shuffle=False, device=self.device)
         else:
             # create a DataLoader to load the data in batches
             train_dataset = torch.utils.data.DataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
+                train_dataset, batch_size=batch_size, shuffle=True, drop_last=False)
             test_dataset = torch.utils.data.DataLoader(
                 test_dataset, batch_size=batch_size, shuffle=False)
         return train_dataset, test_dataset

@@ -23,6 +23,8 @@ parser.add_argument(
     "--study", type=str, default="gridsearch/study-default", help="Name of the study")
 parser.add_argument(
     "--db", type=str, default="gridsearch/gridsearch-2.sqlite3", help="Name of the database")
+parser.add_argument(
+    "--task", type=str, default="PermutedMNIST", help="Task to perform (FrameworkDataset). Ex: PermutedMNIST, StreamFashion, CILCIFAR100")
 
 ### GENERAL CONFIGURATION ###
 DEVICE = f"cuda:{parser.parse_args().device}" if parser.parse_args(
@@ -43,20 +45,24 @@ def train_iteration(trial):
         trial (optuna.Trial): Optuna trial
     """
     ### PARAMETERS ###
-    lr = trial.suggest_float("lr", 1e-4, 1, log=True)
+    lr = trial.suggest_float("lr", 1e-3, 10, log=True)
     scale = trial.suggest_float("scale", 0, 0.3, step=0.001)
     gamma = trial.suggest_float("gamma", 0, 0.3, step=0.001)
-    temperature = trial.suggest_categorical("temperature", [1])
     seed = trial.suggest_categorical("seed", [1000])
     epochs = trial.suggest_categorical("epochs", [20])
-    quantization = trial.suggest_categorical("quantization", [None])
-    threshold = trial.suggest_categorical("threshold", [None])
-    noise = trial.suggest_categorical("noise", [0])
+    # temperature = trial.suggest_categorical("temperature", [1])
+    # quantization = trial.suggest_categorical("quantization", [None])
+    # threshold = trial.suggest_categorical("threshold", [None])
+    # noise = trial.suggest_categorical("noise", [0])
     batch_size = trial.suggest_categorical(
-        "batch_size", [128])
-    task = trial.suggest_categorical("task", ["PermutedMNIST"])
-    n_tasks = trial.suggest_categorical("n_tasks", [10])
-    n_classes = trial.suggest_categorical("n_classes", [10])
+        "batch_size", [64, 128, 256])
+    task = trial.suggest_categorical("task", [parser.parse_args().task])
+    n_tasks = trial.suggest_categorical("n_tasks", [1])
+    n_classes = trial.suggest_categorical("n_classes", [1])
+    n_subsets = trial.suggest_categorical("n_subsets", [60])
+    layer = trial.suggest_categorical("layer", [512, 1024])
+    normalization = trial.suggest_categorical(
+        "normalization", ["batchnorm", "layernorm", "instancenorm", "groupnorm"])
 
     torch.manual_seed(seed)
     if torch.cuda.is_available():
@@ -68,18 +74,19 @@ def train_iteration(trial):
     data = {
         "nn_type": models.BiNN,
         "nn_parameters": {
-            "layers": [2048, 2048],
+            "layers": [layer, layer],
             "device": DEVICE,
             "dropout": False,
-            "batchnorm": True,
-            "bnmomentum": 0,
-            "bneps": 0,
+            "normalization": normalization,
+            "momentum": 0,
+            "eps": 0,
             "init": "uniform",
             "std": 0.1,
             "bias": False,
             "latent_weights": True,
             "running_stats": False,
             "affine": False,
+            "gnnum_groups": 1,
             "activation_function": Sign.apply,
             "output_function": "log_softmax",
         },
@@ -90,21 +97,28 @@ def train_iteration(trial):
             "test_mcmc_samples": 1,
             'resize': True
         },
+        # "optimizer": torch.optim.Adam,
+        # "optimizer_parameters": {
+        #     "lr": lr,
+        #     "weight_decay": 0,
+        # },
         "optimizer": BinaryHomosynapticUncertaintyTest,
         "optimizer_parameters": {
             "lr": lr,
             "scale": scale,
             "gamma": gamma,
-            "temperature": temperature,
-            "noise": noise,
-            "quantization": quantization,
-            "threshold": threshold,
+            # "temperature": temperature,
+            # "noise": noise,
+            # "quantization": quantization,
+            # "threshold": threshold,
             "update": 5,
             "num_mcmc_samples": 1,
         },
         "task": task,
         "n_tasks": n_tasks,
         "n_classes": n_classes,
+        "n_subsets": n_subsets,
+        "show_train": False,
     }
 
     ### LOADER ###
@@ -134,42 +148,61 @@ def train_iteration(trial):
                                          model=model, **data, device=DEVICE)
 
     ### TASK SELECTION ###
+    # Setting the task iterator: The idea is that we yield datasets corresponding to the framework we want to use
+    # For example, if we want to use the permuted framework, we will yield datasets with permuted images, not dependant on the dataset
     task_iterator = None
-    if data["task"] == "PermutedMNIST":
+    if "Permuted" in data["task"]:
+        # Create n_tasks permutations of the dataset
         permutations = [torch.randperm(torch.prod(torch.tensor(shape)))
                         for _ in range(data["n_tasks"])]
         task_iterator = train_loader[0].permute_dataset(permutations)
-    elif "CIFAR" in data["task"] and data["n_tasks"] > 1:
+    elif "CIL" in data["task"]:
+        # Create n_tasks subsets of n_classes (need to permute the selection of classes for each task)
+        rand = torch.randperm(target_size)
+        # n_tasks subsets of n_classes without overlapping
+        permutations = [rand[i:i+data["n_classes"]]
+                        for i in range(0, target_size, data["n_classes"])]
         task_iterator = train_loader[0].class_incremental_dataset(
-            n_tasks=data["n_tasks"], n_classes=data["n_classes"])
+            permutations=permutations)
+    elif "Stream" in data["task"]:
+        # Split the dataset in n_tasks subsets
+        task_iterator = train_loader[0].stream_dataset(
+            data["n_subsets"])
     else:
         task_iterator = train_loader
 
     ### TRAINING ###
     for i, task in enumerate(task_iterator):
-        pbar = tqdm.trange(data["training_parameters"]["n_epochs"])
         ### STARTING TRAINING ###
-        for epoch in pbar:
+        for epoch in range(data["training_parameters"]["n_epochs"]):
             net_trainer.epoch_step(task)
 
             ### TEST EVALUATION ###
-            if data["task"] == "PermutedMNIST":
+            # Depending on the task, we also need to use the framework on the test set and show training or not
+            if "Permuted" in data["task"]:
                 net_trainer.evaluate(test_loader[0].permute_dataset(
-                    permutations))
-            elif "CIFAR" in data["task"] and data["n_tasks"] > 1:
+                    permutations), train_loader=train_loader[0].permute_dataset(permutations) if "show_train" in data and data["show_train"] else None)
+            elif "CIL" in data["task"]:
                 net_trainer.evaluate(test_loader[0].class_incremental_dataset(
-                    n_tasks=data["n_tasks"], n_classes=data["n_classes"]))
+                    permutations=permutations), train_loader=train_loader[0].class_incremental_dataset(permutations) if "show_train" in data and data["show_train"] else None)
             else:
-                net_trainer.evaluate(test_loader)
+                net_trainer.evaluate(
+                    test_loader, train_loader=train_loader if "show_train" in data and data["show_train"] else None)
 
             ### MEAN LOSS ACCURACY FOR CONTINUAL LEARNING ###
-            other_tasks_stack = torch.zeros(
-                len(net_trainer.testing_accuracy[-1]) - i - 1)
-            other_tasks_stack.fill_(0.1)
-            ongoing_accuracy = torch.cat(
-                (torch.stack(net_trainer.testing_accuracy[-1][:i+1]), other_tasks_stack))
-            ongoing_accuracy = ongoing_accuracy.mean()
-
+            # The idea is to put every task that has not been trained yet to 0.01, such that the mean is not affected during the optimization process of Optuna
+            # If we didn't do that, tasks where the random initialization gives bad results on non-trained tasks would be pruned
+            if not "Stream" in data["task"]:
+                other_tasks_stack = torch.zeros(
+                    len(net_trainer.testing_accuracy[-1]) - i - 1)
+                other_tasks_stack.fill_(0.01)
+                ongoing_accuracy = torch.cat(
+                    (torch.stack(net_trainer.testing_accuracy[-1][:i+1]), other_tasks_stack)).mean()
+            else:
+                ongoing_accuracy = net_trainer.testing_accuracy[-1][0]
+            if epoch % (data["training_parameters"]["n_epochs"]//4) == 0:
+                print(
+                    f"Task {i+1} - Epoch {epoch+1}/{data['training_parameters']['n_epochs']} - Accuracy: {ongoing_accuracy.item()*100:.2f}%")
             trial.report(
                 ongoing_accuracy.item(),
                 step=i*data["training_parameters"]["n_epochs"]+epoch,
@@ -177,7 +210,8 @@ def train_iteration(trial):
             if trial.should_prune():
                 raise optuna.TrialPruned()
 
-    # save all parameters of the model in a json file
+    ### EXPORT PARAMETERS ###
+    # Save all parameters of the trial in a json file
     with open(os.path.join(STUDY, f"{trial.number}.json"), "w") as f:
         all_accuracies = {
             f"task_{i}": net_trainer.testing_accuracy[-1][i].item() for i in range(len(net_trainer.testing_accuracy[-1]))
@@ -208,5 +242,8 @@ if __name__ == "__main__":
     # Save the best trial in a json file
     trial = study.best_trial
     with open(os.path.join(STUDY, "best_trial.json"), "w") as f:
-        output = {"value": trial.value, "params": trial.params}
+        output = {"number": trial.number,
+                  "value": trial.value,
+                  "params": trial.params,
+                  "accuracies": trial.user_attrs}
         json.dump(output, f)

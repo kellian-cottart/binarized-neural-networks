@@ -144,7 +144,8 @@ class BayesBiNN(torch.optim.Optimizer):
             momentum = momentum*beta + (1-beta)*gradient_estimate
             bias_correction = 1 - beta ** step
 
-            self.state['lambda'] -= lr * momentum / bias_correction
+            self.state['lambda'] = self.state['lambda'] - lr * momentum / \
+                bias_correction + lr * scale * (prior_lambda - lambda_)
             self.state['momentum'] = momentum
             self.state['mu'] = torch.tanh(lambda_)
         return torch.mean(torch.tensor(running_loss))

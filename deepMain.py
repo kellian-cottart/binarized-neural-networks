@@ -10,10 +10,10 @@ import tqdm
 from models.layers.activation import Sign
 
 SEED = 1000  # Random seed
-N_NETWORKS = 1  # Number of networks to train
+N_NETWORKS = 5  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
-PADDING = 0
+PADDING = 2
 
 
 ### PATHS ###
@@ -39,32 +39,42 @@ if __name__ == "__main__":
         {
             "nn_type": models.BiNN,
             "nn_parameters": {
-                "layers": [1024, 1024],
+                ### NETWORK ###
+                "layers": [2048, 2048],
                 "device": DEVICE,
                 "dropout": False,
-                "batchnorm": True,
-                "bnmomentum": 0,
-                "bneps": 0,
                 "init": "uniform",
                 "std": 0.1,
                 "bias": False,
                 "latent_weights": True,
-                "running_stats": False,
-                "affine": False,
                 "activation_function": Sign.apply,
                 # "activation_function": torch.functional.F.relu,
                 "output_function": "log_softmax",
+                ### NORMALIZATION ###
+                "normalization": "batchnorm",
+                "momentum": 0,
+                "eps": 0,
+                "running_stats": False,
+                "affine": False,
+                "gnnum_groups": 1,
             },
             "training_parameters": {
                 'n_epochs': 20,
-                'batch_size': 128,
+                'batch_size': 512,
                 "test_mcmc_samples": 1,
                 'resize': True,
             },
             "criterion": torch.functional.F.nll_loss,
+            # "optimizer": BayesBiNN,
+            # "optimizer_parameters": {
+            #     "lr": 0.005,
+            #     "temperature": 1,
+            #     "scale": 0.1,
+            #     "num_mcmc_samples": 1
+            # },
             # "optimizer": torch.optim.Adam,
             # "optimizer_parameters": {
-            #     "lr": 0.05,
+            #     "lr": 0.001,
             # },
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {
@@ -73,24 +83,25 @@ if __name__ == "__main__":
             # },
             "optimizer": BinaryHomosynapticUncertaintyTest,
             "optimizer_parameters": {
-                "lr": 5,
-                "scale": 0,
+                "lr": 0.025,
+                "scale": 0.6,
                 "gamma": 0,
                 "update": 5,
-                "num_mcmc_samples": 1,
+                "num_mcmc_samples": samples,
+                "init_lambda": init,
             },
-            "task": "Stream-Fashion",
-            "n_tasks": 1,
-            "n_classes": 1,
-            "n_subsets": 60,
+            "task": "CILCIFAR100",
+            "n_tasks": 2,
+            "n_classes": 50,
+            "n_subsets": 1,
             "show_train": False,
-        }
+        } for init in [0.01, 0.1, 1] for samples in [1, 2, 5, 10]
     ]
 
     for index, data in enumerate(networks_data):
 
         ### NAME INITIALIZATION ###
-        name = f"{data['optimizer'].__name__}-BS{data['training_parameters']['batch_size']}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers']])}-{data['task']}-{data['nn_parameters']['activation_function'].__name__}"
+        name = f"{data['optimizer'].__name__}-BS{data['training_parameters']['batch_size']}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers']])}-{data['task']}-{data['nn_parameters']['activation_function'].__name__}-{data['nn_parameters']['normalization']}"
         # add some parameters to the name
         for key, value in data['optimizer_parameters'].items():
             name += f"-{key}-{value}"
@@ -142,13 +153,16 @@ if __name__ == "__main__":
                                                  model=model, **data, device=DEVICE)
             print(net_trainer.model)
 
-            # Setting the task iterator
+            ### TASK SELECTION ###
+            # Setting the task iterator: The idea is that we yield datasets corresponding to the framework we want to use
+            # For example, if we want to use the permuted framework, we will yield datasets with permuted images, not dependant on the dataset
             task_iterator = None
-            if data["task"] == "PermutedMNIST":
+            if "Permuted" in data["task"]:
+                # Create n_tasks permutations of the datasetc
                 permutations = [torch.randperm(torch.prod(torch.tensor(shape)))
                                 for _ in range(data["n_tasks"])]
                 task_iterator = train_loader[0].permute_dataset(permutations)
-            elif data["n_tasks"] > 1 and data["n_classes"] > 1:
+            elif "CIL" in data["task"]:
                 # Create n_tasks subsets of n_classes (need to permute the selection of classes for each task)
                 rand = torch.randperm(target_size)
                 # n_tasks subsets of n_classes without overlapping
@@ -157,51 +171,64 @@ if __name__ == "__main__":
                 task_iterator = train_loader[0].class_incremental_dataset(
                     permutations=permutations)
             elif "Stream" in data["task"]:
+                # Split the dataset in n_tasks subsets
                 task_iterator = train_loader[0].stream_dataset(
                     data["n_subsets"])
             else:
                 task_iterator = train_loader
 
+            ### TRAINING ###
             for i, task in enumerate(task_iterator):
                 epochs = data["training_parameters"]["n_epochs"][i] if isinstance(
                     data["training_parameters"]["n_epochs"], list) else data["training_parameters"]["n_epochs"]
                 pbar = tqdm.trange(epochs)
                 for epoch in pbar:
-                    # If BinaryHomosynapticUncertainty, plot lambda per layer
-                    # if data["optimizer"] in [BinaryHomosynapticUncertainty, BinaryHomosynapticUncertaintyTest]:
-                    #     visualize_lambda(
-                    #         parameters=net_trainer.optimizer.param_groups[0]['params'],
-                    #         lambda_=net_trainer.optimizer.state['lambda'],
-                    #         path=os.path.join(main_folder, "lambda"),
-                    #         threshold=10,
-                    #         task=i,
-                    #         epoch=epoch,
-                    #     )
-                    #     visualize_grad(
-                    #         parameters=net_trainer.optimizer.param_groups[0]['params'],
-                    #         grad=net_trainer.optimizer.state['lrgrad'],
-                    #         path=os.path.join(main_folder, "lrgrad"),
-                    #         threshold=1e-1,
-                    #         task=i,
-                    #         epoch=epoch,
-                    #     )
                     net_trainer.epoch_step(task)
-                    # update the progress bar
+                    ### TEST EVALUATION ###
+                    # Depending on the task, we also need to use the framework on the test set and show training or not
                     name_loader = None
-                    if data["task"] == "PermutedMNIST":
-                        net_trainer.evaluate(test_loader[0].permute_dataset(
+                    if "Permuted" in data["task"]:
+                        predicted, certainty = net_trainer.evaluate(test_loader[0].permute_dataset(
                             permutations), train_loader=train_loader[0].permute_dataset(permutations) if "show_train" in data and data["show_train"] else None)
-                    elif data["n_tasks"] > 1 and data["n_classes"] > 1:
-                        net_trainer.evaluate(test_loader[0].class_incremental_dataset(
+                    elif "CIL" in data["task"]:
+                        predicted, certainty = net_trainer.evaluate(test_loader[0].class_incremental_dataset(
                             permutations=permutations), train_loader=train_loader[0].class_incremental_dataset(permutations) if "show_train" in data and data["show_train"] else None)
                         name_loader = [f"Classes {i}-{i+data['n_classes']-1}" for i in range(
                             0, data["n_tasks"]*data["n_classes"], data["n_classes"])]
                     else:
-                        net_trainer.evaluate(
+                        predicted, certainty = net_trainer.evaluate(
                             test_loader, train_loader=train_loader if "show_train" in data and data["show_train"] else None)
                     # update the progress bar
                     net_trainer.pbar_update(
                         pbar, epoch, data["training_parameters"]["n_epochs"], name_loader=name_loader)
+
+                    ### EXPORT VISUALIZATION OF PARAMETERS ###
+                    if epoch % 20 == 0:
+                        # print predicted and associated certainty
+                        visualize_certainty(
+                            predicted=predicted,
+                            certainty=certainty,
+                            log=True,
+
+                            path=os.path.join(main_folder, "certainty"),
+                        )
+                        if data["optimizer"] in [BinaryHomosynapticUncertainty, BinaryHomosynapticUncertaintyTest]:
+                            visualize_lambda(
+                                parameters=net_trainer.optimizer.param_groups[0]['params'],
+                                lambda_=net_trainer.optimizer.state['lambda'],
+                                path=os.path.join(main_folder, "lambda"),
+                                threshold=10,
+                                task=i,
+                                epoch=epoch,
+                            )
+                            visualize_grad(
+                                parameters=net_trainer.optimizer.param_groups[0]['params'],
+                                grad=net_trainer.optimizer.state['lrgrad'],
+                                path=os.path.join(main_folder, "lrgrad"),
+                                threshold=1e-1,
+                                task=i,
+                                epoch=epoch,
+                            )
                 ### TASK BOUNDARIES ###
                 if data["optimizer"] in [BinarySynapticUncertaintyTaskBoundaries, BayesBiNN]:
                     net_trainer.optimizer.update_prior_lambda()

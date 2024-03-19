@@ -86,13 +86,26 @@ class GPUTrainer:
         """
         self.model.eval()
         with torch.no_grad():
+
+            test_predicted = []
+            test_certainty = []
+
             if test_loader is not None:
                 test = []
                 # Iterate over the Dataloaders
                 for dataloader in test_loader:
                     batch = []
                     for inputs, targets in dataloader:
-                        batch.append(self.test(inputs, targets))
+                        accuracy, predictions = self.test(inputs, targets)
+                        batch.append(accuracy)
+
+                        # Has the network classified correctly => we have sampled the prediction, and this is the mean prediction
+                        # What is the percentage of certainty associated?
+                        predicted = torch.argmax(predictions, dim=1) == targets
+                        certainty = torch.max(predictions, dim=1).values
+                        test_predicted.append(predicted)
+                        test_certainty.append(certainty)
+
                     test.append(torch.mean(torch.tensor(batch)))
                 self.testing_accuracy.append(test)
                 self.mean_testing_accuracy.append(
@@ -102,9 +115,11 @@ class GPUTrainer:
                 for dataloader in train_loader:
                     batch = []
                     for inputs, targets in dataloader:
-                        batch.append(self.test(inputs, targets))
+                        accuracy, predictions = self.test(inputs, targets)
+                        batch.append(accuracy)
                     train.append(torch.mean(torch.tensor(batch)))
                 self.training_accuracy.append(train)
+            return torch.cat(test_predicted), torch.cat(test_certainty)
 
     @torch.no_grad()
     def predict(self, inputs):
@@ -131,6 +146,7 @@ class GPUTrainer:
 
         Returns:
             float: Accuracy of the model on the dataset
+            torch.Tensor: Predictions
 
         """
         ### ACCURACY COMPUTATION ###
@@ -138,11 +154,11 @@ class GPUTrainer:
         predictions = self.predict(inputs)
         if self.model.output_function == "sigmoid":
             # apply exponential to get the probability
-            predictions = torch.where(predictions >= 0.5, torch.ones_like(
+            predicted = torch.where(predictions >= 0.5, torch.ones_like(
                 predictions), torch.zeros_like(predictions))
         else:
-            predictions = torch.argmax(predictions, dim=1)
-        return torch.mean((predictions == labels.to(self.device)).float())
+            predicted = torch.argmax(predictions, dim=1)
+        return torch.mean((predicted == labels.to(self.device)).float()), predictions
 
     def pbar_update(self, pbar, epoch, n_epochs, name_loader=None, task=None):
         """Update the progress bar with the current loss and accuracy"""

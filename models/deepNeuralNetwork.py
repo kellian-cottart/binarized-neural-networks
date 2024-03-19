@@ -11,12 +11,13 @@ class DNN(torch.nn.Module):
                  std: float = 0.01,
                  device: str = "cuda:0",
                  dropout: bool = False,
-                 batchnorm: bool = False,
+                 normalization: str = None,
                  bias: bool = False,
                  running_stats: bool = False,
                  affine: bool = False,
-                 bneps: float = 1e-5,
-                 bnmomentum: float = 0.15,
+                 eps: float = 1e-5,
+                 momentum: float = 0.15,
+                 gnnum_groups: int = 32,
                  activation_function: torch.nn.functional = torch.nn.functional.relu,
                  output_function: str = "softmax",
                  *args,
@@ -29,12 +30,13 @@ class DNN(torch.nn.Module):
             std (float): Standard deviation for initialization
             device (str): Device to use for computation (e.g. 'cuda' or 'cpu')
             dropout (bool): Whether to use dropout
-            batchnorm (bool): Whether to use batchnorm
+            normalization (str): Normalization method to choose (e.g. 'batchnorm', 'layernorm', 'instancenorm', 'groupnorm')
             bias (bool): Whether to use bias
-            bneps (float): BatchNorm epsilon
-            bnmomentum (float): BatchNorm momentum
+            eps (float): BatchNorm epsilon
+         (float): BatchNorm momentum
             running_stats (bool): Whether to use running stats in BatchNorm
             affine (bool): Whether to use affine transformation in BatchNorm
+            gnnum_groups (int): Number of groups in GroupNorm
             activation_function (torch.nn.functional): Activation function
             output_function (str): Output function
         """
@@ -42,13 +44,14 @@ class DNN(torch.nn.Module):
         self.device = device
         self.layers = torch.nn.ModuleList().to(self.device)
         self.dropout = dropout
-        self.batchnorm = batchnorm
-        self.bneps = bneps
-        self.bnmomentum = bnmomentum
+        self.normalization = normalization
+        self.eps = eps
+        self.momentum = momentum
         self.running_stats = running_stats
         self.affine = affine
         self.activation_function = activation_function
         self.output_function = output_function
+        self.gnnum_groups = gnnum_groups
         ### LAYER INITIALIZATION ###
         self._layer_init(layers, bias)
         ### WEIGHT INITIALIZATION ###
@@ -70,14 +73,34 @@ class DNN(torch.nn.Module):
                 layers[i+1],
                 bias=bias,
                 device=self.device))
-            if self.batchnorm:
+            if self.normalization == "batchnorm":
                 self.layers.append(torch.nn.BatchNorm1d(
-                    layers[i+1],
+                    num_features=layers[i+1],
                     affine=self.affine,
                     track_running_stats=self.running_stats,
                     device=self.device,
-                    eps=self.bneps,
-                    momentum=self.bnmomentum))
+                    eps=self.eps,
+                    momentum=self.momentum))
+            elif self.normalization == "layernorm":
+                self.layers.append(torch.nn.LayerNorm(
+                    normalized_shape=[layers[i+1]],
+                    eps=self.eps,
+                    elementwise_affine=self.affine,
+                    device=self.device))
+            elif self.normalization == "instancenorm":
+                self.layers.append(torch.nn.InstanceNorm1d(
+                    num_features=layers[i+1],
+                    eps=self.eps,
+                    momentum=self.momentum,
+                    affine=self.affine,
+                    device=self.device))
+            elif self.normalization == "groupnorm":
+                self.layers.append(torch.nn.GroupNorm(
+                    num_groups=self.gnnum_groups,
+                    num_channels=layers[i+1],
+                    eps=self.eps,
+                    affine=self.affine,
+                    device=self.device))
 
     def _weight_init(self, init='normal', std=0.1):
         """ Initialize weights of each layer

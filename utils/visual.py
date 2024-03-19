@@ -320,3 +320,51 @@ def visualize_lambda(parameters, lambda_, path, threshold=10, task=None, epoch=N
     fig.savefig(versionning(path, f"lambda-task{task}-epoch{epoch}" if epoch is not None else "lambda",
                 ".pdf"), bbox_inches='tight')
     plt.close()
+
+
+def visualize_certainty(predicted, certainty, path, log=True):
+    """ Visualize the certainty of the model with respected to correct and incorrect predictions
+
+    Args:
+        predicted (torch.Tensor): Predicted labels
+        certainty (torch.Tensor): Certainty of the model
+        path (str): Path to save the graph
+        log (bool): Input data is in log scale
+    """
+    if log:
+        certainty = torch.exp(certainty)
+
+    # We are plotting an histogram of the certainty of the model with respect to the correct and incorrect predictions
+    # Correct predictions in blue and incorrect predictions in red
+    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+    bins = 50
+    hist_correct = torch.histc(
+        certainty[predicted == 1], bins=bins, min=0, max=1).detach().cpu()
+    hist_incorrect = torch.histc(
+        certainty[predicted == 0], bins=bins, min=0, max=1).detach().cpu()
+    ax.bar(torch.linspace(0, 1, bins).detach().cpu(),
+           hist_correct * 100 / len(certainty[predicted == 1]),
+           width=1/bins,
+           zorder=2,
+           color='blue',
+           alpha=0.5)
+    ax.bar(torch.linspace(0, 1, bins).detach().cpu(),
+           hist_incorrect * 100 / len(certainty[predicted == 0]),
+           width=1/bins,
+           zorder=2,
+           color='red',
+           alpha=0.5)
+    ax.set_xlabel('Certainty [-]')
+    ax.set_ylabel('Histogram of certainty [%]')
+    ax.xaxis.set_minor_locator(AutoMinorLocator(5))
+    ax.yaxis.set_minor_locator(AutoMinorLocator(5))
+    ax.tick_params(which='both', width=1)
+    ax.tick_params(which='major', length=6)
+    ax.set_ylim(0, 100)
+
+    ax.legend(["Correct predictions", "Incorrect predictions"],
+              prop={'size': 8})
+
+    os.makedirs(path, exist_ok=True)
+    fig.savefig(versionning(path, "certainty", ".pdf"), bbox_inches='tight')
+    plt.close()
