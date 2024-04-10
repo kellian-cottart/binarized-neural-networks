@@ -7,3 +7,4 @@ from .bsutb import *
 from .bhu import *
 from .BiMU import *
 from .bhutest import *
+from .metaplasticsgd import *

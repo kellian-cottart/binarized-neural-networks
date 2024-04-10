@@ -42,36 +42,39 @@ class GPUDataLoader():
         transform (torchvision.transforms.Compose, optional): Data augmentation transform. Defaults to None.
     """
 
-    def __init__(self, dataset, batch_size, shuffle=True, drop_last=True, transform=None, device="cuda:0"):
+    def __init__(self, dataset, batch_size, shuffle=True, drop_last=True, transform=None, device="cuda:0", test=False):
         self.dataset = dataset
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.drop_last = drop_last
         self.transform = transform
         self.device = device
+        self.test = test
 
     def __iter__(self):
         """ Return an iterator over the dataset """
         self.index = 0
-        self.perm = torch.randperm(len(self.dataset)) if self.shuffle else torch.arange(
-            len(self.dataset))
+        if self.shuffle:
+            self.perm = torch.randperm(len(self.dataset))
+        else:
+            self.perm = torch.arange(len(self.dataset))
         return self
 
     def __next__(self):
         """ Return a (data, target) pair """
         if self.index >= len(self.dataset):
             raise StopIteration
-        # Get the indexes of the current batch
-        indexes = self.perm[self.index:self.index +
-                            self.batch_size].to(self.dataset.data.device)
-        # Get the data and the targets
-        data = self.dataset.data[indexes]
-        targets = self.dataset.targets[indexes]
-        # Apply the transform if necessary
-        if self.transform:
-            data = self.transform(data)
-        # Increment the index
+        if self.index + self.batch_size > len(self.dataset):
+            if self.drop_last:
+                raise StopIteration
+            else:
+                indexes = self.perm[self.index:]
+        else:
+            indexes = self.perm[self.index:self.index+self.batch_size]
         self.index += self.batch_size
+        data, targets = self.dataset[indexes]
+        if self.transform is not None:
+            data = self.transform(data)
         return data, targets
 
     def __len__(self):
@@ -88,12 +91,26 @@ class GPUDataLoader():
             list: List of DataLoader with permuted pixels
         """
         # For each permutation, permute the pixels and yield the DataLoader
+        start = time.time()
         for perm in permutations:
             # Create a new GPUDataset
             dataset = GPUTensorDataset(
                 self.dataset.data.view(
                     self.dataset.data.shape[0], -1)[:, perm].view(self.dataset.data.shape), self.dataset.targets, device=self.device)
-            yield GPUDataLoader(dataset, self.batch_size, self.shuffle, self.drop_last, self.transform, self.device)
+            if not self.test:
+                yield GPUDataLoader(dataset,
+                                    self.batch_size,
+                                    self.shuffle,
+                                    self.drop_last,
+                                    self.transform,
+                                    self.device)
+            else:
+                yield GPUDataLoader(dataset,
+                                    dataset.data.size(0),
+                                    self.shuffle,
+                                    False,
+                                    None,
+                                    self.device)
 
     def class_incremental_dataset(self, permutations):
         """ Yield DataLoaders with data only from the classes in permutations
@@ -104,13 +121,25 @@ class GPUDataLoader():
             GPUDataLoader: DataLoader
         """
         for perm in permutations:
-            # Reference_targets is an array of 500 000 labels. We want to retrieve the indexes of the labels that are in perm
             indexes = torch.isin(self.dataset.targets, perm).nonzero(
                 as_tuple=False).squeeze()
             # Create a new GPUDataset
             dataset = GPUTensorDataset(
                 self.dataset.data[indexes], self.dataset.targets[indexes], device=self.device)
-            yield GPUDataLoader(dataset, self.batch_size, self.shuffle, self.drop_last, self.transform, self.device)
+            if not self.test:
+                yield GPUDataLoader(dataset,
+                                    self.batch_size,
+                                    self.shuffle,
+                                    self.drop_last,
+                                    self.transform,
+                                    self.device)
+            else:
+                yield GPUDataLoader(dataset,
+                                    dataset.data.size(0),
+                                    self.shuffle,
+                                    False,
+                                    None,
+                                    self.device)
 
     def stream_dataset(self, n_subsets):
         """ Yield DataLoaders with data from the dataset split into n_subsets subsets.
@@ -126,7 +155,20 @@ class GPUDataLoader():
         for i in range(n_subsets):
             dataset = GPUTensorDataset(
                 self.dataset.data[i::n_subsets], self.dataset.targets[i::n_subsets], device=self.device)
-            yield GPUDataLoader(dataset, self.batch_size, self.shuffle, self.drop_last, self.transform, self.device)
+            if not self.test:
+                yield GPUDataLoader(dataset,
+                                    self.batch_size,
+                                    self.shuffle,
+                                    self.drop_last,
+                                    self.transform,
+                                    self.device)
+            else:
+                yield GPUDataLoader(dataset,
+                                    dataset.data.size(0),
+                                    self.shuffle,
+                                    False,
+                                    None,
+                                    self.device)
 
 
 class GPULoading:
@@ -171,18 +213,21 @@ class GPULoading:
         test_dataset = GPUTensorDataset(test_x, torch.Tensor(test_y).type(
             torch.LongTensor), device=self.device if not data_augmentation else "cpu")
 
+        max_batch_size = test_x.size(
+            0) if train_dataset.data.device != "cpu" else batch_size
+
         if not self.as_dataset:
             # create a DataLoader to load the data in batches
             train_dataset = GPUDataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True, drop_last=False, transform=transform if data_augmentation else None, device=self.device)
+                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True, transform=transform if data_augmentation else None, device=self.device)
             test_dataset = GPUDataLoader(
-                test_dataset, batch_size=batch_size, shuffle=False, device=self.device)
+                test_dataset, batch_size=max_batch_size, shuffle=False, device=self.device, test=True)
         else:
             # create a DataLoader to load the data in batches
             train_dataset = torch.utils.data.DataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True, drop_last=False)
+                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
             test_dataset = torch.utils.data.DataLoader(
-                test_dataset, batch_size=batch_size, shuffle=False)
+                test_dataset, batch_size=max_batch_size, shuffle=False)
         return train_dataset, test_dataset
 
     def normalization(self, train_x, test_x):

@@ -3,11 +3,9 @@ from dataloader import *
 from optimizers import *
 import trainer
 import models
-import tqdm
 import torch
 import os
 import optuna
-from optuna.trial import TrialState
 import json
 from models.layers.activation import Sign
 import argparse
@@ -45,24 +43,23 @@ def train_iteration(trial):
         trial (optuna.Trial): Optuna trial
     """
     ### PARAMETERS ###
-    lr = trial.suggest_float("lr", 1e-3, 10, log=True)
-    scale = trial.suggest_float("scale", 0, 0.3, step=0.001)
-    gamma = trial.suggest_float("gamma", 0, 0.3, step=0.001)
+    lr = trial.suggest_float("lr", 0.1, 100, log=True)
+    beta = trial.suggest_float("beta", 0, 0.5, step=0.001)
+    gamma = trial.suggest_float("gamma", 0, 0.5, step=0.001)
     seed = trial.suggest_categorical("seed", [1000])
     epochs = trial.suggest_categorical("epochs", [20])
-    # temperature = trial.suggest_categorical("temperature", [1])
-    # quantization = trial.suggest_categorical("quantization", [None])
-    # threshold = trial.suggest_categorical("threshold", [None])
-    # noise = trial.suggest_categorical("noise", [0])
+    num_mcmc_samples = trial.suggest_categorical("num_mcmc_samples", [10])
+    init_law = trial.suggest_categorical("init_law", ["uniform"])
+    init_param = trial.suggest_float("init_param", 0, 2, step=0.01)
+
     batch_size = trial.suggest_categorical(
-        "batch_size", [64, 128, 256])
+        "batch_size", [512])
     task = trial.suggest_categorical("task", [parser.parse_args().task])
-    n_tasks = trial.suggest_categorical("n_tasks", [1])
+    n_tasks = trial.suggest_categorical("n_tasks", [10])
     n_classes = trial.suggest_categorical("n_classes", [1])
-    n_subsets = trial.suggest_categorical("n_subsets", [60])
-    layer = trial.suggest_categorical("layer", [512, 1024])
-    normalization = trial.suggest_categorical(
-        "normalization", ["batchnorm", "layernorm", "instancenorm", "groupnorm"])
+    n_subsets = trial.suggest_categorical("n_subsets", [1])
+    layer = trial.suggest_categorical("layer", [2048])
+    normalization = trial.suggest_categorical("normalization", ["batchnorm"])
 
     torch.manual_seed(seed)
     if torch.cuda.is_available():
@@ -105,20 +102,16 @@ def train_iteration(trial):
         "optimizer": BinaryHomosynapticUncertaintyTest,
         "optimizer_parameters": {
             "lr": lr,
-            "scale": scale,
+            "beta": beta,
             "gamma": gamma,
-            # "temperature": temperature,
-            # "noise": noise,
-            # "quantization": quantization,
-            # "threshold": threshold,
-            "update": 5,
-            "num_mcmc_samples": 1,
+            "num_mcmc_samples": num_mcmc_samples,
+            "init_law": init_law,
+            "init_param": init_param,
         },
         "task": task,
         "n_tasks": n_tasks,
         "n_classes": n_classes,
         "n_subsets": n_subsets,
-        "show_train": False,
     }
 
     ### LOADER ###
@@ -181,13 +174,13 @@ def train_iteration(trial):
             # Depending on the task, we also need to use the framework on the test set and show training or not
             if "Permuted" in data["task"]:
                 net_trainer.evaluate(test_loader[0].permute_dataset(
-                    permutations), train_loader=train_loader[0].permute_dataset(permutations) if "show_train" in data and data["show_train"] else None)
+                    permutations))
             elif "CIL" in data["task"]:
                 net_trainer.evaluate(test_loader[0].class_incremental_dataset(
-                    permutations=permutations), train_loader=train_loader[0].class_incremental_dataset(permutations) if "show_train" in data and data["show_train"] else None)
+                    permutations=permutations))
             else:
                 net_trainer.evaluate(
-                    test_loader, train_loader=train_loader if "show_train" in data and data["show_train"] else None)
+                    test_loader)
 
             ### MEAN LOSS ACCURACY FOR CONTINUAL LEARNING ###
             # The idea is to put every task that has not been trained yet to 0.01, such that the mean is not affected during the optimization process of Optuna
@@ -200,9 +193,8 @@ def train_iteration(trial):
                     (torch.stack(net_trainer.testing_accuracy[-1][:i+1]), other_tasks_stack)).mean()
             else:
                 ongoing_accuracy = net_trainer.testing_accuracy[-1][0]
-            if epoch % (data["training_parameters"]["n_epochs"]//4) == 0:
-                print(
-                    f"Task {i+1} - Epoch {epoch+1}/{data['training_parameters']['n_epochs']} - Accuracy: {ongoing_accuracy.item()*100:.2f}%")
+            print(
+                f"Task {i+1} - Epoch {epoch+1}/{data['training_parameters']['n_epochs']} - Mean accuracy: {ongoing_accuracy.item()*100:.2f}%")
             trial.report(
                 ongoing_accuracy.item(),
                 step=i*data["training_parameters"]["n_epochs"]+epoch,

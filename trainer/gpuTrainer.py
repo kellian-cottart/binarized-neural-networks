@@ -86,30 +86,27 @@ class GPUTrainer:
         """
         self.model.eval()
         with torch.no_grad():
-
-            test_predicted = []
-            test_certainty = []
-
+            test_predictions = []
+            labels = []
+            ### TESTING SET ###
             if test_loader is not None:
                 test = []
-                # Iterate over the Dataloaders
                 for dataloader in test_loader:
                     batch = []
                     for inputs, targets in dataloader:
+                        # Compute the accuracy and predictions for export of visuals
                         accuracy, predictions = self.test(inputs, targets)
+                        if len(predictions.shape) < 3:
+                            predictions = predictions.unsqueeze(0)
                         batch.append(accuracy)
-
-                        # Has the network classified correctly => we have sampled the prediction, and this is the mean prediction
-                        # What is the percentage of certainty associated?
-                        predicted = torch.argmax(predictions, dim=1) == targets
-                        certainty = torch.max(predictions, dim=1).values
-                        test_predicted.append(predicted)
-                        test_certainty.append(certainty)
-
+                        test_predictions.append(predictions)
+                        labels.append(targets)
                     test.append(torch.mean(torch.tensor(batch)))
                 self.testing_accuracy.append(test)
                 self.mean_testing_accuracy.append(
                     torch.mean(torch.tensor(test)))
+            ### TRAINING SET ###
+            # Conditional, we only compute the training accuracy if the training data is provided
             if train_loader is not None:
                 train = []
                 for dataloader in train_loader:
@@ -119,7 +116,8 @@ class GPUTrainer:
                         batch.append(accuracy)
                     train.append(torch.mean(torch.tensor(batch)))
                 self.training_accuracy.append(train)
-            return torch.cat(test_predicted), torch.cat(test_certainty)
+            # Return the vector of prediction, concatenated for each task, and the corresponding concatenated labels.
+            return torch.cat(test_predictions, dim=1), torch.cat(labels)
 
     @torch.no_grad()
     def predict(self, inputs):

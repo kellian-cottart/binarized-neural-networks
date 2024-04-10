@@ -5,7 +5,7 @@ import torch
 class BayesTrainer(GPUTrainer):
     """Extended Trainer class to cover the special case of BayesBiNN
 
-    Necessity to have a different training function to implement mu and lambda properly 
+    Necessity to have a different training function to implement mu and lambda properly
 
     Args:
         Trainer (Trainer): Trainer class to extend
@@ -24,7 +24,7 @@ class BayesTrainer(GPUTrainer):
         kwargs["test_mcmc_samples"] = self.test_mcmc_samples
         super().__init__(*args, **kwargs)
 
-    def batch_step(self, inputs, targets, dataset_size):
+    def batch_step(self, inputs, targets):
         """Perform the training of a single sample of the batch
         """
         def closure():
@@ -32,11 +32,11 @@ class BayesTrainer(GPUTrainer):
             self.optimizer.zero_grad()
             output = self.model.forward(inputs).to(self.device)
             loss = self.criterion(output.to(self.device),
-                                  targets.to(self.device))
+                                  targets.to(self.device),
+                                  reduction='sum')
             return loss
         ### LOSS ###
-        self.loss = self.optimizer.step(
-            input_size=dataset_size, closure=closure)
+        self.loss = self.optimizer.step(closure=closure)
 
     @torch.no_grad()
     def predict(self, inputs, n_samples=1):
@@ -52,14 +52,22 @@ class BayesTrainer(GPUTrainer):
         self.model.eval()
         noise = []
         # Sample from the bernoulli distribution with p = sigmoid(2*lambda)
-        for _ in range(n_samples):
-            noise.append(torch.bernoulli(
-                torch.sigmoid(2*self.optimizer.state["lambda"])))
-        if len(noise) == 0:
-            noise.append(torch.where(self.optimizer.state['mu'] <= 0,
-                                     torch.zeros_like(
-                self.optimizer.state['mu']),
-                torch.ones_like(self.optimizer.state['mu'])))
+        if n_samples > 0:
+            for _ in range(n_samples):
+                network_sample = torch.bernoulli(
+                    torch.sigmoid(2*self.optimizer.state["lambda"]))
+                noise.append(2*network_sample-1)
+        elif n_samples == 0:
+            # If we do not want to sample, we do a bernouilli
+            noise.append(2*torch.where(
+                self.optimizer.state["lambda"] <= 0,
+                torch.zeros_like(self.optimizer.state["lambda"]),
+                torch.ones_like(self.optimizer.state["lambda"])
+            )-1)
+        else:
+            # If we only take lambda as the weights
+            noise.append(self.optimizer.state["lambda"])
+
         # Retrieve the parameters of the networks
         parameters = [p for p in self.optimizer.param_groups[0]
                       ['params'] if p.requires_grad]
@@ -67,13 +75,13 @@ class BayesTrainer(GPUTrainer):
         # We iterate over the parameters
         for n in noise:
             # Sample neural networks weights
-            torch.nn.utils.vector_to_parameters(2*n-1, parameters)
+            torch.nn.utils.vector_to_parameters(n, parameters)
             # Predict with this sampled network
             prediction = self.model.forward(inputs.to(self.device))
             predictions.append(prediction)
         return predictions
 
-    @torch.no_grad()
+    @ torch.no_grad()
     def test(self, inputs, labels):
         """Test the model on the given inputs and labels
 
@@ -87,25 +95,10 @@ class BayesTrainer(GPUTrainer):
         self.model.eval()
         predictions = self.predict(inputs, n_samples=self.test_mcmc_samples)
         predictions = torch.stack(predictions, dim=0)
-        predictions = torch.mean(predictions, dim=0)
         if self.model.output_function == "sigmoid":
             # apply exponential to get the probability
-            predicted = torch.where(predictions >= 0.5, torch.ones_like(
+            predicted = torch.where(torch.mean(predictions, dim=0) >= 0.5, torch.ones_like(
                 predictions), torch.zeros_like(predictions))
         else:
-            predicted = torch.argmax(predictions, dim=1)
+            predicted = torch.argmax(torch.mean(predictions, dim=0), dim=1)
         return torch.mean((predicted == labels).float()), predictions
-
-    def epoch_step(self, train_dataset, test_loader=None):
-        """Perform the training of a single epoch
-
-        Args: 
-            train_dataset (torch.Tensor): Training data
-            test_loader (torch.Tensor, optional): Testing data. Defaults to None.
-        """
-        ### SEND BATCH ###
-        dataset_size = len(train_dataset) * train_dataset.batch_size
-        self.model.train()
-        for inputs, targets in train_dataset:
-            self.batch_step(inputs.to(self.device),
-                            targets.to(self.device), dataset_size)

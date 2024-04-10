@@ -26,7 +26,8 @@ class BinarizedLinear(torch.nn.Linear):
             self.weight.data = self.weight.data.sign()
             if self.bias is not False and self.bias is not None:
                 self.bias.data = self.bias.data.sign()
-            return torch.nn.functional.linear(input, self.weight, self.bias)
+            x = torch.nn.functional.linear(input, self.weight, self.bias)
+            return x
         else:
             if self.bias is not None:
                 return torch.nn.functional.linear(input, Sign.apply(self.weight), Sign.apply(self.bias))
