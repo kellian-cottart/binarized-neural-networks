@@ -201,7 +201,7 @@ def visualize_lr(parameters, lr, path, task=None, epoch=None):
     fig, ax = plt.subplots(len(params), 1, figsize=(5, 5*len(params)))
     for i, lr in enumerate(params):
 
-        title = r'$\alpha \times s \odot g$' + \
+        title = r'Learning rate ' + \
             f"[{'x'.join([str(s) for s in lr.shape][::-1])}]"
 
         bins = 100
@@ -224,8 +224,8 @@ def visualize_lr(parameters, lr, path, task=None, epoch=None):
         ax[i].text(0.5, 0.9, f"Min: {lr.min().item():.6f}",
                    fontsize=6, ha='center', va='center', transform=ax[i].transAxes)
 
-        ax[i].set_xlabel(r'$\alpha$ [-]')
-        ax[i].set_ylabel(r'Histogram of $\alpha$ [%]')
+        ax[i].set_xlabel(r'Learning rate [-]')
+        ax[i].set_ylabel(r'Histogram of learning rate [%]')
         # font of xaxis label is 6
         ax[i].tick_params(axis='x', labelsize=6)
         ax[i].tick_params(which='both', width=1)
@@ -263,7 +263,7 @@ def visualize_grad(parameters, grad, path, task=None, epoch=None):
     fig, ax = plt.subplots(len(params), 1, figsize=(5, 5*len(params)))
     for i, grad in enumerate(params):
 
-        title = r'$\alpha \times s \odot g$' + \
+        title = 'Gradient ' + \
             f"[{'x'.join([str(s) for s in grad.shape][::-1])}]"
 
         bins = 50
@@ -285,8 +285,8 @@ def visualize_grad(parameters, grad, path, task=None, epoch=None):
         ax[i].text(0.5, 0.9, f"Min: {grad.min():.6f}",
                    fontsize=6, ha='center', va='center', transform=ax[i].transAxes)
 
-        ax[i].set_xlabel(r'$s \odot g$ [-]')
-        ax[i].set_ylabel(r'Histogram of $s \odot g$ [%]')
+        ax[i].set_xlabel(r'Gradient [-]')
+        ax[i].set_ylabel(r'Histogram of gradient [%]')
         ax[i].yaxis.set_minor_locator(AutoMinorLocator(5))
         ax[i].xaxis.set_minor_locator(AutoMinorLocator(5))
         # font of xaxis label is 6

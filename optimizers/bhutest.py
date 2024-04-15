@@ -38,7 +38,6 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                  prior_lambda: Optional[torch.Tensor] = None,
                  prior_attraction: Optional[float] = 0,
                  norm: Optional[bool] = False,
-                 clip: Optional[float] = 1
                  ):
         if not 0.0 <= lr:
             raise ValueError(f"Invalid learning rate: {lr}")
@@ -61,7 +60,6 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                         update=update,
                         prior_attraction=prior_attraction,
                         norm=norm,
-                        clip=clip,
                         point_estimate_fct=point_estimate_fct,
                         )
         super().__init__(params, defaults)
@@ -125,7 +123,6 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
             quantization = group['quantization']
             threshold = group['threshold']
             update = group['update']
-            clip = group['clip']
             norm = group['norm']
             prior_attraction = group['prior_attraction']
             point_estimate_fct = group['point_estimate_fct']
@@ -175,21 +172,19 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                     gradient_estimate.add_(s*g)
                 gradient_estimate.div_(
                     num_mcmc_samples if num_mcmc_samples > 0 else 1)
-
-            # LAMBDA UPDATE WITH ASYMMETRICAL RATES FOR REMEMBERING AND FORGETTING
             self.state["grad"] = gradient_estimate
-            if norm == True and torch.norm(gradient_estimate, p=2) >= clip:
-                self.state["grad"] = clip * self.state["grad"] / \
+            if norm == True:
+                self.state["grad"] = self.state["grad"] / \
                     torch.norm(gradient_estimate, p=2)
-
-            act = torch.tanh
+            # METAPLASTICITY UPDATE
+            softening = torch.tanh(torch.abs(lambda_))
             condition = torch.where(lambda_*self.state["grad"] > 0,
-                                    1/(1+gamma * act(lambda_)
-                                       * torch.sign(self.state["grad"])),
-                                    1/(1+beta * act(lambda_)*torch.sign(self.state["grad"])))
+                                    1/(1+gamma*softening),
+                                    1/(1-beta*softening))
             self.state["lr"] = lr * condition
             lambda_ = (1-prior_attraction)*lambda_ - \
                 self.state["lr"]*self.state["grad"]
+            # OTHER UPDATES
             if noise != 0:
                 # create a normal distribution with mean lambda and std noise
                 lambda_ += torch.distributions.normal.Normal(
