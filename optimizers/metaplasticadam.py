@@ -81,13 +81,11 @@ class MetaplasticAdam(torch.optim.Optimizer):
                     _dispatch_sqrt(bias_correction2) / bias_correction1
 
                 # Metaplastic Update
-                condition_consolidation = (
-                    torch.mul(torch.sign(p.data), exp_avg) > 0.0)
+                condition_consolidation = torch.mul(
+                    torch.sign(p.data), exp_avg) > 0.0
                 metaplasticity = 1 - \
-                    torch.tanh(group['metaplasticity'] *
-                               torch.abs(p.data))**2
+                    torch.tanh(group['metaplasticity'] * torch.abs(p.data))**2
                 lr = step_size * exp_avg / denom
-                p.data = p.data - lr * \
-                    (metaplasticity * condition_consolidation +
-                     ~condition_consolidation)
+                p.data = torch.where(
+                    condition_consolidation, p.data - lr * metaplasticity, p.data - lr)
         return loss

@@ -175,8 +175,12 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                 print(gradient_estimate)
             self.state["grad"] = gradient_estimate
             # METAPLASTICITY UPDATE
-            lambda_ = self.metaplastic_update(
-                lr, beta, gamma, prior_attraction, lambda_)
+            condition = torch.where(lambda_*self.state["grad"] > 0.0,
+                                    1/(1+gamma*torch.tanh(torch.abs(lambda_))),
+                                    1/(1-beta*torch.tanh(torch.abs(lambda_))))
+            self.state["lr"] = lr * condition
+            lambda_ = (1-prior_attraction)*lambda_ - \
+                self.state["lr"]*self.state["grad"]
             # OTHER UPDATES
             if noise != 0:
                 # create a normal distribution with mean lambda and std noise
@@ -191,10 +195,3 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                 lambda_ = torch.clamp(lambda_, -threshold, threshold)
             self.state['lambda'] = lambda_
         return torch.mean(torch.tensor(running_loss))
-
-    @torch.jit.export
-    def metaplastic_update(self, lr, beta, gamma, prior_attraction, lambda_):
-        condition = lambda_*self.state["grad"] > 0
-        self.state["lr"] = lr * (condition * 1/(1+gamma*torch.tanh(
-            torch.abs(lambda_)) + ~condition * 1/(1-beta*torch.tanh(torch.abs(lambda_)))))
-        return (1-prior_attraction)*lambda_ - self.state["lr"]*self.state["grad"]

@@ -51,9 +51,11 @@ if __name__ == "__main__":
                 # "activation_function": torch.functional.F.relu,
                 "output_function": "log_softmax",
                 ### NORMALIZATION ###
-                "normalization": "instancenorm",
+                "normalization": "batchnorm",
+                "eps": 1e-7,
+                "momentum": 0,
                 "running_stats": False,
-                "affine": False,
+                "affine": True,
                 "gnnum_groups": 1,
             },
             "training_parameters": {
@@ -80,7 +82,7 @@ if __name__ == "__main__":
             # },
             "optimizer": MetaplasticAdam,
             "optimizer_parameters": {
-                "lr": 0.025,
+                "lr": 0.005,
                 "metaplasticity": 1.3,
             },
             "task": "CILCIFAR100",
@@ -88,7 +90,7 @@ if __name__ == "__main__":
             "n_classes": 50,
             "n_subsets": 1,
             "n_repetition": 1,
-            "show_train": True,
+            "show_train": False,
         }
     ]
     for index, data in enumerate(networks_data):
@@ -124,7 +126,6 @@ if __name__ == "__main__":
             # instantiate the network
             model = data['nn_type'](**data['nn_parameters'])
             ident = f"{name} - {index}"
-
             ### INSTANTIATE THE TRAINER ###
             if data["optimizer"] in [BayesBiNN, BinaryHomosynapticUncertaintyTest]:
                 net_trainer = trainer.BayesTrainer(batch_size=batch_size,
@@ -133,6 +134,10 @@ if __name__ == "__main__":
                 net_trainer = trainer.GPUTrainer(batch_size=batch_size,
                                                  model=model, **data, device=DEVICE)
             print(net_trainer.model)
+            if data["optimizer"] in [MetaplasticAdam]:
+                batch_params = []
+                for i in range(data["n_tasks"]):
+                    batch_params.append(net_trainer.model.save_bn_states())
             for k in range(data["n_repetition"]):
                 ### TASK SELECTION ###
                 # Setting the task iterator: The idea is that we yield datasets corresponding to the framework we want to use
@@ -146,20 +151,24 @@ if __name__ == "__main__":
                     for epoch in pbar:
                         ### TRAINING ###
                         net_trainer.epoch_step(task)
+                        if data["optimizer"] in [MetaplasticAdam]:
+                            batch_params[i] = net_trainer.model.save_bn_states()
                         ### TESTING ###
                         # Depending on the task, we also need to use the framework on the test set and show training or not
                         name_loader, predictions, labels = iterable_evaluation_selector(
-                            data, train_loader, test_loader, net_trainer, permutations)
+                            data, train_loader, test_loader, net_trainer, permutations, batch_params=batch_params)
                         net_trainer.pbar_update(
                             pbar, epoch, data["training_parameters"]["n_epochs"], name_loader=name_loader)
-                        ### EXPORT VISUALIZATION OF PARAMETERS ###
+                        if data["optimizer"] in [MetaplasticAdam]:
+                            net_trainer.model.load_bn_states(batch_params[i])
+                            ### EXPORT VISUALIZATION OF PARAMETERS ###
                         if GRAPHS:
                             graphs(data, main_folder, net_trainer,
                                    i, epoch, predictions, labels)
                     ### TASK BOUNDARIES ###
                     if data["optimizer"] in [BayesBiNN]:
                         net_trainer.optimizer.update_prior_lambda()
-                        ### SAVING DATA ###
+            ### SAVING DATA ###
             os.makedirs(main_folder, exist_ok=True)
             sub_folder = os.path.join(
                 main_folder, f"params-network-{iteration}")
@@ -197,4 +206,3 @@ if __name__ == "__main__":
             title = "tasks-91-100"
             visualize_task_frame(
                 title, accuracies, folder=main_folder, t_start=91, t_end=100)
- 
