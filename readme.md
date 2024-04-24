@@ -1,30 +1,45 @@
-# Binarized Neural Network Metaplasticity
+# Binarized Bayesian Metaplasticity
 
-## Project
+## Description
 
-This repository will hold the code pertaining to Binarized Neural Network. Several papers will be implemented with several datasets available with a will to gather more information about BNN & metaplasticity within neural networks.
+This repository holds the code pertaining to "Binarized Bayesian Metaplasticity".
 
-The main purpose of this repository is to come up with a binary metaplastic algorithm relying on Bayesian learning.
+To install the environment needed to run the code, please use either pip or conda. Make sure you are running either of the commands in the main directory.
 
-## Glossary
+Using Pip:
 
-### Metaplasticity
+```bash
+pip install -r requirements
+```
 
-Term: The ability of the synapses to change their own plasticity. In other words, the ability of a synapse
-to know how important it is the the overall neural network, and to be kept or discarded depending on this
-importance. Refered in [1, 2]
+Using Conda:
 
-### BOP (Binary Optimizer)
+```bash
+conda env create -f environment.yml
+conda activate binarized
+```
 
-Optimizer: One way to train binarized neural network with momentum. Even if interesting from a computational point of view, seems limited for a metaplastic implementation.
+## Architecture
 
-### BiNN Bayes
+The repository is ordered as follows:
 
-Optimizer: One way to train binarized bayesian neural network using the Gumbel-softmax trick.  Refered in [4].
+- dataloader: folder containing all functions neccessary to download, transform and load datasets in PyTorch tensors;
+- datasets: folder containing the downloaded or transformed datasets;
+- models: folder containing the classes defining networks, with embedded folders holding layers and specific activation functions;
+- notebooks: folder containing notebooks for certain specific figures of the article;
+- optimizers: folder containing all optimizers (Adam, Synaptic Metaplasticity [1]...);
+- trainer: folder containing a framework class used to train the neural networks on the different dataset;
+- utils: folder containing the functions necessary to plot graphs into the folder `./saved_deep_models`.
 
-### MESU
+## Results reproducibility
 
-Optimizer: Based on [5, 6], this approach aims to bridge the gap between bayesian learning and synaptic plasticity.
+To yield the figures in the article, please enter the following commands:
+
+TODO
+
+## Hyperparameter Optimization
+
+All hyperparameters were found using Optuna [?] Hyperparameter search.
 
 ## References
 
