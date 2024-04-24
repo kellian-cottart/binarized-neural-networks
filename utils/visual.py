@@ -4,6 +4,62 @@ import datetime
 import torch
 from matplotlib.ticker import AutoMinorLocator
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
+from optimizers.bhutest import BinaryHomosynapticUncertaintyTest
+
+
+def graphs(data, main_folder, net_trainer, i, epoch, predictions, labels):
+    modulo = 10
+    if (epoch % modulo == modulo-1 or epoch == 0):
+        # print predicted and associated certainty
+        visualize_certainty(
+            predictions=predictions,
+            labels=labels,
+            path=os.path.join(main_folder, "certainty"),
+            task=i+1,
+            epoch=epoch+1,
+        )
+        if data["optimizer"] in [BinaryHomosynapticUncertaintyTest]:
+            visualize_grad(
+                parameters=net_trainer.optimizer.param_groups[0]['params'],
+                grad=net_trainer.optimizer.state['grad'],
+                path=os.path.join(main_folder, "grad"),
+                task=i+1,
+                epoch=epoch+1,
+            )
+            visualize_lambda(
+                parameters=net_trainer.optimizer.param_groups[0]['params'],
+                lambda_=net_trainer.optimizer.state['lambda'],
+                path=os.path.join(main_folder, "lambda"),
+                threshold=10,
+                task=i+1,
+                epoch=epoch+1,
+            )
+            visualize_lr(
+                parameters=net_trainer.optimizer.param_groups[0]['params'],
+                lr=net_trainer.optimizer.state['lr'],
+                path=os.path.join(main_folder, "lr"),
+                task=i+1,
+                epoch=epoch+1,
+            )
+        else:
+            params = [
+                p for p in net_trainer.optimizer.param_groups[0]['params']]
+            visualize_grad(
+                parameters=params,
+                grad=[
+                    p.grad for p in net_trainer.optimizer.param_groups[0]['params']],
+                path=os.path.join(main_folder, "grad"),
+                task=i+1,
+                epoch=epoch+1,
+            )
+            visualize_lambda(
+                parameters=params,
+                lambda_=params,
+                path=os.path.join(main_folder, "lambda"),
+                threshold=10,
+                task=i+1,
+                epoch=epoch+1,
+            )
 
 
 def versionning(folder, title, format=".pdf"):
@@ -18,7 +74,7 @@ def versionning(folder, title, format=".pdf"):
     return versionned + format
 
 
-def visualize_sequential(title, l_accuracies, folder, epochs=None):
+def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accuracies=None):
     """Visualize the accuracy of each task at each epoch
 
     Args:
@@ -26,43 +82,39 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None):
         l_accuracies (list): list of list of accuracies for each task at each epoch
         folder (str): folder to save the figure
         epochs (int or list): number of epochs for each task
+        training_accuracies (list): list of list of training accuracies for each task at each epoch
     """
     ### CREATE FIGURE ###
     plt.figure()
     plt.xlim(0, len(l_accuracies[0])-1)
     plt.xlabel('Epochs [-]')
-    plt.ylabel('Test Accuracies [%]')
+    plt.ylabel('Accuracies [%]')
     plt.ylim(0, 100)
 
     # Set minor ticks
     ax = plt.gca()
     ax.yaxis.set_minor_locator(AutoMinorLocator(5))
+    ax.yaxis.set_major_locator(plt.MultipleLocator(10))
     ax.tick_params(which='both', width=1)
     ax.tick_params(which='major', length=6)
-    # major ticks every 0.1
-    ax.yaxis.set_major_locator(plt.MultipleLocator(10))
-
-    ### COLOR PALETTE ###
-    # Create a gradient of len(l_accuracies[0]) colors corresponding to each task. The gradient must be easily readable
 
     ### COMPUTE MEAN AND STD ###
     # Transform the list of list of accuracies into a tensor of tensor of accuracies
     l_accuracies = torch.tensor(l_accuracies).detach().cpu()
     mean_accuracies = l_accuracies.mean(dim=0)*100
     std_accuracies = l_accuracies.std(dim=0)*100
-    colors = plt.get_cmap('viridis', len(mean_accuracies[0]))
-
-    # Compute the average accuracy of all tasks
-    average_accuracies = mean_accuracies.mean(dim=1)
 
     ### PLOT ###
+    # Create a gradient of len(l_accuracies[0]) colors corresponding to each task.
+
+    if len(mean_accuracies[0]) > 2:
+        colors = plt.get_cmap('viridis', len(mean_accuracies[0]))
+    else:
+        colors = plt.get_cmap('Spectral_r', len(mean_accuracies[0]))
     # Plot the mean accuracy
     for i in range(len(mean_accuracies[0])):
         plt.plot(range(len(mean_accuracies)),
                  mean_accuracies[:, i], color=colors(i))
-    # Plot the average accuracy with end total accuracy
-    plt.plot(range(len(average_accuracies)),
-             average_accuracies, color='black', linestyle='--', zorder=0, linewidth=0.75)
 
     # Fill between only accepts 1D arrays for error, we need to extract each std individually
     upper_bound_tasks, lower_bound_tasks = [], []
@@ -75,11 +127,12 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None):
     for i in range(len(upper_bound_tasks)):
         plt.fill_between(range(len(mean_accuracies)),
                          upper_bound_tasks[i], lower_bound_tasks[i], alpha=0.2, color=colors(i))
+
     # Vertical lines to separate tasks
-    for i in range(1, len(l_accuracies[0][0])):
-        n_epochs_task = epochs[i-1] if isinstance(epochs, list) else epochs
-        plt.axvline(x=i*n_epochs_task-1, color='grey',
-                    linestyle='--', linewidth=0.5, zorder=0)
+    # for i in range(1, len(l_accuracies[0][0])):
+    #     n_epochs_task = epochs[i-1] if isinstance(epochs, list) else epochs
+    #     plt.axvline(x=i*n_epochs_task-1, color='grey',
+    #                 linestyle='--', linewidth=0.5, zorder=0)
 
     # legend is the number of the task - Accuracy of the end of this task - accuracy at the end of all tasks
     legend = []
@@ -91,9 +144,35 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None):
         legend += [
             f"Task {i}: Epoch {index}: {mean_accuracies[index, i]:.2f}% - Epoch {end}: {mean_accuracies[-1, i]:.2f}%"]
 
-    legend += [f"Average of tasks: {average_accuracies[-1]:.2f}%"] + \
-        ["Task change"]
+    # Plot the average accuracy with end total accuracy
+    average_accuracies = mean_accuracies.mean(dim=1)
+    plt.plot(range(len(average_accuracies)),
+             average_accuracies, color='black', linestyle='--', zorder=0, linewidth=0.75)
+    # legend += ["Task change"]
+    legend += [f"Average of tasks: {average_accuracies[-1]:.2f}%"]
 
+    ### PLOT TRAINING ACCURACIES ###
+    if training_accuracies is not None:
+        training_accuracies = torch.tensor(training_accuracies).detach().cpu()
+        mean_training_accuracies = training_accuracies.mean(dim=0)*100
+        std_training_accuracies = training_accuracies.std(dim=0)*100
+
+        # Plot the mean training accuracy
+        for i in range(len(mean_training_accuracies[0])):
+            plt.plot(range(len(mean_training_accuracies)),
+                     mean_training_accuracies[:, i], linestyle='--', color=colors(i))
+
+        # Fill between only accepts 1D arrays for error, we need to extract each std individually
+        upper_bound_training_tasks, lower_bound_training_tasks = [], []
+        for task in range(len(std_training_accuracies[0])):
+            upper_bound_training_tasks.append(
+                mean_training_accuracies[:, task] + std_training_accuracies[:, task])
+            lower_bound_training_tasks.append(
+                mean_training_accuracies[:, task] - std_training_accuracies[:, task])
+        # Plot the std training accuracy
+        for i in range(len(upper_bound_training_tasks)):
+            plt.fill_between(range(len(mean_training_accuracies)),
+                             upper_bound_training_tasks[i], lower_bound_training_tasks[i], alpha=0.2, color=colors(i))
     ### LEGEND ###
     plt.legend(
         legend,
@@ -328,7 +407,7 @@ def visualize_lambda(parameters, lambda_, path, threshold=10, task=None, epoch=N
         title = r"$\lambda$" + \
             f"[{'x'.join([str(s) for s in lbda.shape][::-1])}]"
 
-        bins = 50
+        bins = 100
         hist = torch.histc(lbda, bins=bins, min=-threshold,
                            max=threshold).detach().cpu()
         # Save the histogram to the computer
@@ -363,6 +442,11 @@ def visualize_lambda(parameters, lambda_, path, threshold=10, task=None, epoch=N
         ax[i].text(0.5, 0.8, f"$\lambda$ values below -{threshold}: {(lbda < -threshold).sum() * 100 / length:.2f}%",
                    fontsize=textsize, ha='center', va='center', transform=transform)
         ax[i].text(0.5, 0.75, f"$\lambda$ values between -2 and 2: {((lbda < 2) & (lbda > -2)).sum() * 100 / length:.2f}%",
+                   fontsize=textsize, ha='center', va='center', transform=transform)
+        # print text with the mean value of lambda and the std
+        ax[i].text(0.5, 0.7, f"Mean (abs): {torch.abs(lbda).mean().item():.6f}",
+                   fontsize=textsize, ha='center', va='center', transform=transform)
+        ax[i].text(0.5, 0.65, f"Std (abs): {torch.abs(lbda).std().item():.6f}",
                    fontsize=textsize, ha='center', va='center', transform=transform)
 
     os.makedirs(path, exist_ok=True)

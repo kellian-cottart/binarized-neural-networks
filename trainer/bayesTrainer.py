@@ -24,9 +24,11 @@ class BayesTrainer(GPUTrainer):
         kwargs["test_mcmc_samples"] = self.test_mcmc_samples
         super().__init__(*args, **kwargs)
 
+    @torch.jit.export
     def batch_step(self, inputs, targets):
         """Perform the training of a single sample of the batch
         """
+        @torch.jit.export
         def closure():
             # Closure for the optimizer sending the loss to the optimizer
             self.optimizer.zero_grad()
@@ -38,7 +40,7 @@ class BayesTrainer(GPUTrainer):
         ### LOSS ###
         self.loss = self.optimizer.step(closure=closure)
 
-    @torch.no_grad()
+    @torch.jit.export
     def predict(self, inputs, n_samples=1):
         """Predict the output of the model on the given inputs
 
@@ -50,38 +52,39 @@ class BayesTrainer(GPUTrainer):
             torch.Tensor: Standard deviation of the predictions
         """
         self.model.eval()
-        noise = []
-        # Sample from the bernoulli distribution with p = sigmoid(2*lambda)
-        if n_samples > 0:
-            for _ in range(n_samples):
-                network_sample = torch.bernoulli(
-                    torch.sigmoid(2*self.optimizer.state["lambda"]))
-                noise.append(2*network_sample-1)
-        elif n_samples == 0:
-            # If we do not want to sample, we do a bernouilli
-            noise.append(2*torch.where(
-                self.optimizer.state["lambda"] <= 0,
-                torch.zeros_like(self.optimizer.state["lambda"]),
-                torch.ones_like(self.optimizer.state["lambda"])
-            )-1)
-        else:
-            # If we only take lambda as the weights
-            noise.append(self.optimizer.state["lambda"])
+        with torch.no_grad():
+            noise = []
+            # Sample from the bernoulli distribution with p = sigmoid(2*lambda)
+            if n_samples > 0:
+                for _ in range(n_samples):
+                    network_sample = torch.bernoulli(
+                        torch.sigmoid(2*self.optimizer.state["lambda"]))
+                    noise.append(2*network_sample-1)
+            elif n_samples == 0:
+                # If we do not want to sample, we do a bernouilli
+                noise.append(2*torch.where(
+                    self.optimizer.state["lambda"] <= 0,
+                    torch.zeros_like(self.optimizer.state["lambda"]),
+                    torch.ones_like(self.optimizer.state["lambda"])
+                )-1)
+            else:
+                # If we only take lambda as the weights
+                noise.append(self.optimizer.state["lambda"])
 
-        # Retrieve the parameters of the networks
-        parameters = [p for p in self.optimizer.param_groups[0]
-                      ['params'] if p.requires_grad]
-        predictions = []
-        # We iterate over the parameters
-        for n in noise:
-            # Sample neural networks weights
-            torch.nn.utils.vector_to_parameters(n, parameters)
-            # Predict with this sampled network
-            prediction = self.model.forward(inputs.to(self.device))
-            predictions.append(prediction)
+            # Retrieve the parameters of the networks
+            parameters = [p for p in self.optimizer.param_groups[0]
+                          ['params'] if p.requires_grad]
+            predictions = []
+            # We iterate over the parameters
+            for n in noise:
+                # Sample neural networks weights
+                torch.nn.utils.vector_to_parameters(n, parameters)
+                # Predict with this sampled network
+                prediction = self.model.forward(inputs.to(self.device))
+                predictions.append(prediction)
         return predictions
 
-    @ torch.no_grad()
+    @torch.jit.export
     def test(self, inputs, labels):
         """Test the model on the given inputs and labels
 
@@ -92,7 +95,6 @@ class BayesTrainer(GPUTrainer):
         Returns:
             torch.Tensor: Predictions
         """
-        self.model.eval()
         predictions = self.predict(inputs, n_samples=self.test_mcmc_samples)
         predictions = torch.stack(predictions, dim=0)
         if self.model.output_function == "sigmoid":

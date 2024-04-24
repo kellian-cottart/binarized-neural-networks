@@ -15,7 +15,7 @@ class GPUTensorDataset(torch.utils.data.Dataset):
         data (torch.tensor): Data tensor
         targets (torch.tensor): Targets tensor
         device (str, optional): Device to use. Defaults to "cuda:0".
-        transform (torchvision.transforms.Compose, optional): Data augmentation transform. Defaults to None.  
+        transform (torchvision.transforms.Compose, optional): Data augmentation transform. Defaults to None.
     """
 
     def __init__(self, data, targets, device="cuda:0"):
@@ -305,7 +305,8 @@ class GPULoading:
         test_x = test_x.reshape(-1, 3, 32, 32)
         if "resize" in kwargs and kwargs["resize"] == True:
             folder = "datasets/cifar10_resnet18"
-            if not os.path.isfile(f"{folder}/cifar10_features_train.pt"):
+            os.makedirs(folder, exist_ok=True)
+            if not os.listdir(folder):
                 self.feature_extraction(
                     folder, train_x, train_y, test_x, test_y, task="cifar10")
             train_x = torch.load(f"{folder}/cifar10_features_train.pt")
@@ -332,7 +333,8 @@ class GPULoading:
         test_x = test_x.reshape(-1, 3, 32, 32)
         if "resize" in kwargs and kwargs["resize"] == True:
             folder = "datasets/cifar100_resnet18"
-            if not os.path.isfile(f"{folder}/cifar100_features_train.pt"):
+            os.makedirs(folder, exist_ok=True)
+            if not os.listdir(folder):
                 self.feature_extraction(
                     folder, train_x, train_y, test_x, test_y, task="cifar100")
             train_x = torch.load(f"{folder}/cifar100_features_train.pt")
@@ -346,9 +348,11 @@ class GPULoading:
             train_x, test_x = self.normalization(train_x, test_x)
             return self.batching(train_x, train_y, test_x, test_y, batch_size, data_augmentation=True)
 
+    @torch.jit.export
     def feature_extraction(self, folder, train_x, train_y, test_x, test_y, task="cifar100"):
         # The idea here is to use the resnet18 as feature extractor
         # Then create a new dataset with the extracted features from CIFAR100
+        print(f"Extracting features from {task}...")
         resnet18 = models.resnet18(
             weights=models.ResNet18_Weights.DEFAULT
         )
@@ -361,6 +365,7 @@ class GPULoading:
         # Transforms to apply to augment the data
         transform_train = v2.Compose([
             v2.Resize(220, antialias=True),
+            v2.RandomCrop(200),
             v2.RandomHorizontalFlip(p=0.5),
             v2.ToImage(),
             v2.ToDtype(torch.float32, scale=True),
@@ -368,6 +373,7 @@ class GPULoading:
         ])
         transform_test = v2.Compose([
             v2.Resize(220, antialias=True),
+            v2.CenterCrop(200),
             v2.ToImage(),
             v2.ToDtype(torch.float32, scale=True),
             v2.Normalize(mean=(0.0,), std=(1.0,))
@@ -390,7 +396,7 @@ class GPULoading:
         test_dataset = GPUTensorDataset(test_x, torch.Tensor(test_y).type(
             torch.LongTensor), device=self.device)
         train_dataset = GPUDataLoader(
-            train_dataset, batch_size=1024, shuffle=True, drop_last=True, transform=transform_train, device=self.device)
+            train_dataset, batch_size=1024, shuffle=True, drop_last=False, transform=transform_train, device=self.device)
         test_dataset = GPUDataLoader(
             test_dataset, batch_size=1024, shuffle=True, device=self.device, transform=transform_test)
         # Make 10 passes to extract the features
@@ -398,9 +404,9 @@ class GPULoading:
             for data, target in train_dataset:
                 features_train.append(resnet18(data))
                 target_train.append(target)
-            for data, target in test_dataset:
-                features_test.append(resnet18(data))
-                target_test.append(target)
+        for data, target in test_dataset:
+            features_test.append(resnet18(data))
+            target_test.append(target)
 
         # Concatenate the features
         features_train = torch.cat(features_train)
@@ -408,7 +414,6 @@ class GPULoading:
         features_test = torch.cat(features_test)
         target_test = torch.cat(target_test)
         # Save the features
-        os.makedirs(folder)
         torch.save(features_train, f"{folder}/{task}_features_train.pt")
         torch.save(target_train, f"{folder}/{task}_target_train.pt")
         torch.save(features_test, f"{folder}/{task}_features_test.pt")

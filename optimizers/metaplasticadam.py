@@ -45,9 +45,7 @@ class MetaplasticAdam(torch.optim.Optimizer):
                     raise RuntimeError(
                         'Adam does not support sparse gradients, please consider SparseAdam instead')
                 amsgrad = group['amsgrad']
-
                 state = self.state[p]
-
                 # State initialization
                 if len(state) == 0:
                     state['step'] = 0
@@ -59,18 +57,14 @@ class MetaplasticAdam(torch.optim.Optimizer):
                     if amsgrad:
                         # Maintains max of all exp. moving avg. of sq. grad. values
                         state['max_exp_avg_sq'] = torch.zeros_like(p.data)
-
                 exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
-
                 if amsgrad:
                     max_exp_avg_sq = state['max_exp_avg_sq']
                 beta1, beta2 = group['betas']
-
                 state['step'] += 1
-
                 if group['weight_decay'] != 0:
                     grad.add_(group['weight_decay'], p.data)
-
+                # Adam Momentum
                 # Decay the first and second moment running average coefficient
                 exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
                 exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
@@ -81,23 +75,19 @@ class MetaplasticAdam(torch.optim.Optimizer):
                     denom = max_exp_avg_sq.sqrt().add_(group['eps'])
                 else:
                     denom = exp_avg_sq.sqrt().add_(group['eps'])
-
                 bias_correction1 = 1 - beta1 ** state['step']
                 bias_correction2 = 1 - beta2 ** state['step']
                 step_size = group['lr'] * \
                     _dispatch_sqrt(bias_correction2) / bias_correction1
 
-                binary_weight_before_update = torch.sign(p.data)
-                # exp_avg has the same sign as exp_avg/denom
+                # Metaplastic Update
                 condition_consolidation = (
-                    torch.mul(binary_weight_before_update, exp_avg) > 0.0)
-                if p.dim() == 1:  # True if p is bias, false if p is weight
-                    p.data.addcdiv_(exp_avg, denom, value=-step_size,)
-                else:
-                    decayed_exp_avg = torch.mul(torch.ones_like(
-                        p.data)-torch.pow(torch.tanh(group['metaplasticity']*torch.abs(p.data)), 2), exp_avg)
-                    # asymmetric lr for metaplasticity
-                    p.data.addcdiv_(torch.where(condition_consolidation,
-                                    decayed_exp_avg, exp_avg), denom, value=-step_size)
-
+                    torch.mul(torch.sign(p.data), exp_avg) > 0.0)
+                metaplasticity = 1 - \
+                    torch.tanh(group['metaplasticity'] *
+                               torch.abs(p.data))**2
+                lr = step_size * exp_avg / denom
+                p.data = p.data - lr * \
+                    (metaplasticity * condition_consolidation +
+                     ~condition_consolidation)
         return loss

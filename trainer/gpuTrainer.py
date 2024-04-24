@@ -5,7 +5,7 @@ import tqdm
 class GPUTrainer:
     """Trainer that does not require the usage of DataLoaders
 
-    Args: 
+    Args:
         model (torch.nn.Module): Model to train
         optimizer (torch.optim): Optimizer to use
         optimizer_parameters (dict): Parameters of the optimizer
@@ -46,7 +46,7 @@ class GPUTrainer:
     def batch_step(self, inputs, targets):
         """Perform the training of a single batch
 
-        Args: 
+        Args:
             inputs (torch.Tensor): Input data
             targets (torch.Tensor): Labels
         """
@@ -64,7 +64,7 @@ class GPUTrainer:
     def epoch_step(self, train_dataset):
         """Perform the training of a single epoch
 
-        Args: 
+        Args:
             train_dataset (torch.Tensor): Training data
             test_loader (torch.Tensor, optional): Testing data. Defaults to None.
         """
@@ -73,13 +73,14 @@ class GPUTrainer:
         for inputs, targets in train_dataset:
             self.batch_step(inputs.to(self.device), targets.to(self.device))
 
-    @torch.no_grad()
-    def evaluate(self, test_loader, train_loader=None):
+    @torch.jit.export
+    def evaluate(self, test_loader, train_loader=None, batch_params=None):
         """ Evaluate the model on the test sets
 
         Args:
             test_loader (torch.utils.data.DataLoader): Testing data
             train_loader (torch.utils.data.DataLoader, optional): Training data. Defaults to None.
+            batch_params (dict, optional): Parameters of the batch. Defaults to None.
 
         Returns:
             float: mean accuracy on the test sets
@@ -91,7 +92,9 @@ class GPUTrainer:
             ### TESTING SET ###
             if test_loader is not None:
                 test = []
-                for dataloader in test_loader:
+                for i, dataloader in enumerate(test_loader):
+                    if batch_params is not None:
+                        self.model.load_bn_states(batch_params[i])
                     batch = []
                     for inputs, targets in dataloader:
                         # Compute the accuracy and predictions for export of visuals
@@ -109,7 +112,9 @@ class GPUTrainer:
             # Conditional, we only compute the training accuracy if the training data is provided
             if train_loader is not None:
                 train = []
-                for dataloader in train_loader:
+                for i, dataloader in enumerate(train_loader):
+                    if batch_params is not None:
+                        self.model.load_bn_states(batch_params[i])
                     batch = []
                     for inputs, targets in dataloader:
                         accuracy, predictions = self.test(inputs, targets)
@@ -119,7 +124,7 @@ class GPUTrainer:
             # Return the vector of prediction, concatenated for each task, and the corresponding concatenated labels.
             return torch.cat(test_predictions, dim=1), torch.cat(labels)
 
-    @torch.no_grad()
+    @ torch.jit.export
     def predict(self, inputs):
         """Predict the labels of the given inputs
 
@@ -130,11 +135,10 @@ class GPUTrainer:
             torch.Tensor: Predictions
         """
         self.model.eval()
-        predictions = self.model.forward(
-            inputs.to(self.device))
+        predictions = self.model.forward(inputs.to(self.device))
         return predictions
 
-    @torch.no_grad()
+    @ torch.jit.export
     def test(self, inputs, labels):
         """ Predict labels for a full dataset and retrieve accuracy
 
@@ -148,7 +152,6 @@ class GPUTrainer:
 
         """
         ### ACCURACY COMPUTATION ###
-        self.model.eval()
         predictions = self.predict(inputs)
         if self.model.output_function == "sigmoid":
             # apply exponential to get the probability

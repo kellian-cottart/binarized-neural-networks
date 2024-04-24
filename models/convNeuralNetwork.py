@@ -1,8 +1,9 @@
 import torch
 from typing import Union
+from .deepNeuralNetwork import DNN
 
 
-class ConvNN(torch.nn.Module):
+class ConvNN(DNN):
     """ Convolutional Neural Network Base Class
     """
 
@@ -17,8 +18,8 @@ class ConvNN(torch.nn.Module):
                  bias: bool = False,
                  running_stats: bool = False,
                  affine: bool = False,
-                 bneps: float = 1e-5,
-                 bnmomentum: float = 0.15,
+                 eps: float = 1e-5,
+                 momentum: float = 0.15,
                  activation_function: torch.nn.functional = torch.nn.functional.relu,
                  output_function: str = "softmax",
                  kernel_size: int = 5,
@@ -45,27 +46,27 @@ class ConvNN(torch.nn.Module):
             activation_function (torch.nn.functional): Activation function
             output_function (str): Output function
         """
-        super(ConvNN, self).__init__()
-        self.device = device
-        self.layers = torch.nn.ModuleList().to(self.device)
-        self.features = torch.nn.ModuleList().to(self.device)
-        self.dropout = dropout
-        self.batchnorm = batchnorm
-        self.bneps = bneps
-        self.bnmomentum = bnmomentum
-        self.running_stats = running_stats
-        self.affine = affine
-        self.activation_function = activation_function
-        self.output_function = output_function
+        super().__init__(
+            layers=layers,
+            init=init,
+            std=std,
+            device=device,
+            dropout=dropout,
+            normalization=None,
+            bias=bias,
+            running_stats=running_stats,
+            affine=affine,
+            eps=eps,
+            momentum=momentum,
+            activation_function=activation_function,
+            output_function=output_function)
         # Conv parameters
         self.kernel_size = kernel_size
         self.padding = padding
         self.stride = stride
         self.dilation = dilation
-
         ### LAYER INITIALIZATION ###
         self._features_init(features, bias)
-        self._classifier_init(layers, bias)
         ### WEIGHT INITIALIZATION ###
         self._weight_init(init, std)
 
@@ -76,7 +77,6 @@ class ConvNN(torch.nn.Module):
                 layers (list): List of layer sizes
                 bias (bool): Whether to use bias or not
         """
-        # Add conv layers to the network as well as batchnorm and maxpool
         # Add conv layers to the network as well as batchnorm and maxpool
         for i, _ in enumerate(features[:-1]):
             # Conv layers with BatchNorm and MaxPool
@@ -100,32 +100,6 @@ class ConvNN(torch.nn.Module):
                 torch.nn.MaxPool2d(kernel_size=2))
             self.features.append(torch.nn.Dropout2d(p=0.2))
         self.features.append(torch.nn.Flatten())
-
-    def _classifier_init(self, layers, bias=False):
-        """ Initialize layers of NN
-
-        Args:
-            dropout (bool): Whether to use dropout
-            bias (bool): Whether to use bias
-        """
-        # Add the fully connected layers to predict the output
-        for i, _ in enumerate(layers[:-1]):
-            # Linear layers with BatchNorm
-            if self.dropout and i != 0:
-                self.layers.append(torch.nn.Dropout(p=0.2))
-            self.layers.append(torch.nn.Linear(
-                layers[i],
-                layers[i+1],
-                bias=bias,
-                device=self.device))
-            if self.batchnorm:
-                self.layers.append(torch.nn.BatchNorm1d(
-                    layers[i+1],
-                    affine=self.affine,
-                    track_running_stats=self.running_stats,
-                    device=self.device,
-                    eps=self.bneps,
-                    momentum=self.bnmomentum))
 
     def _weight_init(self, init='normal', std=0.1):
         """ Initialize weights of each layer

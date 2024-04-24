@@ -16,6 +16,4 @@ class Sign(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         i, = ctx.saved_tensors
-        grad_i = grad_output.clone()
-        grad_i[i.abs() > 1.0] = 0
-        return grad_i
+        return grad_output * (i.abs() < 1).float()

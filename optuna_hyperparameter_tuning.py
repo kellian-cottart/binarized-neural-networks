@@ -1,4 +1,3 @@
-from utils import *
 from dataloader import *
 from optimizers import *
 import trainer
@@ -43,23 +42,24 @@ def train_iteration(trial):
         trial (optuna.Trial): Optuna trial
     """
     ### PARAMETERS ###
-    lr = trial.suggest_float("lr", 0.1, 100, log=True)
-    beta = trial.suggest_float("beta", 0, 0.5, step=0.001)
-    gamma = trial.suggest_float("gamma", 0, 0.5, step=0.001)
+    lr = trial.suggest_float("lr", 0.1, 50, log=True)
+    beta = trial.suggest_float("beta", 0, 0.9999, step=0.0001)
+    gamma = trial.suggest_float("gamma", 0, 5, step=0.001)
     seed = trial.suggest_categorical("seed", [1000])
     epochs = trial.suggest_categorical("epochs", [20])
-    num_mcmc_samples = trial.suggest_categorical("num_mcmc_samples", [10])
-    init_law = trial.suggest_categorical("init_law", ["uniform"])
-    init_param = trial.suggest_float("init_param", 0, 2, step=0.01)
+    num_mcmc_samples = trial.suggest_categorical("num_mcmc_samples", [1])
+    init_law = trial.suggest_categorical("init_law", ["gaussian"])
+    init_param = trial.suggest_float("init_param", 0.5, 2, step=0.01)
 
     batch_size = trial.suggest_categorical(
         "batch_size", [512])
     task = trial.suggest_categorical("task", [parser.parse_args().task])
-    n_tasks = trial.suggest_categorical("n_tasks", [10])
-    n_classes = trial.suggest_categorical("n_classes", [1])
+    n_tasks = trial.suggest_categorical("n_tasks", [2])
+    n_classes = trial.suggest_categorical("n_classes", [50])
     n_subsets = trial.suggest_categorical("n_subsets", [1])
-    layer = trial.suggest_categorical("layer", [2048])
-    normalization = trial.suggest_categorical("normalization", ["batchnorm"])
+    layer = trial.suggest_categorical("layer", [1024])
+    normalization = trial.suggest_categorical(
+        "normalization", ["instancenorm"])
 
     torch.manual_seed(seed)
     if torch.cuda.is_available():
@@ -80,7 +80,7 @@ def train_iteration(trial):
             "init": "uniform",
             "std": 0.1,
             "bias": False,
-            "latent_weights": True,
+            "latent_weights": False,
             "running_stats": False,
             "affine": False,
             "gnnum_groups": 1,
@@ -163,13 +163,11 @@ def train_iteration(trial):
             data["n_subsets"])
     else:
         task_iterator = train_loader
-
     ### TRAINING ###
     for i, task in enumerate(task_iterator):
         ### STARTING TRAINING ###
         for epoch in range(data["training_parameters"]["n_epochs"]):
             net_trainer.epoch_step(task)
-
             ### TEST EVALUATION ###
             # Depending on the task, we also need to use the framework on the test set and show training or not
             if "Permuted" in data["task"]:
@@ -181,7 +179,6 @@ def train_iteration(trial):
             else:
                 net_trainer.evaluate(
                     test_loader)
-
             ### MEAN LOSS ACCURACY FOR CONTINUAL LEARNING ###
             # The idea is to put every task that has not been trained yet to 0.01, such that the mean is not affected during the optimization process of Optuna
             # If we didn't do that, tasks where the random initialization gives bad results on non-trained tasks would be pruned

@@ -1,4 +1,18 @@
 import torch
+from .layers import *
+
+
+class StandardizeNorm(torch.nn.Module):
+    """ 0 mean, 1 variance normalization
+    This is exactly the same as instance normalization
+    """
+
+    def __init__(self, eps=1e-5):
+        super(StandardizeNorm, self).__init__()
+        self.eps = eps
+
+    def forward(self, x):
+        return (x - x.mean(dim=1, keepdim=True)) / (x.std(dim=1, keepdim=True) + self.eps)
 
 
 class DNN(torch.nn.Module):
@@ -24,7 +38,7 @@ class DNN(torch.nn.Module):
                  **kwargs):
         """ NN initialization
 
-        Args: 
+        Args:
             layers (list): List of layer sizes (including input and output layers)
             init (str): Initialization method for weights
             std (float): Standard deviation for initialization
@@ -104,6 +118,11 @@ class DNN(torch.nn.Module):
                 eps=self.eps,
                 affine=self.affine,
                 device=self.device))
+        elif self.normalization == "standardizenorm":
+            self.layers.append(StandardizeNorm(eps=self.eps))
+        elif self.normalization is not None:
+            raise ValueError(
+                f"Invalid normalization method: {self.normalization}. Choose between 'batchnorm', 'layernorm', 'instancenorm', 'groupnorm'")
 
     def _weight_init(self, init='normal', std=0.1):
         """ Initialize weights of each layer
@@ -113,7 +132,7 @@ class DNN(torch.nn.Module):
             std (float): Standard deviation for initialization
         """
         for layer in self.layers:
-            if isinstance(layer, torch.nn.Linear):
+            if isinstance(layer, torch.nn.Module) and hasattr(layer, 'weight') and layer.weight is not None:
                 if init == 'gauss':
                     torch.nn.init.normal_(
                         layer.weight, mean=0.0, std=std)
@@ -126,10 +145,10 @@ class DNN(torch.nn.Module):
     def forward(self, x):
         """ Forward pass of DNN
 
-        Args: 
+        Args:
             x (torch.Tensor): Input tensor
 
-        Returns: 
+        Returns:
             torch.Tensor: Output tensor
 
         """
@@ -150,3 +169,24 @@ class DNN(torch.nn.Module):
         if self.output_function == "sigmoid":
             x = torch.nn.functional.sigmoid(x)
         return x
+
+    def load_bn_states(self, state_dict):
+        """ Load batch normalization states
+
+        Args:
+            state_dict (dict): State dictionary
+
+        """
+        for i, layer in enumerate(self.layers):
+            if isinstance(layer, torch.nn.BatchNorm1d):
+                layer.load_state_dict(state_dict[f"layers.{i}"])
+
+    def save_bn_states(self):
+        """ Save batch normalization states
+
+        """
+        state_dict = {}
+        for i, layer in enumerate(self.layers):
+            if isinstance(layer, torch.nn.BatchNorm1d):
+                state_dict[f"layers.{i}"] = layer.state_dict().copy()
+        return state_dict

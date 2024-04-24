@@ -15,11 +15,9 @@ class BiNN(DNN):
         std (float): Standard deviation for initialization
         device (str): Device to use for computation (e.g. 'cuda' or 'cpu')
         dropout (bool): Whether to use dropout
-        latent_weights (bool): Whether to use latent weights or not
     """
 
     def __init__(self, *args, **kwargs):
-        self.latent_weights = kwargs['latent_weights'] if 'latent_weights' in kwargs else True
         super().__init__(*args, **kwargs)
 
     def _layer_init(self, layers, bias=False):
@@ -31,17 +29,16 @@ class BiNN(DNN):
                 layers[i],
                 layers[i+1],
                 bias=bias,
-                device=self.device,
-                latent_weights=self.latent_weights))
+                device=self.device))
             self._batch_norm_init(layers, i)
 
     def forward(self, x):
         """ Forward pass of DNN
 
-        Args: 
+        Args:
             x (torch.Tensor): Input tensor
 
-        Returns: 
+        Returns:
             torch.Tensor: Output tensor
 
         """
@@ -49,4 +46,4 @@ class BiNN(DNN):
         return super().forward(x)
 
     def __repr__(self):
-        return f"BNN({self.layers}, dropout={self.dropout}, latent_weights={self.latent_weights}, device={self.device}, normalization={self.normalization})"
+        return f"BNN({self.layers}, dropout={self.dropout}, device={self.device}, normalization={self.normalization})"

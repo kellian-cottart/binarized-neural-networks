@@ -4,4 +4,3 @@ from .bayesianNeuralNetwork import *
 from .biBayesianNeuralNetwork import *
 from .convBiNN import *
 from .convNeuralNetwork import *
-from .ResNet18 import *

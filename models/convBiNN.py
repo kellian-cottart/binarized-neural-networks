@@ -54,7 +54,7 @@ class ConvBiNN(ConvNN):
             self.features.append(torch.nn.Dropout2d(p=0.2))
         self.features.append(torch.nn.Flatten())
 
-    def _classifier_init(self, layers, bias=False):
+    def _layer_init(self, layers, bias=False):
         """ Initialize layers of NN
 
         Args:

@@ -25,6 +25,7 @@ class MetaplasticSGD(torch.optim.Optimizer):
         for group in self.param_groups:
             group.setdefault('amsgrad', False)
 
+    @torch.jit.export
     def step(self, closure=None):
         """Performs a single optimization step.
 
@@ -52,8 +53,7 @@ class MetaplasticSGD(torch.optim.Optimizer):
                 beta = group['beta']
                 lr = group['lr']
                 condition = torch.where(p.data*grad > 0,
-                                        1/(1+gamma * torch.tanh(p.data)
-                                           * torch.sign(grad)),
-                                        1/(1+beta * torch.tanh(p.data)*torch.sign(grad)))
+                                        1/(1+gamma * torch.tanh(torch.abs(p.data))),
+                                        1/(1-beta * torch.tanh(torch.abs(p.data))))
                 p.data -= lr*condition*grad
         return loss

@@ -23,21 +23,21 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
 
     def __init__(self,
                  params: params_t,
-                 lr: Union[float, torch.Tensor] = 1e-3,
-                 beta: float = 0,
-                 gamma: float = 0,
-                 noise: float = 0,
-                 temperature: float = 1,
-                 num_mcmc_samples: int = 1,
-                 point_estimate_fct: str = "tanh",
-                 init_law: str = "gaussian",
-                 init_param: float = 0.1,
+                 lr: Optional[Union[float, torch.Tensor]] = 1e-3,
+                 beta: Optional[float] = 0,
+                 gamma: Optional[float] = 0,
+                 noise: Optional[float] = 0,
+                 temperature: Optional[float] = 1,
+                 num_mcmc_samples: Optional[int] = 1,
+                 init_law: Optional[str] = "gaussian",
+                 init_param: Optional[float] = 0.1,
                  update: Optional[int] = 1,
                  quantization: Optional[int] = None,
                  threshold: Optional[int] = None,
                  prior_lambda: Optional[torch.Tensor] = None,
                  prior_attraction: Optional[float] = 0,
                  norm: Optional[bool] = False,
+                 debug: Optional[bool] = False,
                  ):
         if not 0.0 <= lr:
             raise ValueError(f"Invalid learning rate: {lr}")
@@ -60,7 +60,7 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                         update=update,
                         prior_attraction=prior_attraction,
                         norm=norm,
-                        point_estimate_fct=point_estimate_fct,
+                        debug=debug
                         )
         super().__init__(params, defaults)
 
@@ -86,6 +86,7 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
         self.state['prior_lambda'] = prior_lambda if prior_lambda is not None else torch.zeros_like(
             param)
 
+    @torch.jit.export
     def step(self, closure=None):
         """ Perform a single optimization step
         Taken from _single_tensor_adam in PyTorch
@@ -125,7 +126,7 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
             update = group['update']
             norm = group['norm']
             prior_attraction = group['prior_attraction']
-            point_estimate_fct = group['point_estimate_fct']
+            debug = group['debug']
             # State of the optimizer
             # lambda represents the intertia with each neuron
             lambda_ = self.state['lambda']
@@ -136,12 +137,7 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
 
             if num_mcmc_samples == 0:
                 ### POINT ESTIMATE ###
-                if point_estimate_fct == "tanh":
-                    relaxed_w = torch.tanh(lambda_)
-                elif point_estimate_fct == "sign":
-                    relaxed_w = torch.sign(lambda_)
-                elif point_estimate_fct == "identity":
-                    relaxed_w = lambda_
+                relaxed_w = torch.tanh(lambda_)
                 vector_to_parameters(relaxed_w, parameters)
                 loss = closure()
                 running_loss.append(loss.item())
@@ -172,18 +168,15 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                     gradient_estimate.add_(s*g)
                 gradient_estimate.div_(
                     num_mcmc_samples if num_mcmc_samples > 0 else 1)
+            if norm:
+                gradient_estimate /= torch.norm(gradient_estimate, p=2)
+            if debug:
+                print("Gradient estimate")
+                print(gradient_estimate)
             self.state["grad"] = gradient_estimate
-            if norm == True:
-                self.state["grad"] = self.state["grad"] / \
-                    torch.norm(gradient_estimate, p=2)
             # METAPLASTICITY UPDATE
-            softening = torch.tanh(torch.abs(lambda_))
-            condition = torch.where(lambda_*self.state["grad"] > 0,
-                                    1/(1+gamma*softening),
-                                    1/(1-beta*softening))
-            self.state["lr"] = lr * condition
-            lambda_ = (1-prior_attraction)*lambda_ - \
-                self.state["lr"]*self.state["grad"]
+            lambda_ = self.metaplastic_update(
+                lr, beta, gamma, prior_attraction, lambda_)
             # OTHER UPDATES
             if noise != 0:
                 # create a normal distribution with mean lambda and std noise
@@ -198,3 +191,10 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                 lambda_ = torch.clamp(lambda_, -threshold, threshold)
             self.state['lambda'] = lambda_
         return torch.mean(torch.tensor(running_loss))
+
+    @torch.jit.export
+    def metaplastic_update(self, lr, beta, gamma, prior_attraction, lambda_):
+        condition = lambda_*self.state["grad"] > 0
+        self.state["lr"] = lr * (condition * 1/(1+gamma*torch.tanh(
+            torch.abs(lambda_)) + ~condition * 1/(1-beta*torch.tanh(torch.abs(lambda_)))))
+        return (1-prior_attraction)*lambda_ - self.state["lr"]*self.state["grad"]
