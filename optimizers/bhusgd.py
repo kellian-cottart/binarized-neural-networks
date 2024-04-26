@@ -1,13 +1,14 @@
 import torch
 
 
-class MetaplasticSGD(torch.optim.Optimizer):
+class bhusgd(torch.optim.Optimizer):
 
     def __init__(self,
                  params,
                  lr=1e-3,
                  eps=1e-8,
-                 metaplasticity=0):
+                 beta: float = 0,
+                 gamma: float = 0):
         if not 0.0 <= lr:
             raise ValueError("Invalid learning rate: {}".format(lr))
         if not 0.0 <= eps:
@@ -15,11 +16,12 @@ class MetaplasticSGD(torch.optim.Optimizer):
 
         defaults = dict(lr=lr,
                         eps=eps,
-                        metaplasticity=metaplasticity)
-        super(MetaplasticSGD, self).__init__(params, defaults)
+                        beta=beta,
+                        gamma=gamma)
+        super(bhusgd, self).__init__(params, defaults)
 
     def __setstate__(self, state):
-        super(MetaplasticSGD, self).__setstate__(state)
+        super(bhusgd, self).__setstate__(state)
         for group in self.param_groups:
             group.setdefault('amsgrad', False)
 
@@ -41,18 +43,16 @@ class MetaplasticSGD(torch.optim.Optimizer):
                     continue
                 grad = p.grad.data
                 state = self.state[p]
-
                 # State initialization
                 if len(state) == 0:
                     state['step'] = 0
 
                 state['step'] += 1
-                metaplasticity = group['metaplasticity']
+                gamma = group['gamma']
+                beta = group['beta']
                 lr = group['lr']
                 condition = torch.where(p.data*grad > 0,
-                                        1 -
-                                        torch.tanh(metaplasticity *
-                                                   torch.abs(p.data)),
-                                        1)
+                                        1/(1+gamma * torch.tanh(torch.abs(p.data))),
+                                        1/(1-beta * torch.tanh(torch.abs(p.data))))
                 p.data -= lr*condition*grad
         return loss

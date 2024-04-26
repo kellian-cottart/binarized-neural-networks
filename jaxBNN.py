@@ -1,3 +1,4 @@
+
 import jax.numpy as jnp
 import jax
 from flax import linen as nn
@@ -6,13 +7,16 @@ from dataloader import *
 
 class SignActivation(nn.Module):
     """ Sign Activation Function
+
+    Forward should be sign function
+    Backward should be hardtanh function
     """
 
     def __call__(self, x):
         return jnp.sign(x)
 
     def grad(self, x):
-        return (jnp.abs(x) < 1).astype(jnp.float32)
+        return jnp.clip(x, -1, 1)
 
 
 class BinarizedDense(nn.Module):

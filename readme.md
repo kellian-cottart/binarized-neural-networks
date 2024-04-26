@@ -21,6 +21,8 @@ conda activate binarized
 
 ## Architecture
 
+The main file to start simulations is `./deepMain.py`.
+
 The repository is ordered as follows:
 
 - dataloader: folder containing all functions neccessary to download, transform and load datasets in PyTorch tensors;

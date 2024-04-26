@@ -7,17 +7,16 @@ from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from optimizers.bhutest import BinaryHomosynapticUncertaintyTest
 
 
-def graphs(data, main_folder, net_trainer, i, epoch, predictions, labels):
-    modulo = 10
+def graphs(data, main_folder, net_trainer, i, epoch, predictions, labels, modulo=10):
     if (epoch % modulo == modulo-1 or epoch == 0):
         # print predicted and associated certainty
-        visualize_certainty(
-            predictions=predictions,
-            labels=labels,
-            path=os.path.join(main_folder, "certainty"),
-            task=i+1,
-            epoch=epoch+1,
-        )
+        # visualize_certainty(
+        #     predictions=predictions,
+        #     labels=labels,
+        #     path=os.path.join(main_folder, "certainty"),
+        #     task=i+1,
+        #     epoch=epoch+1,
+        # )
         if data["optimizer"] in [BinaryHomosynapticUncertaintyTest]:
             visualize_grad(
                 parameters=net_trainer.optimizer.param_groups[0]['params'],
@@ -178,6 +177,7 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accu
         legend,
         loc="lower right",
         prop={'size': 6},
+        frameon=False
     )
     ### SAVE ###
     plt.savefig(versionning(folder, title, ".pdf"), bbox_inches='tight')
@@ -222,7 +222,7 @@ def visualize_task_frame(title, l_accuracies, folder, t_start, t_end):
     # Add MNIST baseline
     # plt.axhline(y=98.2, color='blue', linestyle='--',
     #             linewidth=1, label="MNIST baseline")
-    plt.legend(loc="lower right")
+    plt.legend(loc="lower right", frameon=False)
 
     plt.xlim(t_start, t_end)
     plt.xlabel('Task [-]')
@@ -241,25 +241,6 @@ def visualize_task_frame(title, l_accuracies, folder, t_start, t_end):
     ### SAVE ###
     plt.savefig(versionning(folder, title, ".pdf"), bbox_inches='tight')
     plt.savefig(versionning(folder, title, ".svg"), bbox_inches='tight')
-
-
-def visualize_weights(title, weights, folder):
-    """Visualize the weights of the model to assess the consolidation of the knowledge
-    """
-    ### CREATE FIGURE ###
-    plt.figure()
-    ### CONVERT STATE DICT TO TENSOR ###
-    tensor = torch.cat([torch.flatten(w)
-                       for w in weights.values()]).detach().cpu()
-    ### PLOT ###
-    hist = torch.histc(tensor, bins=1000, min=-1, max=1).detach().cpu()
-    plt.plot(torch.linspace(-1, 1, 1000).detach().cpu(),
-             hist * 100 / len(tensor))
-
-    plt.xlabel('Value of weights')
-    plt.ylabel('% of weights')
-    plt.savefig(versionning(folder, title, ".pdf"), bbox_inches='tight')
-    plt.close()
 
 
 def visualize_lr(parameters, lr, path, task=None, epoch=None):
@@ -425,28 +406,27 @@ def visualize_lambda(parameters, lambda_, path, threshold=10, task=None, epoch=N
         ax[i].set_xlabel('$\lambda$ [-]')
         ax[i].set_ylabel('Histogram of $\lambda$ [%]')
         ax[i].xaxis.set_minor_locator(AutoMinorLocator(5))
-        ax[i].yaxis.set_minor_locator(AutoMinorLocator(5))
         ax[i].tick_params(which='both', width=1)
         ax[i].tick_params(which='major', length=6)
-        ax[i].set_ylim(0, 100)
         ax[i].set_title(title, fontsize=8)
+        ax[i].set_ylim(0, 50)
 
         textsize = 6
         transform = ax[i].transAxes
-        ax[i].text(0.5, 0.95, f"$\lambda$ values above {threshold}: {(lbda > threshold).sum() * 100 / length:.2f}%",
-                   fontsize=textsize, ha='center', va='center', transform=transform)
-        ax[i].text(0.5, 0.9, f"$\lambda$ values above 2: {((lbda > 2) & (lbda < threshold)).sum() * 100 / length:.2f}%",
-                   fontsize=textsize, ha='center', va='center', transform=transform)
-        ax[i].text(0.5, 0.85, f"$\lambda$  values below -2: {((lbda < -2) & (lbda > -threshold)).sum() * 100 / length:.2f}%",
-                   fontsize=textsize, ha='center', va='center', transform=transform)
-        ax[i].text(0.5, 0.8, f"$\lambda$ values below -{threshold}: {(lbda < -threshold).sum() * 100 / length:.2f}%",
-                   fontsize=textsize, ha='center', va='center', transform=transform)
-        ax[i].text(0.5, 0.75, f"$\lambda$ values between -2 and 2: {((lbda < 2) & (lbda > -2)).sum() * 100 / length:.2f}%",
-                   fontsize=textsize, ha='center', va='center', transform=transform)
+        # ax[i].text(0.5, 0.95, f"$\lambda$ values above {threshold}: {(lbda > threshold).sum() * 100 / length:.2f}%",
+        #            fontsize=textsize, ha='center', va='center', transform=transform)
+        # ax[i].text(0.5, 0.9, f"$\lambda$ values above 2: {((lbda > 2) & (lbda < threshold)).sum() * 100 / length:.2f}%",
+        #            fontsize=textsize, ha='center', va='center', transform=transform)
+        # ax[i].text(0.5, 0.85, f"$\lambda$  values below -2: {((lbda < -2) & (lbda > -threshold)).sum() * 100 / length:.2f}%",
+        #            fontsize=textsize, ha='center', va='center', transform=transform)
+        # ax[i].text(0.5, 0.8, f"$\lambda$ values below -{threshold}: {(lbda < -threshold).sum() * 100 / length:.2f}%",
+        #            fontsize=textsize, ha='center', va='center', transform=transform)
+        # ax[i].text(0.5, 0.75, f"$\lambda$ values between -2 and 2: {((lbda < 2) & (lbda > -2)).sum() * 100 / length:.2f}%",
+        #            fontsize=textsize, ha='center', va='center', transform=transform)
         # print text with the mean value of lambda and the std
-        ax[i].text(0.5, 0.7, f"Mean (abs): {torch.abs(lbda).mean().item():.6f}",
+        ax[i].text(0.5, 0.95, f"Mean (abs): {torch.abs(lbda).mean().item():.6f}",
                    fontsize=textsize, ha='center', va='center', transform=transform)
-        ax[i].text(0.5, 0.65, f"Std (abs): {torch.abs(lbda).std().item():.6f}",
+        ax[i].text(0.5, 0.9, f"Std (abs): {torch.abs(lbda).std().item():.6f}",
                    fontsize=textsize, ha='center', va='center', transform=transform)
 
     os.makedirs(path, exist_ok=True)

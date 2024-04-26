@@ -73,7 +73,6 @@ class GPUTrainer:
         for inputs, targets in train_dataset:
             self.batch_step(inputs.to(self.device), targets.to(self.device))
 
-    @torch.jit.export
     def evaluate(self, test_loader, train_loader=None, batch_params=None):
         """ Evaluate the model on the test sets
 
@@ -124,7 +123,6 @@ class GPUTrainer:
             # Return the vector of prediction, concatenated for each task, and the corresponding concatenated labels.
             return torch.cat(test_predictions, dim=1), torch.cat(labels)
 
-    @ torch.jit.export
     def predict(self, inputs):
         """Predict the labels of the given inputs
 
@@ -138,7 +136,6 @@ class GPUTrainer:
         predictions = self.model.forward(inputs.to(self.device))
         return predictions
 
-    @ torch.jit.export
     def test(self, inputs, labels):
         """ Predict labels for a full dataset and retrieve accuracy
 

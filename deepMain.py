@@ -15,7 +15,7 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
 PADDING = 2
 GRAPHS = True
-
+MODULO = 1
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
 DATASETS_PATH = "datasets"
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "nn_type": models.BiNN,
+            "nn_type": models.DNN,
             "nn_parameters": {
                 # NETWORK ###w
                 "layers": [2048, 2048],
@@ -50,44 +50,38 @@ if __name__ == "__main__":
                 "activation_function": Sign.apply,
                 # "activation_function": torch.functional.F.relu,
                 "output_function": "log_softmax",
-                ### NORMALIZATION ###
                 "normalization": "batchnorm",
-                "eps": 1e-7,
+                "eps": 1e-5,
                 "momentum": 0,
                 "running_stats": False,
-                "affine": True,
+                "affine": False,
                 "gnnum_groups": 1,
             },
             "training_parameters": {
                 'n_epochs': 20,
                 'batch_size': 128,
                 "test_mcmc_samples": 10,
-                'resize': True,
+                # 'resize': True,
+                # 'data_aug_it': 10,
             },
             "criterion": torch.functional.F.nll_loss,
-            # "optimizer": BinaryHomosynapticUncertaintyTest,
-            # "optimizer_parameters": {
-            #     "lr": 7,
-            #     "beta": 0.7,
-            #     "gamma": 0.2,
-            #     "num_mcmc_samples": 1,
-            #     "init_law": "gaussian",
-            #     "init_param": 1,
-            # },
-            # "optimizer": MetaplasticSGD,
-            # "optimizer_parameters": {
-            #     "lr": 400,
-            #     "beta": 0,
-            #     "gamma": 0,
-            # },
-            "optimizer": MetaplasticAdam,
+            "optimizer": BinaryHomosynapticUncertaintyTest,
             "optimizer_parameters": {
-                "lr": 0.005,
-                "metaplasticity": 1.3,
+                "lr": 1,
+                "beta": 0.125,
+                "gamma": 0,
+                "num_mcmc_samples": 1,
+                "init_law": "gaussian",
+                "init_param": 0,
             },
-            "task": "CILCIFAR100",
-            "n_tasks": 2,
-            "n_classes": 50,
+            # "optimizer": MetaplasticAdam,
+            # "optimizer_parameters": {
+            #     "lr": 0.005,
+            #     "metaplasticity": 1.35
+            # },
+            "task": "PermutedMNIST",
+            "n_tasks": 10,
+            "n_classes": 1,
             "n_subsets": 1,
             "n_repetition": 1,
             "show_train": False,
@@ -104,18 +98,19 @@ if __name__ == "__main__":
         accuracies, training_accuracies = [], []
         batch_size = data['training_parameters']['batch_size']
         resize = data['training_parameters']['resize'] if "resize" in data["training_parameters"] else False
+        data_aug_it = data['training_parameters']['data_aug_it'] if "data_aug_it" in data["training_parameters"] else None
         ### RELOADING DATASET ###
         train_loader, test_loader, shape, target_size = task_selection(loader=loader,
                                                                        task=data["task"],
                                                                        n_tasks=data["n_tasks"],
                                                                        batch_size=batch_size,
-                                                                       resize=resize)
+                                                                       resize=resize,
+                                                                       iterations=data_aug_it)
         # add input size to the layer of the network parameters
         data['nn_parameters']['layers'].insert(
             0, torch.prod(torch.tensor(shape)))
         # add output size to the layer of the network parameters
         data['nn_parameters']['layers'].append(target_size)
-
         ### FOR EACH NETWORK IN THE DICT ###
         for iteration in range(N_NETWORKS):
             ### INIT NETWORK ###
@@ -134,7 +129,7 @@ if __name__ == "__main__":
                 net_trainer = trainer.GPUTrainer(batch_size=batch_size,
                                                  model=model, **data, device=DEVICE)
             print(net_trainer.model)
-            if data["optimizer"] in [MetaplasticAdam]:
+            if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
                 batch_params = []
                 for i in range(data["n_tasks"]):
                     batch_params.append(net_trainer.model.save_bn_states())
@@ -151,20 +146,20 @@ if __name__ == "__main__":
                     for epoch in pbar:
                         ### TRAINING ###
                         net_trainer.epoch_step(task)
-                        if data["optimizer"] in [MetaplasticAdam]:
+                        if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
                             batch_params[i] = net_trainer.model.save_bn_states()
                         ### TESTING ###
                         # Depending on the task, we also need to use the framework on the test set and show training or not
                         name_loader, predictions, labels = iterable_evaluation_selector(
-                            data, train_loader, test_loader, net_trainer, permutations, batch_params=batch_params)
+                            data, train_loader, test_loader, net_trainer, permutations, batch_params=batch_params if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine else None)
                         net_trainer.pbar_update(
                             pbar, epoch, data["training_parameters"]["n_epochs"], name_loader=name_loader)
-                        if data["optimizer"] in [MetaplasticAdam]:
+                        if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
                             net_trainer.model.load_bn_states(batch_params[i])
                             ### EXPORT VISUALIZATION OF PARAMETERS ###
                         if GRAPHS:
                             graphs(data, main_folder, net_trainer,
-                                   i, epoch, predictions, labels)
+                                   i, epoch, predictions, labels, MODULO)
                     ### TASK BOUNDARIES ###
                     if data["optimizer"] in [BayesBiNN]:
                         net_trainer.optimizer.update_prior_lambda()

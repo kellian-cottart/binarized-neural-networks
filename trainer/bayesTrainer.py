@@ -24,11 +24,9 @@ class BayesTrainer(GPUTrainer):
         kwargs["test_mcmc_samples"] = self.test_mcmc_samples
         super().__init__(*args, **kwargs)
 
-    @torch.jit.export
     def batch_step(self, inputs, targets):
         """Perform the training of a single sample of the batch
         """
-        @torch.jit.export
         def closure():
             # Closure for the optimizer sending the loss to the optimizer
             self.optimizer.zero_grad()
@@ -40,7 +38,6 @@ class BayesTrainer(GPUTrainer):
         ### LOSS ###
         self.loss = self.optimizer.step(closure=closure)
 
-    @torch.jit.export
     def predict(self, inputs, n_samples=1):
         """Predict the output of the model on the given inputs
 
@@ -84,7 +81,6 @@ class BayesTrainer(GPUTrainer):
                 predictions.append(prediction)
         return predictions
 
-    @torch.jit.export
     def test(self, inputs, labels):
         """Test the model on the given inputs and labels
 

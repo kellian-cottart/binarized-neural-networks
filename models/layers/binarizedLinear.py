@@ -1,5 +1,5 @@
 import torch
-from .activation.sign import Sign
+from .activation.sign import Sign, SignWeights
 
 
 class BinarizedLinear(torch.nn.Linear):
@@ -13,12 +13,11 @@ class BinarizedLinear(torch.nn.Linear):
                  in_features: int,
                  out_features: int,
                  bias=False,
-                 device='cuda'
+                 device='cuda:0'
                  ):
         super(BinarizedLinear, self).__init__(
             in_features, out_features, bias=bias, device=device)
 
-    @torch.jit.export
     def forward(self, input):
         """Forward propagation of the binarized linear layer"""
-        return torch.nn.functional.linear(input, Sign.apply(self.weight))
+        return torch.nn.functional.linear(input, Sign.apply(self.weight), None if not self.bias else Sign.apply(self.bias))

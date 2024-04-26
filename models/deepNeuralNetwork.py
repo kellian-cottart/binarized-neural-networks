@@ -1,3 +1,4 @@
+import copy
 import torch
 from .layers import *
 
@@ -188,5 +189,5 @@ class DNN(torch.nn.Module):
         state_dict = {}
         for i, layer in enumerate(self.layers):
             if isinstance(layer, torch.nn.BatchNorm1d):
-                state_dict[f"layers.{i}"] = layer.state_dict().copy()
+                state_dict[f"layers.{i}"] = copy.deepcopy(layer.state_dict())
         return state_dict

@@ -319,7 +319,7 @@ class GPULoading:
         train_x, test_x = self.normalization(train_x, test_x)
         return self.batching(train_x, train_y, test_x, test_y, batch_size, data_augmentation=True)
 
-    def cifar100(self, batch_size, path_databatch, path_testbatch, *args, **kwargs):
+    def cifar100(self, batch_size, path_databatch, path_testbatch, iterations=10, *args, **kwargs):
         """ Load a local dataset on GPU corresponding to CIFAR100 """
         with open(path_databatch[0], "rb") as f:
             data = pickle.load(f, encoding="bytes")
@@ -334,13 +334,17 @@ class GPULoading:
         if "resize" in kwargs and kwargs["resize"] == True:
             folder = "datasets/cifar100_resnet18"
             os.makedirs(folder, exist_ok=True)
-            if not os.listdir(folder):
+            if not os.listdir(folder) or not os.path.exists(f"{folder}/cifar100_{iterations}_features_train.pt"):
                 self.feature_extraction(
-                    folder, train_x, train_y, test_x, test_y, task="cifar100")
-            train_x = torch.load(f"{folder}/cifar100_features_train.pt")
-            train_y = torch.load(f"{folder}/cifar100_target_train.pt")
-            test_x = torch.load(f"{folder}/cifar100_features_test.pt")
-            test_y = torch.load(f"{folder}/cifar100_target_test.pt")
+                    folder, train_x, train_y, test_x, test_y, task="cifar100", iterations=iterations)
+            train_x = torch.load(
+                f"{folder}/cifar100_{iterations}_features_train.pt")
+            train_y = torch.load(
+                f"{folder}/cifar100_{iterations}_target_train.pt")
+            test_x = torch.load(
+                f"{folder}/cifar100_{iterations}_features_test.pt")
+            test_y = torch.load(
+                f"{folder}/cifar100_{iterations}_target_test.pt")
             # Normalize and pad the data
             return self.batching(train_x, train_y, test_x, test_y, batch_size)
         else:
@@ -349,7 +353,7 @@ class GPULoading:
             return self.batching(train_x, train_y, test_x, test_y, batch_size, data_augmentation=True)
 
     @torch.jit.export
-    def feature_extraction(self, folder, train_x, train_y, test_x, test_y, task="cifar100"):
+    def feature_extraction(self, folder, train_x, train_y, test_x, test_y, task="cifar100", iterations=10):
         # The idea here is to use the resnet18 as feature extractor
         # Then create a new dataset with the extracted features from CIFAR100
         print(f"Extracting features from {task}...")
@@ -365,15 +369,13 @@ class GPULoading:
         # Transforms to apply to augment the data
         transform_train = v2.Compose([
             v2.Resize(220, antialias=True),
-            v2.RandomCrop(200),
-            v2.RandomHorizontalFlip(p=0.5),
+            v2.RandomHorizontalFlip(),
             v2.ToImage(),
             v2.ToDtype(torch.float32, scale=True),
             v2.Normalize(mean=(0.0,), std=(1.0,))
         ])
         transform_test = v2.Compose([
             v2.Resize(220, antialias=True),
-            v2.CenterCrop(200),
             v2.ToImage(),
             v2.ToDtype(torch.float32, scale=True),
             v2.Normalize(mean=(0.0,), std=(1.0,))
@@ -399,8 +401,8 @@ class GPULoading:
             train_dataset, batch_size=1024, shuffle=True, drop_last=False, transform=transform_train, device=self.device)
         test_dataset = GPUDataLoader(
             test_dataset, batch_size=1024, shuffle=True, device=self.device, transform=transform_test)
-        # Make 10 passes to extract the features
-        for _ in range(10):
+        # Make n passes to extract the features
+        for _ in range(iterations):
             for data, target in train_dataset:
                 features_train.append(resnet18(data))
                 target_train.append(target)
@@ -414,7 +416,11 @@ class GPULoading:
         features_test = torch.cat(features_test)
         target_test = torch.cat(target_test)
         # Save the features
-        torch.save(features_train, f"{folder}/{task}_features_train.pt")
-        torch.save(target_train, f"{folder}/{task}_target_train.pt")
-        torch.save(features_test, f"{folder}/{task}_features_test.pt")
-        torch.save(target_test, f"{folder}/{task}_target_test.pt")
+        torch.save(features_train,
+                   f"{folder}/{task}_{iterations}_features_train.pt")
+        torch.save(
+            target_train, f"{folder}/{task}_{iterations}_target_train.pt")
+        torch.save(features_test,
+                   f"{folder}/{task}_{iterations}_features_test.pt")
+        torch.save(
+            target_test, f"{folder}/{task}_{iterations}_target_test.pt")

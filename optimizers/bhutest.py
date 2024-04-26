@@ -23,21 +23,21 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
 
     def __init__(self,
                  params: params_t,
-                 lr: Optional[Union[float, torch.Tensor]] = 1e-3,
-                 beta: Optional[float] = 0,
-                 gamma: Optional[float] = 0,
-                 noise: Optional[float] = 0,
-                 temperature: Optional[float] = 1,
-                 num_mcmc_samples: Optional[int] = 1,
-                 init_law: Optional[str] = "gaussian",
-                 init_param: Optional[float] = 0.1,
+                 lr: Union[float, torch.Tensor] = 1e-3,
+                 beta: float = 0,
+                 gamma: float = 0,
+                 noise: float = 0,
+                 temperature: float = 1,
+                 num_mcmc_samples: int = 1,
+                 point_estimate_fct: str = "tanh",
+                 init_law: str = "gaussian",
+                 init_param: float = 0.1,
                  update: Optional[int] = 1,
                  quantization: Optional[int] = None,
                  threshold: Optional[int] = None,
                  prior_lambda: Optional[torch.Tensor] = None,
                  prior_attraction: Optional[float] = 0,
                  norm: Optional[bool] = False,
-                 debug: Optional[bool] = False,
                  ):
         if not 0.0 <= lr:
             raise ValueError(f"Invalid learning rate: {lr}")
@@ -60,7 +60,7 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                         update=update,
                         prior_attraction=prior_attraction,
                         norm=norm,
-                        debug=debug
+                        point_estimate_fct=point_estimate_fct,
                         )
         super().__init__(params, defaults)
 
@@ -79,14 +79,11 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
         else:
             raise ValueError(
                 f"Invalid initialization law: {init_law}. Choose between 'gaussian' and 'uniform'")
-
-        self.state['lrgrad'] = torch.zeros_like(self.state['lambda'])
         # Set all other parameters
         self.state['step'] = 0
         self.state['prior_lambda'] = prior_lambda if prior_lambda is not None else torch.zeros_like(
             param)
 
-    @torch.jit.export
     def step(self, closure=None):
         """ Perform a single optimization step
         Taken from _single_tensor_adam in PyTorch
@@ -123,21 +120,22 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
             noise = group['noise']
             quantization = group['quantization']
             threshold = group['threshold']
-            update = group['update']
             norm = group['norm']
             prior_attraction = group['prior_attraction']
-            debug = group['debug']
+            point_estimate_fct = group['point_estimate_fct']
             # State of the optimizer
             # lambda represents the intertia with each neuron
             lambda_ = self.state['lambda']
             prior = self.state['prior_lambda']
-
-            def meta(x, n):
-                return 1/torch.cosh(x)**n
-
+            def derivative(x):
+                """ Derivative of the tanh function"""
+                return 1 - torch.tanh(x)**2
             if num_mcmc_samples == 0:
                 ### POINT ESTIMATE ###
-                relaxed_w = torch.tanh(lambda_)
+                if point_estimate_fct == "tanh":
+                    relaxed_w = torch.tanh(lambda_)
+                elif point_estimate_fct == "sign":
+                    relaxed_w = torch.sign(lambda_)
                 vector_to_parameters(relaxed_w, parameters)
                 loss = closure()
                 running_loss.append(loss.item())
@@ -160,24 +158,22 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                     # Compute the loss
                     loss = closure()
                     running_loss.append(loss.item())
-                    # Compute the gradient
+                    # Compute the gradient at the relaxed weights
                     g = parameters_to_vector(
                         torch.autograd.grad(loss, parameters)).detach()
-                    s = meta(z, 2) / \
-                        temperature*(meta(lambda_, 2))
+                    # Compute the scaling factor
+                    s = (1 - relaxed_w**2) / (temperature * derivative(z) + eps)
                     gradient_estimate.add_(s*g)
-                gradient_estimate.div_(
-                    num_mcmc_samples if num_mcmc_samples > 0 else 1)
-            if norm:
-                gradient_estimate /= torch.norm(gradient_estimate, p=2)
-            if debug:
-                print("Gradient estimate")
-                print(gradient_estimate)
+                gradient_estimate.div_(num_mcmc_samples)
             self.state["grad"] = gradient_estimate
+            if norm == True:
+                self.state["grad"] = self.state["grad"] / \
+                    torch.norm(gradient_estimate, p=2)
             # METAPLASTICITY UPDATE
+            softening = torch.tanh(torch.abs(lambda_))
             condition = torch.where(lambda_*self.state["grad"] > 0.0,
-                                    1/(1+gamma*torch.tanh(torch.abs(lambda_))),
-                                    1/(1-beta*torch.tanh(torch.abs(lambda_))))
+                                    1/(1+gamma*softening),
+                                    1/(1-beta*softening))
             self.state["lr"] = lr * condition
             lambda_ = (1-prior_attraction)*lambda_ - \
                 self.state["lr"]*self.state["grad"]
