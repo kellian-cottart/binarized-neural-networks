@@ -20,4 +20,4 @@ class BinarizedLinear(torch.nn.Linear):
 
     def forward(self, input):
         """Forward propagation of the binarized linear layer"""
-        return torch.nn.functional.linear(input, Sign.apply(self.weight), None if not self.bias else Sign.apply(self.bias))
+        return torch.nn.functional.linear(input, SignWeights.apply(self.weight), None if not self.bias else SignWeights.apply(self.bias))

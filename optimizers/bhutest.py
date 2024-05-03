@@ -38,6 +38,7 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                  prior_lambda: Optional[torch.Tensor] = None,
                  prior_attraction: Optional[float] = 0,
                  norm: Optional[bool] = False,
+                 regularizer: Optional[float] = 1,
                  ):
         if not 0.0 <= lr:
             raise ValueError(f"Invalid learning rate: {lr}")
@@ -61,6 +62,7 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                         prior_attraction=prior_attraction,
                         norm=norm,
                         point_estimate_fct=point_estimate_fct,
+                        regularizer=regularizer,
                         )
         super().__init__(params, defaults)
 
@@ -123,13 +125,16 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
             norm = group['norm']
             prior_attraction = group['prior_attraction']
             point_estimate_fct = group['point_estimate_fct']
+            regularizer = group['regularizer']
             # State of the optimizer
             # lambda represents the intertia with each neuron
             lambda_ = self.state['lambda']
             prior = self.state['prior_lambda']
+
             def derivative(x):
                 """ Derivative of the tanh function"""
-                return 1 - torch.tanh(x)**2
+                return 1 / torch.cosh(x)**2
+
             if num_mcmc_samples == 0:
                 ### POINT ESTIMATE ###
                 if point_estimate_fct == "tanh":
@@ -162,7 +167,8 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                     g = parameters_to_vector(
                         torch.autograd.grad(loss, parameters)).detach()
                     # Compute the scaling factor
-                    s = (1 - relaxed_w**2) / (temperature * derivative(z) + eps)
+                    s = derivative(z) / \
+                        (temperature * derivative(lambda_) + eps)
                     gradient_estimate.add_(s*g)
                 gradient_estimate.div_(num_mcmc_samples)
             self.state["grad"] = gradient_estimate
@@ -170,14 +176,24 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                 self.state["grad"] = self.state["grad"] / \
                     torch.norm(gradient_estimate, p=2)
             # METAPLASTICITY UPDATE
-            softening = torch.tanh(torch.abs(lambda_))
-            condition = torch.where(lambda_*self.state["grad"] > 0.0,
-                                    1/(1+gamma*softening),
-                                    1/(1-beta*softening))
-            self.state["lr"] = lr * condition
-            lambda_ = (1-prior_attraction)*lambda_ - \
-                self.state["lr"]*self.state["grad"]
-            # OTHER UPDATES
+            if group['update'] == 1:
+                self.state["grad"] *= derivative(regularizer*lambda_)
+                softening = torch.tanh(torch.abs(lambda_))
+                asymmetry = torch.where(lambda_*self.state["grad"] > 0.0,
+                                        1/(1+gamma*softening),
+                                        1/(1-beta*softening))
+                self.state["lr"] = lr * asymmetry
+                # this gives better results
+                lambda_ = (1-prior_attraction)*lambda_ - \
+                    self.state["lr"]*self.state["grad"]
+            elif group['update'] == 2:
+                softening = torch.tanh(torch.abs(lambda_))
+                asymmetry = torch.where(lambda_*self.state["grad"] > 0.0,
+                                        1/(1/(gradient_estimate + eps) +
+                                           gamma*softening),
+                                        1/(1/(gradient_estimate + eps)-beta*softening))
+                self.state["lr"] = asymmetry
+                lambda_ = lambda_ - lr * asymmetry
             if noise != 0:
                 # create a normal distribution with mean lambda and std noise
                 lambda_ += torch.distributions.normal.Normal(

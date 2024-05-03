@@ -23,7 +23,6 @@ class MetaplasticSGD(torch.optim.Optimizer):
         for group in self.param_groups:
             group.setdefault('amsgrad', False)
 
-    @torch.jit.export
     def step(self, closure=None):
         """Performs a single optimization step.
 

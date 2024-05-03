@@ -33,6 +33,8 @@ class GPUTrainer:
             scheduler_parameters = kwargs["scheduler_parameters"]
             self.scheduler = scheduler(
                 self.optimizer, **scheduler_parameters)
+        if "label_trick" in kwargs:
+            self.label_trick = kwargs["label_trick"]
 
     def reset_optimizer(self, optimizer_parameters):
         """Reset the optimizer parameters such as momentum and learning rate
@@ -42,6 +44,24 @@ class GPUTrainer:
         """
         self.optimizer = self.optimizer.__class__(
             self.model.parameters(), **optimizer_parameters)
+        
+    def label_trick(self, targets):
+        """Perform the label trick
+
+        Args:
+            targets (torch.Tensor): Labels
+
+        Returns:
+            torch.Tensor: Modified labels
+        """
+        ### LABEL TRICK ###
+        # Get the unique labels of the batch and sort them
+        unique_labels = torch.unique(targets).sort()[0]
+        targets_clone = targets.clone()
+        # Assign new labels to the targets
+        for i, label in enumerate(unique_labels):
+            targets_clone[targets == label] = i
+        return unique_labels, targets_clone
 
     def batch_step(self, inputs, targets):
         """Perform the training of a single batch
@@ -50,11 +70,18 @@ class GPUTrainer:
             inputs (torch.Tensor): Input data
             targets (torch.Tensor): Labels
         """
+        
         ### LOSS ###
-        self.loss = self.criterion(
-            self.model.forward(inputs).to(self.device),
-            targets.to(self.device)
-        )
+        forward = self.model.forward(inputs).to(self.device)
+        
+        if self.label_trick is not None and self.label_trick:
+            unique_labels, targets = self.label_trick(targets)
+            self.loss = self.criterion(
+                forward[:, unique_labels].to(self.device),
+                targets.to(self.device)
+            )
+        else:
+            self.loss = self.criterion(forward, targets.to(self.device))
 
         ### BACKWARD PASS ###
         self.optimizer.zero_grad()

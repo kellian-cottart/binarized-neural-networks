@@ -15,7 +15,7 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
 PADDING = 2
 GRAPHS = True
-MODULO = 1
+MODULO = 5
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
 DATASETS_PATH = "datasets"
@@ -51,7 +51,7 @@ if __name__ == "__main__":
                 # "activation_function": torch.functional.F.relu,
                 "output_function": "log_softmax",
                 "normalization": "batchnorm",
-                "eps": 1e-5,
+                "eps": 0,
                 "momentum": 0,
                 "running_stats": False,
                 "affine": False,
@@ -59,33 +59,36 @@ if __name__ == "__main__":
             },
             "training_parameters": {
                 'n_epochs': 20,
-                'batch_size': 128,
+                'batch_size': 2048,
                 "test_mcmc_samples": 10,
-                # 'resize': True,
-                # 'data_aug_it': 10,
+                'resize': True,
+                'data_aug_it': 10,
+                'label_trick': label_trick,
             },
             "criterion": torch.functional.F.nll_loss,
             "optimizer": BinaryHomosynapticUncertaintyTest,
             "optimizer_parameters": {
-                "lr": 1,
-                "beta": 0.125,
-                "gamma": 0,
+                "lr": 4.825,
+                "beta": 0.518,
+                "gamma": 0.819,
+                "update": 1,
                 "num_mcmc_samples": 1,
                 "init_law": "gaussian",
-                "init_param": 0,
+                "init_param": 0.88,
+                "regularizer": 1
             },
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {
             #     "lr": 0.005,
             #     "metaplasticity": 1.35
             # },
-            "task": "PermutedMNIST",
-            "n_tasks": 10,
-            "n_classes": 1,
+            "task": "CILCIFAR100",
+            "n_tasks": 2,
+            "n_classes": 50,
             "n_subsets": 1,
             "n_repetition": 1,
             "show_train": False,
-        }
+        } for label_trick in [False, True]
     ]
     for index, data in enumerate(networks_data):
         ### FOLDER INITIALIZATION ###

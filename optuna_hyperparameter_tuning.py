@@ -42,22 +42,22 @@ def train_iteration(trial):
         trial (optuna.Trial): Optuna trial
     """
     ### PARAMETERS ###
-    lr = trial.suggest_float("lr", 0.01, 50, log=True)
+    lr = trial.suggest_float("lr", 0.01, 100, log=True)
     beta = trial.suggest_float("beta", 0, 0.999, step=0.001)
     gamma = trial.suggest_float("gamma", 0, 4, step=0.001)
+    regularizer = trial.suggest_float("regularizer", 0, 3, step=0.01)
     seed = trial.suggest_categorical("seed", [1000])
     epochs = trial.suggest_categorical("epochs", [20])
     num_mcmc_samples = trial.suggest_categorical("num_mcmc_samples", [1])
     init_law = trial.suggest_categorical("init_law", ["gaussian"])
     # init_param = trial.suggest_float("init_param", 0, 2, step=0.01)
     init_param = trial.suggest_categorical("init_param", [0])
-    temperature = trial.suggest_float(
-        "temperature", 0.1, 10, step=0.01)
+    temperature = trial.suggest_categorical("temperature", [1])
     batch_size = trial.suggest_categorical(
         "batch_size", [128])
     task = trial.suggest_categorical("task", [parser.parse_args().task])
-    n_tasks = trial.suggest_categorical("n_tasks", [2])
-    n_classes = trial.suggest_categorical("n_classes", [50])
+    n_tasks = trial.suggest_categorical("n_tasks", [10])
+    n_classes = trial.suggest_categorical("n_classes", [1])
     n_subsets = trial.suggest_categorical("n_subsets", [1])
     layer = trial.suggest_categorical("layer", [2048])
     normalization = trial.suggest_categorical(
@@ -110,6 +110,8 @@ def train_iteration(trial):
             "init_law": init_law,
             "init_param": init_param,
             "temperature": temperature,
+            "update": 1,
+            "regularizer": regularizer,
         },
         "task": task,
         "n_tasks": n_tasks,
