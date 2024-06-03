@@ -10,13 +10,14 @@ class GPUTrainer:
         optimizer (torch.optim): Optimizer to use
         optimizer_parameters (dict): Parameters of the optimizer
         criterion (torch.nn): Loss function
+        reduction (str): Reduction method of the loss
         device (torch.device): Device to use for the training
         kwargs: Additional arguments
             scheduler (torch.optim.lr_scheduler, optional): Scheduler to use. Defaults to None.
             scheduler_parameters (dict, optional): Parameters of the scheduler. Defaults to None.
     """
 
-    def __init__(self, model, optimizer, optimizer_parameters, criterion, device, *args, **kwargs):
+    def __init__(self, model, optimizer, optimizer_parameters, criterion, reduction, device, *args, **kwargs):
         self.model = model
         self.optimizer = optimizer(
             self.model.parameters(),
@@ -27,6 +28,7 @@ class GPUTrainer:
         self.training_accuracy = []
         self.testing_accuracy = []
         self.mean_testing_accuracy = []
+        self.reduction = reduction
         # Scheduler addition
         if "scheduler" in kwargs:
             scheduler = kwargs["scheduler"]
@@ -44,7 +46,7 @@ class GPUTrainer:
         """
         self.optimizer = self.optimizer.__class__(
             self.model.parameters(), **optimizer_parameters)
-        
+
     def label_trick(self, targets):
         """Perform the label trick
 
@@ -70,19 +72,20 @@ class GPUTrainer:
             inputs (torch.Tensor): Input data
             targets (torch.Tensor): Labels
         """
-        
+
         ### LOSS ###
         forward = self.model.forward(inputs).to(self.device)
-        
+
         if self.label_trick is not None and self.label_trick:
             unique_labels, targets = self.label_trick(targets)
             self.loss = self.criterion(
                 forward[:, unique_labels].to(self.device),
-                targets.to(self.device)
+                targets.to(self.device),
+                reduction=self.reduction,
             )
         else:
-            self.loss = self.criterion(forward, targets.to(self.device))
-
+            self.loss = self.criterion(forward, targets.to(
+                self.device), reduction=self.reduction,)
         ### BACKWARD PASS ###
         self.optimizer.zero_grad()
         self.loss.backward()
@@ -160,7 +163,9 @@ class GPUTrainer:
             torch.Tensor: Predictions
         """
         self.model.eval()
-        predictions = self.model.forward(inputs.to(self.device))
+        # if model has a sample method, use sample instead
+        predictions = self.model.forward(
+            inputs.to(self.device), backwards=False)
         return predictions
 
     def test(self, inputs, labels):

@@ -1,52 +1,40 @@
 import torch
-from .activation import Sign
+import torch.nn as nn
+from torch.distributions import Bernoulli
 
 
-class BernouilliWeights:
-    """ Bernouilli Weights
+class BinaryGumbelSoftmaxTrick(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, lambda_, tau=1, samples=1):
+        """Forward pass of the neural network"""
+        # Compute epsilon from uniform U(0,1), but avoid 0
+        epsilon = torch.distributions.Uniform(
+            1e-10, 1).sample((samples, *lambda_.shape)).to(x.device)
+        # Compute delta = 1/2 log(epsilon/(1-epsilon))
+        delta = 0.5 * torch.log(epsilon/(1-epsilon))
+        # Compute the new weights values
+        weights = torch.tanh((lambda_ + delta)/tau)
+        ctx.save_for_backward(x, weights)
+        # Return the forward for this layer
+        # soi: samples, out_features, in_features ; b, i: batch, in_features ; s, b, i: samples, batch, in_features
+        return torch.einsum('soi, sbi -> sbo', weights, x)
 
-    Represents bayesian weights with a bernouilli distribution
-
-    Args:
-        lambda_ (torch.Tensor): Tensor of the same shape as the weights, represents the certainty of the weights of either being 1 or -1
-    """
-
-    def __init__(self, lambda_):
-        """ Initialize the weights with a bernouilli distribution 
-
-        Args:
-            lambda_ (torch.Tensor): Tensor of the same shape as the weights, represents the certainty of the weights of either being 1 or -1. Will be sent as the weight parameter to the optimizer.
-        """
-        self.lambda_ = lambda_
-        self.uniform = torch.distributions.uniform.Uniform(0, 1)
-
-    def sample(self, samples=1):
-        """ Sample from the exponential distribution using the Gumbel-softmax trick"""
-        # 1. Sample from the uniform distribution U(0, 1) the logistic noise (G1 - G2)
-        logistic_noise = self.uniform.sample(
-            (samples, *self.lambda_.shape)).to(self.lambda_.device)
-        # 2. Compute delta = 1/2 * log(U/(1-U))
-        delta = (1/2 * torch.log(logistic_noise / (1 - logistic_noise))).to(
-            self.lambda_.device)
-        # 3. Compute the relaxed weights
-        relaxed_w = torch.tanh((self.lambda_ + delta)).to(
-            self.lambda_.device)
-        # 4. Take the binary weights
-        return Sign.apply(relaxed_w).to(
-            self.lambda_.device)
-
-    def sample_inference(self, samples=1):
-        """ Sample from the bernouilli distribution using lambda"""
-        # 1. Sample from the bernouilli distribution with p = sigmoid(2*lambda)
-        bernouilli_noise = torch.distributions.bernoulli.Bernoulli(
-            torch.sigmoid(2*self.lambda_)).sample((samples,)).to(self.lambda_.device)
-        # 2. Scale the bernouilli noise to -1 and 1
-        bernouilli_noise = 2 * bernouilli_noise - 1
-        return Sign.apply(bernouilli_noise).to(
-            self.lambda_.device)
+    @staticmethod
+    def backward(ctx, grad_output, tau=1):
+        """ Backward propagation is using the Gumbel softmax trick"""
+        # Retrieve the saved tensors
+        x, weights = ctx.saved_tensors
+        # Compute the mean normalization term for the Gumbel softmax
+        normalization = (1-weights**2)/tau
+        # Compute the gradient
+        # soi: samples, out_features, in_features ; b, i: batch, in_features ; s, b, i: samples, batch, in_features
+        grad_lambda = (torch.einsum('sbo, sbi -> soi', grad_output,
+                                    x) * normalization).mean(0)
+        grad_x = torch.einsum('soi, sbo -> sbi', weights, grad_output)
+        return grad_x, grad_lambda, None, None
 
 
-class BayesianBiNNLinear(torch.nn.modules.Module):
+class BiBayesianLinear(torch.nn.Module):
     """ Binary Bayesian Linear Layer using the Gumbel-softmax trick
 
     Args:
@@ -61,42 +49,35 @@ class BayesianBiNNLinear(torch.nn.modules.Module):
     def __init__(self,
                  in_features: int,
                  out_features: int,
-                 lambda_init: float = 0.1,
-                 bias: bool = False,
+                 tau: float = 1.0,
                  device: None = None,
                  dtype: None = None,
                  ):
         factory_kwargs = {'device': device, 'dtype': dtype}
-        super(BayesianBiNNLinear, self).__init__()
+        super(BiBayesianLinear, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
+        self.tau = tau
+        self.lambda_ = nn.Parameter(torch.zeros(
+            out_features, in_features, **factory_kwargs))
 
-        # Initialize weight parameter lambda with a normal distribution of mean: 0 and std: lambda_init
-        self.lambda_ = torch.nn.parameter.Parameter(torch.empty(
-            (in_features, out_features), **factory_kwargs))
-        if lambda_init != 0:
-            self.lambda_.data = torch.distributions.normal.Normal(
-                0, lambda_init).sample(self.lambda_.shape).to(self.lambda_.device)
-        else:
-            self.lambda_.data = torch.zeros_like(self.lambda_).to(
-                self.lambda_.device)
-        # Create the bernouilli weights from the lambda parameter
-        self.weight = BernouilliWeights(self.lambda_)
+    def sample(self, x, n_samples=1):
+        """ Sample the weights for the layer"""
+        # Compute p for Bernoulli sampling
+        p = torch.sigmoid(2*self.lambda_)
+        # Sample the weights according to 2*Ber(p) - 1
+        weights = 2*Bernoulli(p).sample((n_samples,)).to(x.device)-1
+        # Return the forward for this layer
+        # soi: samples, out_features, in_features ; b, i: batch, in_features ; s, b, i: samples, batch, in_features
+        if x.dim() == 2:
+            x = x.unsqueeze(0)
+        return torch.einsum('soi, sbi -> sbo', weights, x)
 
-    def forward(self,
-                input: torch.Tensor,
-                samples: int = 1):
-        """ Forward pass of the layer
-
-        Args:
-            input (torch.Tensor): Input tensor
-            samples (int): Number of samples to draw
-
-        Returns:
-            torch.Tensor: Output tensor
-        """
-        return torch.matmul(input, self.weight.sample(samples)).to(
-            self.lambda_.device)
+    def forward(self, x, n_samples=1):
+        """ Forward pass of the neural network for the backward pass """
+        if x.dim() == 2:
+            x = x.unsqueeze(0)
+        return BinaryGumbelSoftmaxTrick.apply(x, self.lambda_, self.tau, n_samples)
 
     def extra_repr(self):
         return 'in_features={}, out_features={}, lambda.shape={}'.format(

@@ -22,6 +22,8 @@ parser.add_argument(
     "--db", type=str, default="gridsearch/gridsearch-2.sqlite3", help="Name of the database")
 parser.add_argument(
     "--task", type=str, default="PermutedMNIST", help="Task to perform (FrameworkDataset). Ex: PermutedMNIST, StreamFashion, CILCIFAR100")
+parser.add_argument(
+    "--norm", type=str, default="batchnorm", help="Normalization to use (batchnorm, layernorm, groupnorm)")
 
 ### GENERAL CONFIGURATION ###
 DEVICE = f"cuda:{parser.parse_args().device}" if parser.parse_args(
@@ -42,15 +44,17 @@ def train_iteration(trial):
         trial (optuna.Trial): Optuna trial
     """
     ### PARAMETERS ###
-    lr = trial.suggest_float("lr", 0.01, 100, log=True)
-    beta = trial.suggest_float("beta", 0, 0.999, step=0.001)
-    gamma = trial.suggest_float("gamma", 0, 4, step=0.001)
-    regularizer = trial.suggest_float("regularizer", 0, 3, step=0.01)
+    lr = trial.suggest_float("lr", 0.5, 100, step=0.05)
+    likelihood_coeff = trial.suggest_float(
+        "likelihood_coeff", 0.5, 100, step=0.05)
+    kl_coeff = trial.suggest_float(
+        "kl_coeff", 0.5, 100, step=0.05)
+    eps = trial.suggest_float("eps", 1e-3, 10, step=1e-3)
+
     seed = trial.suggest_categorical("seed", [1000])
     epochs = trial.suggest_categorical("epochs", [20])
     num_mcmc_samples = trial.suggest_categorical("num_mcmc_samples", [1])
     init_law = trial.suggest_categorical("init_law", ["gaussian"])
-    # init_param = trial.suggest_float("init_param", 0, 2, step=0.01)
     init_param = trial.suggest_categorical("init_param", [0])
     temperature = trial.suggest_categorical("temperature", [1])
     batch_size = trial.suggest_categorical(
@@ -59,9 +63,9 @@ def train_iteration(trial):
     n_tasks = trial.suggest_categorical("n_tasks", [10])
     n_classes = trial.suggest_categorical("n_classes", [1])
     n_subsets = trial.suggest_categorical("n_subsets", [1])
-    layer = trial.suggest_categorical("layer", [2048])
+    layer = trial.suggest_categorical("layer", [1024])
     normalization = trial.suggest_categorical(
-        "normalization", ["instancenorm"])
+        "normalization", [parser.parse_args().norm])
 
     torch.manual_seed(seed)
     if torch.cuda.is_available():
@@ -71,9 +75,9 @@ def train_iteration(trial):
 
     ### DATA TO DISPLAY IN OPTUNA ###
     data = {
-        "nn_type": models.DNN,
+        "nn_type": models.BiNN,
         "nn_parameters": {
-            "layers": [layer, layer],
+            "layers": [layer],
             "device": DEVICE,
             "dropout": False,
             "normalization": normalization,
@@ -94,24 +98,21 @@ def train_iteration(trial):
             'batch_size': batch_size,
             "test_mcmc_samples": 1,
             'resize': True,
-            'data_aug_it': 1,
+            'data_aug_it': 10,
         },
-        # "optimizer": torch.optim.Adam,
-        # "optimizer_parameters": {
-        #     "lr": lr,
-        #     "weight_decay": 0,
-        # },
         "optimizer": BinaryHomosynapticUncertaintyTest,
         "optimizer_parameters": {
             "lr": lr,
-            "beta": beta,
-            "gamma": gamma,
+            "likelihood_coeff": likelihood_coeff,
+            "kl_coeff": kl_coeff,
+            # "beta": beta,
+            # "gamma": gamma,
             "num_mcmc_samples": num_mcmc_samples,
             "init_law": init_law,
             "init_param": init_param,
             "temperature": temperature,
-            "update": 1,
-            "regularizer": regularizer,
+            "update": 6,
+            "eps": eps,
         },
         "task": task,
         "n_tasks": n_tasks,
@@ -207,7 +208,8 @@ def train_iteration(trial):
 
     ### EXPORT PARAMETERS ###
     # Save all parameters of the trial in a json file
-    with open(os.path.join(STUDY, f"{trial.number}.json"), "w") as f:
+    os.makedirs(f"gridsearch/{STUDY}", exist_ok=True)
+    with open(os.path.join(f"gridsearch/{STUDY}", f"{trial.number}.json"), "w") as f:
         all_accuracies = {
             f"task_{i}": net_trainer.testing_accuracy[-1][i].item() for i in range(len(net_trainer.testing_accuracy[-1]))
         }

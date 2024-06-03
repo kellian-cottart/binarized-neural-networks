@@ -24,12 +24,13 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
     def __init__(self,
                  params: params_t,
                  lr: Union[float, torch.Tensor] = 1e-3,
+                 likelihood_coeff: Optional[float] = 1,
+                 kl_coeff: Optional[float] = 1,
                  beta: float = 0,
                  gamma: float = 0,
                  noise: float = 0,
                  temperature: float = 1,
                  num_mcmc_samples: int = 1,
-                 point_estimate_fct: str = "tanh",
                  init_law: str = "gaussian",
                  init_param: float = 0.1,
                  update: Optional[int] = 1,
@@ -38,7 +39,7 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                  prior_lambda: Optional[torch.Tensor] = None,
                  prior_attraction: Optional[float] = 0,
                  norm: Optional[bool] = False,
-                 regularizer: Optional[float] = 1,
+                 eps: float = 1e-1,
                  ):
         if not 0.0 <= lr:
             raise ValueError(f"Invalid learning rate: {lr}")
@@ -61,8 +62,9 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                         update=update,
                         prior_attraction=prior_attraction,
                         norm=norm,
-                        point_estimate_fct=point_estimate_fct,
-                        regularizer=regularizer,
+                        eps=eps,
+                        likelihood_coeff=likelihood_coeff,
+                        kl_coeff=kl_coeff
                         )
         super().__init__(params, defaults)
 
@@ -113,7 +115,6 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
             parameters = [param for param in group['params']
                           if param.requires_grad]
             # Parameters of the optimizer
-            eps = 1e-10
             temperature = group['temperature']
             num_mcmc_samples = group['num_mcmc_samples']
             lr = group['lr']
@@ -123,24 +124,21 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
             quantization = group['quantization']
             threshold = group['threshold']
             norm = group['norm']
-            prior_attraction = group['prior_attraction']
-            point_estimate_fct = group['point_estimate_fct']
-            regularizer = group['regularizer']
+            eps = group['eps']
+            likelihood_coeff = group['likelihood_coeff']
+            kl_coeff = group['kl_coeff']
             # State of the optimizer
             # lambda represents the intertia with each neuron
             lambda_ = self.state['lambda']
             prior = self.state['prior_lambda']
 
-            def derivative(x):
-                """ Derivative of the tanh function"""
-                return 1 / torch.cosh(x)**2
+            def var(x):
+                """ var of the tanh function"""
+                return 1 - torch.tanh(x)**2
 
             if num_mcmc_samples == 0:
                 ### POINT ESTIMATE ###
-                if point_estimate_fct == "tanh":
-                    relaxed_w = torch.tanh(lambda_)
-                elif point_estimate_fct == "sign":
-                    relaxed_w = torch.sign(lambda_)
+                relaxed_w = torch.tanh(lambda_)
                 vector_to_parameters(relaxed_w, parameters)
                 loss = closure()
                 running_loss.append(loss.item())
@@ -152,7 +150,8 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                 for _ in range(num_mcmc_samples):
                     ### Gumbel soft-max trick ###
                     # Add eps to avoid log(0)
-                    epsilon = torch.rand_like(lambda_) + eps
+                    epsilon = torch.distributions.uniform.Uniform(
+                        1e-10, 1).sample(lambda_.shape).to(lambda_.device)
                     # Compute the logistic noise
                     delta = torch.log(epsilon / (1 - epsilon)) / 2
                     # Compute the relaxed weights
@@ -167,43 +166,45 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                     g = parameters_to_vector(
                         torch.autograd.grad(loss, parameters)).detach()
                     # Compute the scaling factor
-                    s = derivative(z) / \
-                        (temperature * derivative(lambda_) + eps)
+                    s = var(z)
                     gradient_estimate.add_(s*g)
-                gradient_estimate.div_(num_mcmc_samples)
+                gradient_estimate.div_(temperature * num_mcmc_samples)
             self.state["grad"] = gradient_estimate
-            if norm == True:
-                self.state["grad"] = self.state["grad"] / \
-                    torch.norm(gradient_estimate, p=2)
+            # if norm == True:
+            #     self.state["grad"] = self.state["grad"] / \
+            #         torch.norm(gradient_estimate, p=2)
             # METAPLASTICITY UPDATE
             if group['update'] == 1:
-                self.state["grad"] *= derivative(regularizer*lambda_)
-                softening = torch.tanh(torch.abs(lambda_))
+                # Update 1 comes from the original work sheet
+                softening = 2*likelihood_coeff*torch.tanh(torch.abs(lambda_))
                 asymmetry = torch.where(lambda_*self.state["grad"] > 0.0,
                                         1/(1+gamma*softening),
                                         1/(1-beta*softening))
                 self.state["lr"] = lr * asymmetry
-                # this gives better results
-                lambda_ = (1-prior_attraction)*lambda_ - \
-                    self.state["lr"]*self.state["grad"]
-            elif group['update'] == 2:
-                softening = torch.tanh(torch.abs(lambda_))
-                asymmetry = torch.where(lambda_*self.state["grad"] > 0.0,
-                                        1/(1/(gradient_estimate + eps) +
-                                           gamma*softening),
-                                        1/(1/(gradient_estimate + eps)-beta*softening))
-                self.state["lr"] = asymmetry
-                lambda_ = lambda_ - lr * asymmetry
-            if noise != 0:
-                # create a normal distribution with mean lambda and std noise
-                lambda_ += torch.distributions.normal.Normal(
-                    0, noise).sample(lambda_.shape).to(lambda_.device)
-            if quantization is not None:
-                # we want "quantization" states between each integer. For example, if quantization = 2, we want 0, 0.5, 1, 1.5, 2
-                lambda_ = torch.round(
-                    lambda_ * quantization) / quantization
-            if threshold is not None:
-                # we want to clamp the values of lambda between -threshold and threshold
-                lambda_ = torch.clamp(lambda_, -threshold, threshold)
+                lambda_ = lambda_ - self.state["lr"]*self.state["grad"]
+            elif group['update'] == 6:
+                asymmetry = 1/(kl_coeff*var(lambda_)+2*likelihood_coeff *
+                               gradient_estimate*torch.tanh(lambda_) + eps)
+                self.state["lr"] = lr * asymmetry
+                lambda_ = lambda_ - self.state["lr"]*self.state["grad"]
+            elif group['update'] == 7:
+                self.state["lr"] = lr / (var(lambda_)+eps)
+                lambda_ = lambda_ - self.state["lr"]*self.state["grad"]
+            elif group['update'] == 8:
+                asymmetry = 1/(kl_coeff*var(lambda_)+likelihood_coeff *
+                               (2*gradient_estimate*torch.tanh(lambda_) + torch.abs(lambda_)))
+                self.state["lr"] = lr * asymmetry
+                lambda_ = lambda_ - self.state["lr"]*self.state["grad"]
+            # if noise != 0:
+            #     # create a normal distribution with mean lambda and std noise
+            #     lambda_ += torch.distributions.normal.Normal(
+            #         0, noise).sample(lambda_.shape).to(lambda_.device)
+            # if quantization is not None:
+            #     # we want "quantization" states between each integer. For example, if quantization = 2, we want 0, 0.5, 1, 1.5, 2
+            #     lambda_ = torch.round(
+            #         lambda_ * quantization) / quantization
+            # if threshold is not None:
+            #     # we want to clamp the values of lambda between -threshold and threshold
+            #     lambda_ = torch.clamp(lambda_, -threshold, threshold)
             self.state['lambda'] = lambda_
         return torch.mean(torch.tensor(running_loss))

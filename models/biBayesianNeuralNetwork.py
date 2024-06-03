@@ -5,69 +5,92 @@ from .deepNeuralNetwork import *
 
 
 class BiBayesianNN(DNN):
-    """ Binary Bayesian Neural Network
-
-    Args:
-        layers (list): List of layer sizes
-        lambda_init (float): Initial standard deviation of the gaussian distribution of the lambda parameter
-        n_samples (int): Number of samples to use for the forward pass
+    """ Neural Network Base Class
     """
 
     def __init__(self,
-                 layers: list,
-                 lambda_init: float = 0.1,
-                 n_samples: int = 1,
+                 layers,
+                 n_samples_forward: int = 1,
+                 n_samples_backward: int = 1,
+                 tau: float = 1.0,
                  *args,
                  **kwargs):
-        self.lambda_init = lambda_init
-        self.n_samples = n_samples
+        """ NN initialization
+
+        Args:
+            n_samples_forward (int): Number of forward samples
+            n_samples_backward (int): Number of backward samples
+        """
+        self.tau = tau
+        self.n_samples_forward = n_samples_forward
+        self.n_samples_backward = n_samples_backward
         super().__init__(layers, *args, **kwargs)
 
     def _layer_init(self, layers, bias=False):
-        for i, _ in enumerate(layers[:-1]):
-            # Dropout only on hidden layers
-            if self.dropout and i != 0:
-                layers.append(torch.nn.Dropout(p=0.2))
+        """ Initialize layers of NN
 
-            # Bayesian Binary Linear Layer
-            self.layers.append(BayesianBiNNLinear(
+        Args:
+            dropout (bool): Whether to use dropout
+            bias (bool): Whether to use bias
+        """
+        for i, _ in enumerate(layers[:-1]):
+            # BiBayesian layers with BatchNorm
+            if self.dropout and i != 0:
+                self.layers.append(torch.nn.Dropout(p=0.2))
+            self.layers.append(BiBayesianLinear(
                 layers[i],
                 layers[i+1],
-                lambda_init=self.lambda_init,
-                bias=bias,
-                device=self.device,
-            ))
+                tau=self.tau,
+                device=self.device))
+            self._batch_norm_init(layers, i)
 
-            # Batchnorm
-            if self.batchnorm:
-                self.layers.append(torch.nn.BatchNorm1d(
-                    layers[i+1],
-                    affine=self.affine,
-                    track_running_stats=self.running_stats,
-                    device=self.device,
-                    eps=self.bneps,
-                    momentum=self.bnmomentum))
+    def _weight_init(self, init='normal', std=0.1):
+        """ Initialize weights of each layer
 
-    def _weight_init(self, init='normal', std=0.01):
-        pass
+        Args:
+            init (str): Initialization method for weights
+            std (float): Standard deviation for initialization
+        """
+        for layer in self.layers:
+            if isinstance(layer, torch.nn.Module) and hasattr(layer, 'lambda_') and layer.lambda_ is not None:
+                if init == 'gaussian':
+                    torch.nn.init.normal_(
+                        layer.lambda_.data, mean=0.0, std=std)
+                elif init == 'uniform':
+                    torch.nn.init.uniform_(
+                        layer.lambda_.data, a=-std/2, b=std/2)
+                elif init == 'xavier':
+                    torch.nn.init.xavier_normal_(layer.lambda_.data)
 
-    def forward(self, x):
-        ### FORWARD PASS ###
+    def forward(self, x, backwards=True):
+        """ Forward pass of DNN
+
+        Args:
+            x (torch.Tensor): Input tensor
+
+        Returns:
+            torch.Tensor: Output tensor
+
+        """
+        # Flatten input if necessary
+        if len(x.shape) > 2:
+            x = x.view(x.size(0), -1)
         unique_layers = set(type(layer) for layer in self.layers)
+        ### FORWARD PASS ###
         for i, layer in enumerate(self.layers):
-            if isinstance(layer, BayesianBiNNLinear):
-                x = layer(x, self.n_samples)
+            if isinstance(layer, BiBayesianLinear):
+                if backwards:
+                    x = layer(x, self.n_samples_backward)
+                else:
+                    x = layer.sample(x, self.n_samples_forward)
             else:
-                x = layer(torch.mean(x, dim=0))
+                x = layer(x)
             if layer is not self.layers[-1] and (i+1) % len(unique_layers) == 0:
                 x = self.activation_function(x)
-        # Average over samples if the last layer is a MetaBayesLinearParallel layer
-        if isinstance(layer, BayesianBiNNLinear):
-            x = torch.mean(x, dim=0)
         if self.output_function == "softmax":
             x = torch.nn.functional.softmax(x, dim=1)
         if self.output_function == "log_softmax":
             x = torch.nn.functional.log_softmax(x, dim=1)
         if self.output_function == "sigmoid":
             x = torch.nn.functional.sigmoid(x)
-        return x
+        return x.mean(0)

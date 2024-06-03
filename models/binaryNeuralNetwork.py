@@ -32,7 +32,7 @@ class BiNN(DNN):
                 device=self.device))
             self._batch_norm_init(layers, i)
 
-    def forward(self, x):
+    def forward(self, x, *args, **kwargs):
         """ Forward pass of DNN
 
         Args:

@@ -121,6 +121,8 @@ class DNN(torch.nn.Module):
                 device=self.device))
         elif self.normalization == "standardizenorm":
             self.layers.append(StandardizeNorm(eps=self.eps))
+        elif self.normalization is None:
+            pass
         elif self.normalization is not None:
             raise ValueError(
                 f"Invalid normalization method: {self.normalization}. Choose between 'batchnorm', 'layernorm', 'instancenorm', 'groupnorm'")
@@ -134,7 +136,7 @@ class DNN(torch.nn.Module):
         """
         for layer in self.layers:
             if isinstance(layer, torch.nn.Module) and hasattr(layer, 'weight') and layer.weight is not None:
-                if init == 'gauss':
+                if init == 'gaussian':
                     torch.nn.init.normal_(
                         layer.weight, mean=0.0, std=std)
                 elif init == 'uniform':
@@ -143,7 +145,7 @@ class DNN(torch.nn.Module):
                 elif init == 'xavier':
                     torch.nn.init.xavier_normal_(layer.weight)
 
-    def forward(self, x):
+    def forward(self, x, *args, **kwargs):
         """ Forward pass of DNN
 
         Args:

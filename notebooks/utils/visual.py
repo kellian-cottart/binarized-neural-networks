@@ -17,31 +17,45 @@ def graphs(data, main_folder, net_trainer, i, epoch, predictions, labels, modulo
         #     task=i+1,
         #     epoch=epoch+1,
         # )
-        params = [
-            p for p in net_trainer.optimizer.param_groups[0]['params']]
-        visualize_grad(
-            parameters=params,
-            grad=net_trainer.optimizer.state['grad'] if isinstance(
-                net_trainer.optimizer, BinaryHomosynapticUncertaintyTest) else [
-                p.grad for p in net_trainer.optimizer.param_groups[0]['params']],
-            path=os.path.join(main_folder, "grad"),
-            task=i+1,
-            epoch=epoch+1,
-        )
-        visualize_lambda(
-            parameters=params,
-            lambda_=net_trainer.optimizer.state['lambda'] if isinstance(
-                net_trainer.optimizer, BinaryHomosynapticUncertaintyTest) else params,
-            path=os.path.join(main_folder, "lambda"),
-            threshold=10,
-            task=i+1,
-            epoch=epoch+1,
-        )
-        if net_trainer.optimizer.state['lr'] is not None:
+        if data["optimizer"] in [BinaryHomosynapticUncertaintyTest]:
+            visualize_grad(
+                parameters=net_trainer.optimizer.param_groups[0]['params'],
+                grad=net_trainer.optimizer.state['grad'],
+                path=os.path.join(main_folder, "grad"),
+                task=i+1,
+                epoch=epoch+1,
+            )
+            visualize_lambda(
+                parameters=net_trainer.optimizer.param_groups[0]['params'],
+                lambda_=net_trainer.optimizer.state['lambda'],
+                path=os.path.join(main_folder, "lambda"),
+                threshold=10,
+                task=i+1,
+                epoch=epoch+1,
+            )
             visualize_lr(
-                parameters=params,
+                parameters=net_trainer.optimizer.param_groups[0]['params'],
                 lr=net_trainer.optimizer.state['lr'],
                 path=os.path.join(main_folder, "lr"),
+                task=i+1,
+                epoch=epoch+1,
+            )
+        else:
+            params = [
+                p for p in net_trainer.optimizer.param_groups[0]['params']]
+            visualize_grad(
+                parameters=params,
+                grad=[
+                    p.grad for p in net_trainer.optimizer.param_groups[0]['params']],
+                path=os.path.join(main_folder, "grad"),
+                task=i+1,
+                epoch=epoch+1,
+            )
+            visualize_lambda(
+                parameters=params,
+                lambda_=params,
+                path=os.path.join(main_folder, "lambda"),
+                threshold=10,
                 task=i+1,
                 epoch=epoch+1,
             )
@@ -96,14 +110,10 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accu
         colors = plt.get_cmap('viridis', len(mean_accuracies[0]))
     else:
         colors = plt.get_cmap('Spectral_r', len(mean_accuracies[0]))
-
-    # Plot the maximum accuracy as a horizontal line
-    plt.axhline(y=mean_accuracies.max(), color='grey',
-                linestyle='--', linewidth=1, label='Top accuracy: {:.2f}%'.format(mean_accuracies.max()))
     # Plot the mean accuracy
     for i in range(len(mean_accuracies[0])):
         plt.plot(range(len(mean_accuracies)),
-                 mean_accuracies[:, i], color=colors(i), alpha=0.8, label=f"Task {i+1}")
+                 mean_accuracies[:, i], color=colors(i))
 
     # Fill between only accepts 1D arrays for error, we need to extract each std individually
     upper_bound_tasks, lower_bound_tasks = [], []
@@ -117,17 +127,28 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accu
         plt.fill_between(range(len(mean_accuracies)),
                          upper_bound_tasks[i], lower_bound_tasks[i], alpha=0.2, color=colors(i))
 
+    # Vertical lines to separate tasks
+    # for i in range(1, len(l_accuracies[0][0])):
+    #     n_epochs_task = epochs[i-1] if isinstance(epochs, list) else epochs
+    #     plt.axvline(x=i*n_epochs_task-1, color='grey',
+    #                 linestyle='--', linewidth=0.5, zorder=0)
+
+    # legend is the number of the task - Accuracy of the end of this task - accuracy at the end of all tasks
+    legend = []
+    for i in range(len(mean_accuracies[0])):
+        index = sum(epochs[:i+1])-1 if isinstance(epochs,
+                                                  list) else (i+1)*epochs-1
+        end = sum(epochs)-1 if isinstance(epochs,
+                                          list) else len(mean_accuracies)-1
+        legend += [
+            f"Task {i}: Epoch {index}: {mean_accuracies[index, i]:.2f}% - Epoch {end}: {mean_accuracies[-1, i]:.2f}%"]
+
     # Plot the average accuracy with end total accuracy
     average_accuracies = mean_accuracies.mean(dim=1)
-    # plot text
-    if epochs is not None:
-        # average accuracy of the tasks
-        plt.text(0.8, 0.15, f"Average of tasks: {average_accuracies[-1]:.2f}%",
-                 fontsize=9, ha='center', va='center', transform=ax.transAxes, fontweight='bold')
-        # Difference between first and last task at the last epoch
-        difference = mean_accuracies[epochs-1, 0] - mean_accuracies[-1, -1]
-        plt.text(0.8, 0.10, f"Vanishing Plasticity: {difference:.2f}%",
-                 fontsize=9, ha='center', va='center', transform=ax.transAxes, fontweight='bold')
+    plt.plot(range(len(average_accuracies)),
+             average_accuracies, color='black', linestyle='--', zorder=0, linewidth=0.75)
+    # legend += ["Task change"]
+    legend += [f"Average of tasks: {average_accuracies[-1]:.2f}%"]
 
     ### PLOT TRAINING ACCURACIES ###
     if training_accuracies is not None:
@@ -153,13 +174,11 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accu
                              upper_bound_training_tasks[i], lower_bound_training_tasks[i], alpha=0.2, color=colors(i))
     ### LEGEND ###
     plt.legend(
-        loc="best",
-        prop={'size': 9},
-        frameon=False,
-        fancybox=True,
-        framealpha=0.8,
+        legend,
+        loc="center left",
+        prop={'size': 6},
+        frameon=False
     )
-    plt.ylim(0, 100)
     ### SAVE ###
     plt.savefig(versionning(folder, title, ".pdf"), bbox_inches='tight')
     plt.savefig(versionning(folder, title, ".svg"), bbox_inches='tight')
@@ -193,18 +212,17 @@ def visualize_task_frame(title, l_accuracies, folder, t_start, t_end):
     mean_acc = mean_acc[t_start-1:t_end+1] * 100
     std_acc = std_acc[t_start-1:t_end+1] * 100
 
-    plt.figure()
+    plt.figure(figsize=(6, 3))
     # Scatter with line
-    plt.plot(range(len(mean_acc)), mean_acc,
-             zorder=3, marker='o', color='purple')
+    plt.plot(range(len(mean_acc)), mean_acc, zorder=3,
+             label="BSU", marker='o', color='purple')
     # Fill between std
     plt.fill_between(range(len(mean_acc)), mean_acc-std_acc,
                      mean_acc+std_acc, alpha=0.3, zorder=2, color='purple')
+    # Add MNIST baseline
+    # plt.axhline(y=98.2, color='blue', linestyle='--',
+    #             linewidth=1, label="MNIST baseline")
     plt.legend(loc="lower right", frameon=False)
-
-    # hline with top accuracy
-    plt.axhline(y=mean_acc.max(), color='grey',
-                linestyle='--', linewidth=1, label='Top accuracy: {:.2f}%'.format(mean_acc.max()))
 
     plt.xlim(t_start, t_end)
     plt.xlabel('Task [-]')
@@ -213,12 +231,10 @@ def visualize_task_frame(title, l_accuracies, folder, t_start, t_end):
     plt.xticks(torch.arange(0, t_end+1-t_start).detach().cpu(),
                [str(i) for i in range(t_start, t_end+1)])
     plt.xlim(0, t_end-t_start)
-    plt.ylim(60, 100)
-
+    plt.ylim(0, 100)
     # increase the size of the ticks
     ax = plt.gca()
-    ax.legend(loc="lower right", prop={'size': 12}, frameon=False)
-    ax.tick_params(axis='both', which='major', labelsize=10)
+    ax.tick_params(axis='both', which='major', labelsize=12)
     ax.yaxis.set_minor_locator(AutoMinorLocator(5))
     ax.yaxis.set_major_locator(plt.MultipleLocator(10))
     ax.tick_params(axis='y', which='minor', length=2)
@@ -240,13 +256,11 @@ def visualize_lr(parameters, lr, path, task=None, epoch=None):
 
     params = [torch.zeros_like(param)
               for param in parameters if param.requires_grad]
-    if isinstance(lr, torch.Tensor):
-        vector_to_parameters(lr, params)
-    else:
-        params = lr
+    vector_to_parameters(lr, params)
+    # figure with as many subplots as lambdas
     fig, ax = plt.subplots(len(params), 1, figsize=(5, 5*len(params)))
     for i, lr in enumerate(params):
-        current_ax = ax[i] if len(params) > 1 else ax
+
         title = r'Learning rate ' + \
             f"[{'x'.join([str(s) for s in lr.shape][::-1])}]"
 
@@ -259,28 +273,28 @@ def visualize_lr(parameters, lr, path, task=None, epoch=None):
 
         x = torch.linspace(mini, maxi, bins).detach().cpu()
 
-        current_ax.bar(x,
-                       hist * 100 / length,
-                       width=2*(maxi-mini)/bins,
-                       zorder=2,
-                       color='purple')
+        ax[i].bar(x,
+                  hist * 100 / length,
+                  width=2*(maxi-mini)/bins,
+                  zorder=2,
+                  color='purple')
 
         # write on the graph the maximum value and the minimum value
-        current_ax.text(0.5, 0.95, f"Max: {maxi:.6f}",
-                        fontsize=6, ha='center', va='center', transform=current_ax.transAxes)
-        current_ax.text(0.5, 0.9, f"Min: {lr.min().item():.6f}",
-                        fontsize=6, ha='center', va='center', transform=current_ax.transAxes)
+        ax[i].text(0.5, 0.95, f"Max: {maxi:.6f}",
+                   fontsize=6, ha='center', va='center', transform=ax[i].transAxes)
+        ax[i].text(0.5, 0.9, f"Min: {lr.min().item():.6f}",
+                   fontsize=6, ha='center', va='center', transform=ax[i].transAxes)
 
-        current_ax.set_xlabel(r'Learning rate [-]')
-        current_ax.set_ylabel(r'Histogram of learning rate [%]')
+        ax[i].set_xlabel(r'Learning rate [-]')
+        ax[i].set_ylabel(r'Histogram of learning rate [%]')
         # font of xaxis label is 6
-        current_ax.tick_params(axis='x', labelsize=6)
-        current_ax.tick_params(which='both', width=1)
-        current_ax.tick_params(which='major', length=6)
-        current_ax.yaxis.set_minor_locator(AutoMinorLocator(5))
-        current_ax.xaxis.set_minor_locator(AutoMinorLocator(5))
-        current_ax.set_ylim(0, 100)
-        current_ax.set_title(title, fontsize=8)
+        ax[i].tick_params(axis='x', labelsize=6)
+        ax[i].tick_params(which='both', width=1)
+        ax[i].tick_params(which='major', length=6)
+        ax[i].yaxis.set_minor_locator(AutoMinorLocator(5))
+        ax[i].xaxis.set_minor_locator(AutoMinorLocator(5))
+        ax[i].set_ylim(0, 100)
+        ax[i].set_title(title, fontsize=8)
 
     os.makedirs(path, exist_ok=True)
     fig.savefig(versionning(path, f"lr-task{task}-epoch{epoch}" if epoch is not None else "lr",
@@ -309,7 +323,7 @@ def visualize_grad(parameters, grad, path, task=None, epoch=None):
     # figure with as many subplots as lambdas
     fig, ax = plt.subplots(len(params), 1, figsize=(5, 5*len(params)))
     for i, grad in enumerate(params):
-        current_ax = ax[i] if len(params) > 1 else ax
+
         title = 'Gradient ' + \
             f"[{'x'.join([str(s) for s in grad.shape][::-1])}]"
 
@@ -320,28 +334,28 @@ def visualize_grad(parameters, grad, path, task=None, epoch=None):
         x = torch.linspace(-grad.max(), grad.max(), bins).detach().cpu()
         upper = grad.max().item()
 
-        current_ax.bar(x,
-                       hist * 100 / length,
-                       width=2*upper/bins,
-                       zorder=2,
-                       color='purple')
+        ax[i].bar(x,
+                  hist * 100 / length,
+                  width=2*upper/bins,
+                  zorder=2,
+                  color='purple')
 
         # write on the graph the maximum value and the minimum value
-        current_ax.text(0.5, 0.95, f"Max: {grad.max():.6f}",
-                        fontsize=6, ha='center', va='center', transform=current_ax.transAxes)
-        current_ax.text(0.5, 0.9, f"Min: {grad.min():.6f}",
-                        fontsize=6, ha='center', va='center', transform=current_ax.transAxes)
+        ax[i].text(0.5, 0.95, f"Max: {grad.max():.6f}",
+                   fontsize=6, ha='center', va='center', transform=ax[i].transAxes)
+        ax[i].text(0.5, 0.9, f"Min: {grad.min():.6f}",
+                   fontsize=6, ha='center', va='center', transform=ax[i].transAxes)
 
-        current_ax.set_xlabel(r'Gradient [-]')
-        current_ax.set_ylabel(r'Histogram of gradient [%]')
-        current_ax.yaxis.set_minor_locator(AutoMinorLocator(5))
-        current_ax.xaxis.set_minor_locator(AutoMinorLocator(5))
+        ax[i].set_xlabel(r'Gradient [-]')
+        ax[i].set_ylabel(r'Histogram of gradient [%]')
+        ax[i].yaxis.set_minor_locator(AutoMinorLocator(5))
+        ax[i].xaxis.set_minor_locator(AutoMinorLocator(5))
         # font of xaxis label is 6
-        current_ax.tick_params(axis='x', labelsize=6)
-        current_ax.tick_params(which='both', width=1)
-        current_ax.tick_params(which='major', length=6)
-        current_ax.set_ylim(0, 100)
-        current_ax.set_title(title, fontsize=8)
+        ax[i].tick_params(axis='x', labelsize=6)
+        ax[i].tick_params(which='both', width=1)
+        ax[i].tick_params(which='major', length=6)
+        ax[i].set_ylim(0, 100)
+        ax[i].set_title(title, fontsize=8)
 
     os.makedirs(path, exist_ok=True)
     fig.savefig(versionning(path, f"grad-task{task}-epoch{epoch}" if epoch is not None else "grad",
@@ -371,7 +385,7 @@ def visualize_lambda(parameters, lambda_, path, threshold=10, task=None, epoch=N
     # figure with as many subplots as lambdas
     fig, ax = plt.subplots(len(params), 1, figsize=(5, 5*len(params)))
     for i, lbda in enumerate(params):
-        current_ax = ax[i] if len(params) > 1 else ax
+
         title = r"$\lambda$" + \
             f"[{'x'.join([str(s) for s in lbda.shape][::-1])}]"
 
@@ -386,35 +400,35 @@ def visualize_lambda(parameters, lambda_, path, threshold=10, task=None, epoch=N
 
         length = torch.prod(torch.tensor(lbda.shape)).item()
         # plot the histogram
-        current_ax.bar(torch.linspace(-threshold, threshold, bins).detach().cpu(),
-                       hist * 100 / length,
-                       width=2*threshold/bins,
-                       zorder=2)
-        current_ax.set_xlabel('$\lambda$ [-]')
-        current_ax.set_ylabel('Histogram of $\lambda$ [%]')
-        current_ax.xaxis.set_minor_locator(AutoMinorLocator(5))
-        current_ax.tick_params(which='both', width=1)
-        current_ax.tick_params(which='major', length=6)
-        current_ax.set_title(title, fontsize=8)
-        current_ax.set_ylim(0, 50)
+        ax[i].bar(torch.linspace(-threshold, threshold, bins).detach().cpu(),
+                  hist * 100 / length,
+                  width=2*threshold/bins,
+                  zorder=2)
+        ax[i].set_xlabel('$\lambda$ [-]')
+        ax[i].set_ylabel('Histogram of $\lambda$ [%]')
+        ax[i].xaxis.set_minor_locator(AutoMinorLocator(5))
+        ax[i].tick_params(which='both', width=1)
+        ax[i].tick_params(which='major', length=6)
+        ax[i].set_title(title, fontsize=8)
+        ax[i].set_ylim(0, 50)
 
         textsize = 6
-        transform = current_ax.transAxes
-        # current_ax.text(0.5, 0.95, f"$\lambda$ values above {threshold}: {(lbda > threshold).sum() * 100 / length:.2f}%",
+        transform = ax[i].transAxes
+        # ax[i].text(0.5, 0.95, f"$\lambda$ values above {threshold}: {(lbda > threshold).sum() * 100 / length:.2f}%",
         #            fontsize=textsize, ha='center', va='center', transform=transform)
-        # current_ax.text(0.5, 0.9, f"$\lambda$ values above 2: {((lbda > 2) & (lbda < threshold)).sum() * 100 / length:.2f}%",
+        # ax[i].text(0.5, 0.9, f"$\lambda$ values above 2: {((lbda > 2) & (lbda < threshold)).sum() * 100 / length:.2f}%",
         #            fontsize=textsize, ha='center', va='center', transform=transform)
-        # current_ax.text(0.5, 0.85, f"$\lambda$  values below -2: {((lbda < -2) & (lbda > -threshold)).sum() * 100 / length:.2f}%",
+        # ax[i].text(0.5, 0.85, f"$\lambda$  values below -2: {((lbda < -2) & (lbda > -threshold)).sum() * 100 / length:.2f}%",
         #            fontsize=textsize, ha='center', va='center', transform=transform)
-        # current_ax.text(0.5, 0.8, f"$\lambda$ values below -{threshold}: {(lbda < -threshold).sum() * 100 / length:.2f}%",
+        # ax[i].text(0.5, 0.8, f"$\lambda$ values below -{threshold}: {(lbda < -threshold).sum() * 100 / length:.2f}%",
         #            fontsize=textsize, ha='center', va='center', transform=transform)
-        # current_ax.text(0.5, 0.75, f"$\lambda$ values between -2 and 2: {((lbda < 2) & (lbda > -2)).sum() * 100 / length:.2f}%",
+        # ax[i].text(0.5, 0.75, f"$\lambda$ values between -2 and 2: {((lbda < 2) & (lbda > -2)).sum() * 100 / length:.2f}%",
         #            fontsize=textsize, ha='center', va='center', transform=transform)
         # print text with the mean value of lambda and the std
-        current_ax.text(0.5, 0.95, f"Mean (abs): {torch.abs(lbda).mean().item():.6f}",
-                        fontsize=textsize, ha='center', va='center', transform=transform)
-        current_ax.text(0.5, 0.9, f"Std (abs): {torch.abs(lbda).std().item():.6f}",
-                        fontsize=textsize, ha='center', va='center', transform=transform)
+        ax[i].text(0.5, 0.95, f"Mean (abs): {torch.abs(lbda).mean().item():.6f}",
+                   fontsize=textsize, ha='center', va='center', transform=transform)
+        ax[i].text(0.5, 0.9, f"Std (abs): {torch.abs(lbda).std().item():.6f}",
+                   fontsize=textsize, ha='center', va='center', transform=transform)
 
     os.makedirs(path, exist_ok=True)
     fig.savefig(versionning(path, f"lambda-task{task}-epoch{epoch}" if epoch is not None else "lambda",
@@ -439,9 +453,10 @@ def visualize_certainty(predictions, labels, path, task=None, epoch=None, log=Tr
         predictions = torch.exp(predictions)
 
     predicted = torch.argmax(torch.mean(predictions, dim=0), dim=1) == labels
+
     ### ALEATORIC UNCERTAINTY ###
     aleatoric = - torch.sum(torch.mean(predictions *
-                                       torch.log(predictions + 1e-8), dim=0), dim=-1)
+                            torch.log(predictions + 1e-8), dim=0), dim=-1)
     # We want to plot the histogram of aleatoric uncertainty for correct and incorrect predictions
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
     bins = 50

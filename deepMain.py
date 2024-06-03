@@ -38,57 +38,72 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "nn_type": models.DNN,
+            "nn_type": models.BiBayesianNN,
             "nn_parameters": {
                 # NETWORK ###w
-                "layers": [2048, 2048],
+                "layers": [2048],
                 "device": DEVICE,
                 "dropout": False,
-                "init": "uniform",
-                "std": 0.1,
+                "init": "gaussian",
+                "std": 0,
                 "bias": False,
                 "activation_function": Sign.apply,
                 # "activation_function": torch.functional.F.relu,
+                # "activation_function": torch.functional.F.tanh,
                 "output_function": "log_softmax",
-                "normalization": "batchnorm",
-                "eps": 0,
+                "normalization": "instancenorm",
+                "eps": 1e-5,
                 "momentum": 0,
                 "running_stats": False,
                 "affine": False,
-                "gnnum_groups": 1,
+                "n_samples_forward": 10,
+                "n_samples_backward": 10,
             },
             "training_parameters": {
                 'n_epochs': 20,
-                'batch_size': 2048,
+                'batch_size': 128,
                 "test_mcmc_samples": 10,
                 'resize': True,
                 'data_aug_it': 10,
-                'label_trick': label_trick,
+                'label_trick': False,
             },
             "criterion": torch.functional.F.nll_loss,
-            "optimizer": BinaryHomosynapticUncertaintyTest,
+            "reduction": "sum",
+            "optimizer": BHUparallel,
             "optimizer_parameters": {
-                "lr": 4.825,
-                "beta": 0.518,
-                "gamma": 0.819,
-                "update": 1,
-                "num_mcmc_samples": 1,
-                "init_law": "gaussian",
-                "init_param": 0.88,
-                "regularizer": 1
+                "lr": 50,
+                "kl_coeff": 1,
+                "likelihood_coeff": 10,
             },
-            # "optimizer": MetaplasticAdam,
+            # "optimizer": Magnetoionic,
+            # "optimizer_parameters": {
+            #     "lr": 0.1,
+            #     "field": field,
+            # },
+            # "optimizer": BinaryHomosynapticUncertaintyTest,
+            # "optimizer_parameters": {
+            #     "lr": 50,
+            #     "likelihood_coeff": 10,
+            #     "kl_coeff": 1,
+            #     "update": 8,
+            #     "temperature": 1,
+            #     "num_mcmc_samples": 1,
+            #     "init_law": "uniform",
+            #     "init_param": 0,
+            #     "eps": 0
+            # },
+            # # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {
             #     "lr": 0.005,
             #     "metaplasticity": 1.35
             # },
-            "task": "CILCIFAR100",
-            "n_tasks": 2,
-            "n_classes": 50,
+            "task": "PermutedMNIST",
+            "n_tasks": 10,
+            "n_classes": 1,
             "n_subsets": 1,
             "n_repetition": 1,
             "show_train": False,
-        } for label_trick in [False, True]
+        }
     ]
     for index, data in enumerate(networks_data):
         ### FOLDER INITIALIZATION ###
@@ -200,7 +215,6 @@ if __name__ == "__main__":
             title = "tasks-1-10"
             visualize_task_frame(
                 title, accuracies, folder=main_folder, t_start=1, t_end=10)
-        if data['n_tasks'] == 100:
-            title = "tasks-91-100"
+            title = f"tasks-{data['n_tasks']-9}-{data['n_tasks']}"
             visualize_task_frame(
-                title, accuracies, folder=main_folder, t_start=91, t_end=100)
+                title, accuracies, folder=main_folder, t_start=data['n_tasks']-9, t_end=data['n_tasks'])

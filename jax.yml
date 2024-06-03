@@ -1,9 +1,0 @@
-name: jax
-channels:
-  - conda-forge
-  - defaults
-dependencies:
-  - jax
-  - jaxlib
-  - pip:
-      - git+https://github.com/pyro-ppl/numpyro.git@v0.2.4
