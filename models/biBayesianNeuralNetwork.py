@@ -12,7 +12,8 @@ class BiBayesianNN(DNN):
                  layers,
                  n_samples_forward: int = 1,
                  n_samples_backward: int = 1,
-                 tau: float = 1.0,
+                 tau: float = 1,
+                 binarized: bool = False,
                  *args,
                  **kwargs):
         """ NN initialization
@@ -24,6 +25,7 @@ class BiBayesianNN(DNN):
         self.tau = tau
         self.n_samples_forward = n_samples_forward
         self.n_samples_backward = n_samples_backward
+        self.binarized = binarized
         super().__init__(layers, *args, **kwargs)
 
     def _layer_init(self, layers, bias=False):
@@ -41,6 +43,7 @@ class BiBayesianNN(DNN):
                 layers[i],
                 layers[i+1],
                 tau=self.tau,
+                binarized=self.binarized,
                 device=self.device))
             self._batch_norm_init(layers, i)
 
@@ -84,13 +87,17 @@ class BiBayesianNN(DNN):
                 else:
                     x = layer.sample(x, self.n_samples_forward)
             else:
+                # Normalization layers, but input is (n_samples, batch, features)
+                shape = x.shape
+                x = x.reshape([shape[0]*shape[1], shape[2]])
                 x = layer(x)
+                x = x.reshape([shape[0], shape[1], shape[2]])
             if layer is not self.layers[-1] and (i+1) % len(unique_layers) == 0:
                 x = self.activation_function(x)
         if self.output_function == "softmax":
-            x = torch.nn.functional.softmax(x, dim=1)
-        if self.output_function == "log_softmax":
-            x = torch.nn.functional.log_softmax(x, dim=1)
-        if self.output_function == "sigmoid":
-            x = torch.nn.functional.sigmoid(x)
+            x = torch.nn.functional.softmax(x, dim=2)
+        elif self.output_function == "log_softmax":
+            x = torch.nn.functional.log_softmax(x, dim=2)
+        elif self.output_function == "sigmoid":
+            x = torch.nn.functional.sigmoid(x, dim=1)
         return x.mean(0)

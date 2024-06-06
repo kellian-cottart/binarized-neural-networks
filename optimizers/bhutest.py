@@ -79,7 +79,7 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
                 0, init_param).sample(param.shape).to(param.device) if init_param != 0 else torch.zeros_like(param)
         elif init_law == "uniform":
             self.state['lambda'] = torch.distributions.uniform.Uniform(
-                -init_param, init_param).sample(param.shape).to(param.device) if init_param != 0 else torch.zeros_like(param)
+                -init_param/2, init_param/2).sample(param.shape).to(param.device) if init_param != 0 else torch.zeros_like(param)
         else:
             raise ValueError(
                 f"Invalid initialization law: {init_law}. Choose between 'gaussian' and 'uniform'")
@@ -108,103 +108,86 @@ class BinaryHomosynapticUncertaintyTest(torch.optim.Optimizer):
 
         ### INITIALIZE GROUPS ###
         # Groups are the iterable of parameters to optimize or dicts defining parameter groups
-        for i, group in enumerate(self.param_groups):
-            if i != 0:
-                break
-            # Parameters to optimize
-            parameters = [param for param in group['params']
-                          if param.requires_grad]
-            # Parameters of the optimizer
-            temperature = group['temperature']
-            num_mcmc_samples = group['num_mcmc_samples']
-            lr = group['lr']
-            beta = group['beta']
-            gamma = group['gamma']
-            noise = group['noise']
-            quantization = group['quantization']
-            threshold = group['threshold']
-            norm = group['norm']
-            eps = group['eps']
-            likelihood_coeff = group['likelihood_coeff']
-            kl_coeff = group['kl_coeff']
-            # State of the optimizer
-            # lambda represents the intertia with each neuron
-            lambda_ = self.state['lambda']
-            prior = self.state['prior_lambda']
+        group = self.param_groups[0]
 
-            def var(x):
-                """ var of the tanh function"""
-                return 1 - torch.tanh(x)**2
+        # Parameters to optimize
+        parameters = [param for param in group['params']
+                      if param.requires_grad]
+        # Parameters of the optimizer
+        temperature = group['temperature']
+        num_mcmc_samples = group['num_mcmc_samples']
+        lr = group['lr']
+        beta = group['beta']
+        gamma = group['gamma']
+        noise = group['noise']
+        quantization = group['quantization']
+        threshold = group['threshold']
+        norm = group['norm']
+        eps = group['eps']
+        likelihood_coeff = group['likelihood_coeff']
+        kl_coeff = group['kl_coeff']
+        # State of the optimizer
+        # lambda represents the intertia with each neuron
+        lambda_ = self.state['lambda']
+        prior = self.state['prior_lambda']
 
-            if num_mcmc_samples == 0:
-                ### POINT ESTIMATE ###
-                relaxed_w = torch.tanh(lambda_)
+        def var(x):
+            """ var of the tanh function"""
+            return 1 - torch.tanh(x)**2
+
+        if num_mcmc_samples == 0:
+            ### POINT ESTIMATE ###
+            relaxed_w = torch.tanh(lambda_)
+            vector_to_parameters(relaxed_w, parameters)
+            loss = closure()
+            running_loss.append(loss.item())
+            gradient_estimate = parameters_to_vector(
+                torch.autograd.grad(loss, parameters)).detach()
+        else:
+            ### MCMC SAMPLES ###
+            gradient_estimate = torch.zeros_like(lambda_)
+            for _ in range(num_mcmc_samples):
+                ### Gumbel soft-max trick ###
+                # Add eps to avoid log(0)
+                epsilon = torch.distributions.uniform.Uniform(
+                    1e-10, 1).sample(lambda_.shape).to(lambda_.device)
+                # Compute the logistic noise
+                delta = torch.log(epsilon / (1 - epsilon)) / 2
+                # Compute the relaxed weights
+                z = (lambda_ + delta) / temperature
+                relaxed_w = torch.tanh(z)
+                # Update the parameters
                 vector_to_parameters(relaxed_w, parameters)
+                # Compute the loss
                 loss = closure()
                 running_loss.append(loss.item())
-                gradient_estimate = parameters_to_vector(
+                # Compute the gradient at the relaxed weights
+                g = parameters_to_vector(
                     torch.autograd.grad(loss, parameters)).detach()
-            else:
-                ### MCMC SAMPLES ###
-                gradient_estimate = torch.zeros_like(lambda_)
-                for _ in range(num_mcmc_samples):
-                    ### Gumbel soft-max trick ###
-                    # Add eps to avoid log(0)
-                    epsilon = torch.distributions.uniform.Uniform(
-                        1e-10, 1).sample(lambda_.shape).to(lambda_.device)
-                    # Compute the logistic noise
-                    delta = torch.log(epsilon / (1 - epsilon)) / 2
-                    # Compute the relaxed weights
-                    z = (lambda_ + delta) / temperature
-                    relaxed_w = torch.tanh(z)
-                    # Update the parameters
-                    vector_to_parameters(relaxed_w, parameters)
-                    # Compute the loss
-                    loss = closure()
-                    running_loss.append(loss.item())
-                    # Compute the gradient at the relaxed weights
-                    g = parameters_to_vector(
-                        torch.autograd.grad(loss, parameters)).detach()
-                    # Compute the scaling factor
-                    s = var(z)
-                    gradient_estimate.add_(s*g)
-                gradient_estimate.div_(temperature * num_mcmc_samples)
-            self.state["grad"] = gradient_estimate
-            # if norm == True:
-            #     self.state["grad"] = self.state["grad"] / \
-            #         torch.norm(gradient_estimate, p=2)
-            # METAPLASTICITY UPDATE
-            if group['update'] == 1:
-                # Update 1 comes from the original work sheet
-                softening = 2*likelihood_coeff*torch.tanh(torch.abs(lambda_))
-                asymmetry = torch.where(lambda_*self.state["grad"] > 0.0,
-                                        1/(1+gamma*softening),
-                                        1/(1-beta*softening))
-                self.state["lr"] = lr * asymmetry
-                lambda_ = lambda_ - self.state["lr"]*self.state["grad"]
-            elif group['update'] == 6:
-                asymmetry = 1/(kl_coeff*var(lambda_)+2*likelihood_coeff *
-                               gradient_estimate*torch.tanh(lambda_) + eps)
-                self.state["lr"] = lr * asymmetry
-                lambda_ = lambda_ - self.state["lr"]*self.state["grad"]
-            elif group['update'] == 7:
-                self.state["lr"] = lr / (var(lambda_)+eps)
-                lambda_ = lambda_ - self.state["lr"]*self.state["grad"]
-            elif group['update'] == 8:
-                asymmetry = 1/(kl_coeff*var(lambda_)+likelihood_coeff *
-                               (2*gradient_estimate*torch.tanh(lambda_) + torch.abs(lambda_)))
-                self.state["lr"] = lr * asymmetry
-                lambda_ = lambda_ - self.state["lr"]*self.state["grad"]
-            # if noise != 0:
-            #     # create a normal distribution with mean lambda and std noise
-            #     lambda_ += torch.distributions.normal.Normal(
-            #         0, noise).sample(lambda_.shape).to(lambda_.device)
-            # if quantization is not None:
-            #     # we want "quantization" states between each integer. For example, if quantization = 2, we want 0, 0.5, 1, 1.5, 2
-            #     lambda_ = torch.round(
-            #         lambda_ * quantization) / quantization
-            # if threshold is not None:
-            #     # we want to clamp the values of lambda between -threshold and threshold
-            #     lambda_ = torch.clamp(lambda_, -threshold, threshold)
-            self.state['lambda'] = lambda_
+                # Compute the scaling factor
+                s = var(z)
+                gradient_estimate.add_(s*g)
+            gradient_estimate.div_(temperature * num_mcmc_samples)
+        self.state["grad"] = gradient_estimate
+        # if norm == True:
+        #     self.state["grad"] = self.state["grad"] / \
+        #         torch.norm(gradient_estimate, p=2)
+        # METAPLASTICITY UPDATE
+        hessian = 2*torch.abs(gradient_estimate) + 1/lr
+        asymmetry = 1/(kl_coeff*(1-torch.tanh(lambda_)**2)+likelihood_coeff *
+                       (2*gradient_estimate*torch.tanh(lambda_) + hessian))
+        self.state["lr"] = asymmetry
+        lambda_ = lambda_ - self.state["lr"]*self.state["grad"]
+        # if noise != 0:
+        #     # create a normal distribution with mean lambda and std noise
+        #     lambda_ += torch.distributions.normal.Normal(
+        #         0, noise).sample(lambda_.shape).to(lambda_.device)
+        # if quantization is not None:
+        #     # we want "quantization" states between each integer. For example, if quantization = 2, we want 0, 0.5, 1, 1.5, 2
+        #     lambda_ = torch.round(
+        #         lambda_ * quantization) / quantization
+        # if threshold is not None:
+        #     # we want to clamp the values of lambda between -threshold and threshold
+        #     lambda_ = torch.clamp(lambda_, -threshold, threshold)
+        self.state['lambda'] = lambda_
         return torch.mean(torch.tensor(running_loss))

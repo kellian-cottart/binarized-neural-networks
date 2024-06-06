@@ -1,4 +1,5 @@
 import torch
+from typing import Union
 
 
 class BHUparallel(torch.optim.Optimizer):
@@ -39,11 +40,12 @@ class BHUparallel(torch.optim.Optimizer):
                 likelihood_coeff = group['likelihood_coeff']
                 kl_coeff = group['kl_coeff']
                 lambda_ = p.data
-                # Update rule for lambda with Hessian estimated by abs(lambda_)
-                hessian = torch.abs(lambda_)
+                gradient_estimate = p.grad.data
+                # Update rule for lambda with Hessian correction
+                hessian = 2*torch.abs(gradient_estimate) + 1/lr
                 asymmetry = 1/(kl_coeff*(1-torch.tanh(lambda_)**2)+likelihood_coeff *
-                               (2*p.grad.data*torch.tanh(lambda_) + hessian))
-                lr_array.append(lr * asymmetry)
-                p.data = lambda_ - lr * asymmetry * p.grad.data
+                               (2*gradient_estimate*torch.tanh(lambda_) + hessian))
+                lr_array.append(asymmetry)
+                p.data = lambda_ - asymmetry * gradient_estimate
         self.state['lr'] = lr_array
         return loss

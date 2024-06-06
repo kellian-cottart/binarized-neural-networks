@@ -31,7 +31,7 @@ class BayesTrainer(GPUTrainer):
             # Closure for the optimizer sending the loss to the optimizer
             self.optimizer.zero_grad()
             forward = self.model.forward(inputs).to(self.device)
-            if self.label_trick is not None and self.label_trick:
+            if self.label_trick is not None and self.label_trick == True:
                 unique_labels, trick_targets = self.label_trick(targets)
                 loss = self.criterion(
                     forward[:, unique_labels].to(self.device),
@@ -39,8 +39,10 @@ class BayesTrainer(GPUTrainer):
                     reduction='sum'
                 )
             else:
-                loss = self.criterion(forward, targets.to(
-                    self.device, reduction='sum'))
+                loss = self.criterion(
+                    forward,
+                    targets.to(self.device),
+                    reduction='sum')
             return loss
         ### LOSS ###
         self.loss = self.optimizer.step(closure=closure)
