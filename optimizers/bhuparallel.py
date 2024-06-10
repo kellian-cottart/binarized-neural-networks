@@ -6,14 +6,28 @@ class BHUparallel(torch.optim.Optimizer):
 
     def __init__(self,
                  params,
-                 lr=1e-3,
+                 lr_asymmetry: float = 1,
+                 lr_max: float = 30,
                  likelihood_coeff: float = 1.0,
-                 kl_coeff: float = 1.0):
-        if not 0.0 <= lr:
-            raise ValueError("Invalid learning rate: {}".format(lr))
-        defaults = dict(lr=lr,
+                 kl_coeff: float = 1.0,
+                 normalize_gradients: bool = False,):
+        """ Binary Bayesian optimizer for continual learning
+
+        Args:
+            lr_asymmetry: Inversely proportional to the asymmetry of the network (stronger means less assymetry)
+            lr_max: Maximum learning rate that the system can have
+            likelihood_coeff: Coefficient for the likelihood term
+            kl_coeff: Coefficient for the KL divergence term
+
+        """
+
+        if not 0.0 <= lr_asymmetry:
+            raise ValueError("Invalid learning rate: {}".format(lr_asymmetry))
+        defaults = dict(lr_asymmetry=lr_asymmetry,
+                        lr_max=lr_max,
                         likelihood_coeff=likelihood_coeff,
-                        kl_coeff=kl_coeff)
+                        kl_coeff=kl_coeff,
+                        normalize_gradients=normalize_gradients)
         super(BHUparallel, self).__init__(params, defaults)
 
     def step(self, closure=None):
@@ -36,16 +50,26 @@ class BHUparallel(torch.optim.Optimizer):
                 if len(state) == 0:
                     state['step'] = 0
                 state['step'] += 1
-                lr = group['lr']
+                lr_asymmetry = group['lr_asymmetry']
+                lr_max = group['lr_max']
                 likelihood_coeff = group['likelihood_coeff']
                 kl_coeff = group['kl_coeff']
+                normalize_gradients = group['normalize_gradients']
                 lambda_ = p.data
-                gradient_estimate = p.grad.data
+                # Normalize gradients if specified
+                if normalize_gradients:
+                    p.grad.data = p.grad.data / \
+                        (torch.norm(p.grad.data, p=2) + 1e-7)
+                    # clip gradients
+                    p.grad.data = torch.clamp(p.grad.data, -0.1, 0.1)
                 # Update rule for lambda with Hessian correction
-                hessian = 2*torch.abs(gradient_estimate) + 1/lr
-                asymmetry = 1/(kl_coeff*(1-torch.tanh(lambda_)**2)+likelihood_coeff *
-                               (2*gradient_estimate*torch.tanh(lambda_) + hessian))
+                hessian_lower_bound = 2 * \
+                    torch.abs(p.grad.data) + lr_asymmetry / \
+                    (lr_max*likelihood_coeff)
+                asymmetry = lr_asymmetry * 1/(kl_coeff*(1-torch.tanh(lambda_)**2)+likelihood_coeff *
+                                              (2*p.grad.data*torch.tanh(lambda_) +
+                                               hessian_lower_bound))
                 lr_array.append(asymmetry)
-                p.data = lambda_ - asymmetry * gradient_estimate
+                p.data = lambda_ - asymmetry * p.grad.data
         self.state['lr'] = lr_array
         return loss

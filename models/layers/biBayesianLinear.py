@@ -55,7 +55,7 @@ class BiBayesianLinear(torch.nn.Module):
         # Compute the new relaxed weights values
         if self.binarized:
             relaxed_weights = SignWeights.apply(
-                (self.lambda_ + delta)/self.tau)
+                (self.lambda_ + delta))
         else:
             relaxed_weights = torch.tanh(
                 (self.lambda_ + delta)/self.tau)

@@ -9,7 +9,7 @@ import time
 
 
 class GPUTensorDataset(torch.utils.data.Dataset):
-    """ TensorDataset which has a data and a targets tensor and allows batching
+    """ TensorDataset which has a data and a targets tensor and allows to_dataset
 
     Args:
         data (torch.tensor): Data tensor
@@ -30,9 +30,15 @@ class GPUTensorDataset(torch.utils.data.Dataset):
         """ Return the number of samples """
         return len(self.data)
 
+    def shuffle(self):
+        """ Shuffle the data and targets tensors """
+        perm = torch.randperm(len(self.data))
+        self.data = self.data[perm]
+        self.targets = self.targets[perm]
+
 
 class GPUDataLoader():
-    """ DataLoader which has a data and a targets tensor and allows batching
+    """ DataLoader which has a data and a targets tensor and allows to_dataset
 
     Args:
         dataset (GPUTensorDataset): Dataset to load
@@ -61,18 +67,17 @@ class GPUDataLoader():
         return self
 
     def __next__(self):
-        """ Return a (data, target) pair """
+        """ Return the next batch """
         if self.index >= len(self.dataset):
             raise StopIteration
         if self.index + self.batch_size > len(self.dataset):
-            if self.drop_last:
-                raise StopIteration
-            else:
+            if self.drop_last == False:
                 indexes = self.perm[self.index:]
+            raise StopIteration
         else:
             indexes = self.perm[self.index:self.index+self.batch_size]
         self.index += self.batch_size
-        data, targets = self.dataset[indexes]
+        data, targets = self.dataset.data[indexes], self.dataset.targets[indexes]
         if self.transform is not None:
             data = self.transform(data)
         return data, targets
@@ -80,95 +85,6 @@ class GPUDataLoader():
     def __len__(self):
         """ Return the number of batches """
         return len(self.dataset)//self.batch_size
-
-    def permute_dataset(self, permutations):
-        """ Yield DataLoaders with permuted pixels of the current dataset
-
-        Args:
-            permutations (list): List of permutations
-
-        Returns:
-            list: List of DataLoader with permuted pixels
-        """
-        # For each permutation, permute the pixels and yield the DataLoader
-        start = time.time()
-        for perm in permutations:
-            # Create a new GPUDataset
-            dataset = GPUTensorDataset(
-                self.dataset.data.view(
-                    self.dataset.data.shape[0], -1)[:, perm].view(self.dataset.data.shape), self.dataset.targets, device=self.device)
-            if not self.test:
-                yield GPUDataLoader(dataset,
-                                    self.batch_size,
-                                    self.shuffle,
-                                    self.drop_last,
-                                    self.transform,
-                                    self.device)
-            else:
-                yield GPUDataLoader(dataset,
-                                    dataset.data.size(0),
-                                    self.shuffle,
-                                    False,
-                                    None,
-                                    self.device)
-
-    def class_incremental_dataset(self, permutations):
-        """ Yield DataLoaders with data only from the classes in permutations
-
-        Args:
-            permutations (list): List of permutations of the classes
-        Yields:
-            GPUDataLoader: DataLoader
-        """
-        for perm in permutations:
-            indexes = torch.isin(self.dataset.targets, perm).nonzero(
-                as_tuple=False).squeeze()
-            # Create a new GPUDataset
-            dataset = GPUTensorDataset(
-                self.dataset.data[indexes], self.dataset.targets[indexes], device=self.device)
-            if not self.test:
-                yield GPUDataLoader(dataset,
-                                    self.batch_size,
-                                    self.shuffle,
-                                    self.drop_last,
-                                    self.transform,
-                                    self.device)
-            else:
-                yield GPUDataLoader(dataset,
-                                    dataset.data.size(0),
-                                    self.shuffle,
-                                    False,
-                                    None,
-                                    self.device)
-
-    def stream_dataset(self, n_subsets):
-        """ Yield DataLoaders with data from the dataset split into n_subsets subsets.
-
-        Args:
-            n_subsets (int): Number of subsets
-
-        Yields:
-            GPUDataLoader: DataLoader with data from the dataset split into n_subsets subsets
-
-        """
-        # Split the data into n_subsets with label and data
-        for i in range(n_subsets):
-            dataset = GPUTensorDataset(
-                self.dataset.data[i::n_subsets], self.dataset.targets[i::n_subsets], device=self.device)
-            if not self.test:
-                yield GPUDataLoader(dataset,
-                                    self.batch_size,
-                                    self.shuffle,
-                                    self.drop_last,
-                                    self.transform,
-                                    self.device)
-            else:
-                yield GPUDataLoader(dataset,
-                                    dataset.data.size(0),
-                                    self.shuffle,
-                                    False,
-                                    None,
-                                    self.device)
 
 
 class GPULoading:
@@ -185,7 +101,7 @@ class GPULoading:
         self.device = device
         self.as_dataset = as_dataset
 
-    def batching(self, train_x, train_y, test_x, test_y, batch_size, data_augmentation=False):
+    def to_dataset(self, train_x, train_y, test_x, test_y):
         """ Create a DataLoader to load the data in batches
 
         Args:
@@ -200,34 +116,11 @@ class GPULoading:
             DataLoader, DataLoader: Training and testing DataLoader
 
         """
-        # Data augmentation
-        transform = v2.Compose([
-            v2.RandomHorizontalFlip(),
-            v2.Normalize((0,), (1,))
-        ])
-
-        # Converting the data to a GPU TensorDataset (allows to load everything in the GPU memory at once)
         train_dataset = GPUTensorDataset(
             train_x, torch.Tensor(train_y).type(
-                torch.LongTensor), device=self.device if not data_augmentation else "cpu")
+                torch.LongTensor), device=self.device)
         test_dataset = GPUTensorDataset(test_x, torch.Tensor(test_y).type(
-            torch.LongTensor), device=self.device if not data_augmentation else "cpu")
-
-        max_batch_size = test_x.size(
-            0) if train_dataset.data.device != "cpu" else batch_size
-
-        if not self.as_dataset:
-            # create a DataLoader to load the data in batches
-            train_dataset = GPUDataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True, transform=transform if data_augmentation else None, device=self.device)
-            test_dataset = GPUDataLoader(
-                test_dataset, batch_size=max_batch_size, shuffle=False, device=self.device, test=True)
-        else:
-            # create a DataLoader to load the data in batches
-            train_dataset = torch.utils.data.DataLoader(
-                train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
-            test_dataset = torch.utils.data.DataLoader(
-                test_dataset, batch_size=max_batch_size, shuffle=False)
+            torch.LongTensor), device=self.device)
         return train_dataset, test_dataset
 
     def normalization(self, train_x, test_x):
@@ -281,7 +174,7 @@ class GPULoading:
             path_test_y).astype(np.float32)
         # Normalize and pad the data
         train_x, test_x = self.normalization(train_x, test_x)
-        return self.batching(train_x, train_y, test_x, test_y, batch_size)
+        return self.to_dataset(train_x, train_y, test_x, test_y)
 
     def cifar10(self, batch_size, path_databatch, path_testbatch, *args, **kwargs):
         """ Load a local dataset on GPU corresponding to CIFAR10 """
@@ -314,10 +207,10 @@ class GPULoading:
             test_x = torch.load(f"{folder}/cifar10_features_test.pt")
             test_y = torch.load(f"{folder}/cifar10_target_test.pt")
             # Normalize and pad the data
-            return self.batching(train_x, train_y, test_x, test_y, batch_size)
+            return self.to_dataset(train_x, train_y, test_x, test_y)
         # Normalize and pad the data
         train_x, test_x = self.normalization(train_x, test_x)
-        return self.batching(train_x, train_y, test_x, test_y, batch_size, data_augmentation=True)
+        return self.to_dataset(train_x, train_y, test_x, test_y, batch_size, data_augmentation=True)
 
     def cifar100(self, batch_size, path_databatch, path_testbatch, iterations=10, *args, **kwargs):
         """ Load a local dataset on GPU corresponding to CIFAR100 """
@@ -346,13 +239,12 @@ class GPULoading:
             test_y = torch.load(
                 f"{folder}/cifar100_{iterations}_target_test.pt")
             # Normalize and pad the data
-            return self.batching(train_x, train_y, test_x, test_y, batch_size)
+            return self.to_dataset(train_x, train_y, test_x, test_y)
         else:
             # Normalize and pad the data
             train_x, test_x = self.normalization(train_x, test_x)
-            return self.batching(train_x, train_y, test_x, test_y, batch_size, data_augmentation=True)
+            return self.to_dataset(train_x, train_y, test_x, test_y, batch_size, data_augmentation=True)
 
-    @torch.jit.export
     def feature_extraction(self, folder, train_x, train_y, test_x, test_y, task="cifar100", iterations=10):
         # The idea here is to use the resnet18 as feature extractor
         # Then create a new dataset with the extracted features from CIFAR100

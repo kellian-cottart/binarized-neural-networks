@@ -86,34 +86,19 @@ def task_selection(loader, task, batch_size, *args, **kwargs):
 
     """
     ### INIT DATASET ###
-
-    train_loader = []
-    test_loader = []
-    # if "FashionMNIST-MNIST", both datasets are loaded
     if "Fashion" in task:
         train, test = fashion_mnist(
             loader, batch_size, *args, **kwargs)
-        train_loader.append(train)
-        test_loader.append(test)
-    if "MNIST" in task:
+    elif "MNIST" in task:
         train, test = mnist(
             loader, batch_size=batch_size, *args, **kwargs)
-        train_loader.append(train)
-        test_loader.append(test)
-    if "CIFAR100" in task:
+    elif "CIFAR100" in task:
         train, test = cifar100(
             loader, batch_size=batch_size, *args, **kwargs)
-        train_loader.append(train)
-        test_loader.append(test)
     elif "CIFAR10" in task:
         train, test = cifar10(
             loader, batch_size=batch_size, *args, **kwargs)
-        train_loader.append(train)
-        test_loader.append(test)
-    if len(train_loader) == 0:
-        raise ValueError(
-            "No dataset selected, probably due to wrong task name")
 
-    shape = train.dataset[0][0].shape
-    target_size = len(train.dataset.targets.unique())
-    return train_loader, test_loader, shape, target_size
+    shape = train.data[0].shape
+    target_size = len(train.targets.unique())
+    return train, test, shape, target_size

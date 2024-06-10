@@ -31,6 +31,7 @@ class GPUTrainer:
         self.mean_testing_accuracy = []
         self.reduction = reduction
         self.hessian = []
+        self.gradient = []
         # Scheduler addition
         if "scheduler" in kwargs:
             scheduler = kwargs["scheduler"]
@@ -49,24 +50,6 @@ class GPUTrainer:
         self.optimizer = self.optimizer.__class__(
             self.model.parameters(), **optimizer_parameters)
 
-    def label_trick(self, targets):
-        """Perform the label trick
-
-        Args:
-            targets (torch.Tensor): Labels
-
-        Returns:
-            torch.Tensor: Modified labels
-        """
-        ### LABEL TRICK ###
-        # Get the unique labels of the batch and sort them
-        unique_labels = torch.unique(targets).sort()[0]
-        targets_clone = targets.clone()
-        # Assign new labels to the targets
-        for i, label in enumerate(unique_labels):
-            targets_clone[targets == label] = i
-        return unique_labels, targets_clone
-
     def batch_step(self, inputs, targets):
         """Perform the training of a single batch
 
@@ -74,27 +57,17 @@ class GPUTrainer:
             inputs (torch.Tensor): Input data
             targets (torch.Tensor): Labels
         """
-
         ### LOSS ###
+        self.model.train()
         forward = self.model.forward(inputs).to(self.device)
-        if self.label_trick is not None and self.label_trick == True:
-            unique_labels, targets = self.label_trick(targets)
-            self.loss = self.criterion(
-                forward[:, unique_labels].to(self.device),
-                targets.to(self.device),
-                reduction=self.reduction,
-            )
-        else:
-            self.loss = self.criterion(
-                forward,
-                targets.to(self.device),
-                reduction=self.reduction,
-            )
+        self.loss = self.criterion(
+            forward,
+            targets.to(self.device),
+            reduction=self.reduction,
+        )
         ### BACKWARD PASS ###
         self.optimizer.zero_grad()
-        # retain graph is used for the backward pass
-        self.loss.backward(retain_graph=True)
-        # Perform the optimization step
+        self.loss.backward()
         self.optimizer.step()
 
     def epoch_step(self, train_dataset):
@@ -105,28 +78,8 @@ class GPUTrainer:
             test_loader (torch.Tensor, optional): Testing data. Defaults to None.
         """
         ### SEND BATCH ###
-        self.model.train()
         for inputs, targets in train_dataset:
-            # batch_hessians = []
             self.batch_step(inputs.to(self.device), targets.to(self.device))
-            # batch_hessians.append(self.compute_hessian())
-        # # Compute the mean hessian of the batch
-        # self.hessian.append(torch.sum(torch.stack(batch_hessians), dim=0))
-        # # save hessian
-        # os.makedirs('hessian', exist_ok=True)
-        # torch.save(self.hessian, 'hessian/hessian.pt')
-        # torch.save(self.model.layers[-2].lambda_, 'hessian/lambda.pt')
-        # self.plot_hessian()
-
-    def plot_hessian(self):
-        import matplotlib.pyplot as plt
-        # Plot y = hessian and x = lambda
-        x = self.model.layers[-2].lambda_.reshape(-1).detach().cpu().numpy()
-        y = self.hessian[-1].reshape(-1).detach().cpu().numpy()
-        plt.scatter(x, y, c='b', marker='o')
-        plt.xlabel('$\lambda$ [-]')
-        plt.ylabel(r'\frac{\partial^2\mathcal{L}}{\partial\lambda^2} [-]')
-        plt.show()
 
     def compute_hessian(self):
         # only for last layer

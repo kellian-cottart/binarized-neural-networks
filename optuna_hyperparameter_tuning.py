@@ -45,11 +45,11 @@ def train_iteration(trial):
     """
     ### PARAMETERS ###
     lr = trial.suggest_float("lr", 0.5, 100, step=0.05)
+    lr_max = trial.suggest_float("lr_max", 0.5, 100, step=0.05)
     likelihood_coeff = trial.suggest_float(
         "likelihood_coeff", 0.5, 100, step=0.05)
     kl_coeff = trial.suggest_float(
         "kl_coeff", 0.5, 100, step=0.05)
-    eps = trial.suggest_float("eps", 1e-3, 10, step=1e-3)
 
     seed = trial.suggest_categorical("seed", [1000])
     epochs = trial.suggest_categorical("epochs", [20])
@@ -62,7 +62,6 @@ def train_iteration(trial):
     task = trial.suggest_categorical("task", [parser.parse_args().task])
     n_tasks = trial.suggest_categorical("n_tasks", [10])
     n_classes = trial.suggest_categorical("n_classes", [1])
-    n_subsets = trial.suggest_categorical("n_subsets", [1])
     layer = trial.suggest_categorical("layer", [1024])
     normalization = trial.suggest_categorical(
         "normalization", [parser.parse_args().norm])
@@ -75,49 +74,46 @@ def train_iteration(trial):
 
     ### DATA TO DISPLAY IN OPTUNA ###
     data = {
-        "nn_type": models.BiNN,
+        "nn_type": models.BiBayesianNN,
         "nn_parameters": {
             "layers": [layer],
             "device": DEVICE,
             "dropout": False,
             "normalization": normalization,
+            "init": init_law,
+            "std": init_param,
+            "n_samples_forward": 1,
+            "n_samples_backward": num_mcmc_samples,
+            "tau": temperature,
+            "binarized": False,
+            "activation_function": torch.functional.F.relu,
+            "output_function": "log_softmax",
+            "eps": 1e-5,
             "momentum": 0,
-            "eps": 0,
-            "init": "uniform",
-            "std": 0.01,
-            "bias": False,
             "running_stats": False,
             "affine": False,
-            "gnnum_groups": 1,
-            "activation_function": Sign.apply,
-            "output_function": "log_softmax",
+            "bias": False,
         },
         "criterion": torch.nn.functional.nll_loss,
+        "reduction": "sum",
         "training_parameters": {
             'n_epochs': epochs,
             'batch_size': batch_size,
-            "test_mcmc_samples": 1,
             'resize': True,
             'data_aug_it': 10,
+            "continual": True,
         },
-        "optimizer": BinaryHomosynapticUncertaintyTest,
+        "optimizer": BHUparallel,
         "optimizer_parameters": {
             "lr": lr,
-            "likelihood_coeff": likelihood_coeff,
+            "lr_max": lr_max,
             "kl_coeff": kl_coeff,
-            # "beta": beta,
-            # "gamma": gamma,
-            "num_mcmc_samples": num_mcmc_samples,
-            "init_law": init_law,
-            "init_param": init_param,
-            "temperature": temperature,
-            "update": 6,
-            "eps": eps,
+            "likelihood_coeff": likelihood_coeff,
+            "normalize_gradients": False,
         },
         "task": task,
         "n_tasks": n_tasks,
         "n_classes": n_classes,
-        "n_subsets": n_subsets,
     }
 
     ### LOADER ###

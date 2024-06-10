@@ -4,10 +4,10 @@ import datetime
 import torch
 from matplotlib.ticker import AutoMinorLocator
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
-from optimizers.bhutest import BinaryHomosynapticUncertaintyTest
+from optimizers import *
 
 
-def graphs(data, main_folder, net_trainer, i, epoch, predictions, labels, modulo=10):
+def graphs(main_folder, net_trainer, i, epoch, predictions=None, labels=None, modulo=10):
     if (epoch % modulo == modulo-1 or epoch == 0):
         # print predicted and associated certainty
         # visualize_certainty(
@@ -37,7 +37,7 @@ def graphs(data, main_folder, net_trainer, i, epoch, predictions, labels, modulo
             task=i+1,
             epoch=epoch+1,
         )
-        if net_trainer.optimizer.state['lr'] is not None:
+        if net_trainer.optimizer.state['lr'] != {}:
             visualize_lr(
                 parameters=params,
                 lr=net_trainer.optimizer.state['lr'],
