@@ -1,4 +1,6 @@
 saved*/
+*.pt
+*.pth
 datasets
 wandb
 utils/test
@@ -7,7 +9,6 @@ nohup.*
 __pycache__/
 *.py[cod]
 *$py.class
-
 # C extensions
 *.so
 *.txt

@@ -70,10 +70,10 @@ if __name__ == "__main__":
             "reduction": "sum",
             "optimizer": BHUparallel,
             "optimizer_parameters": {
-                "lr_asymmetry": 25,
-                "lr_max": 25,
+                "lr_asymmetry": 50,
+                "lr_max": 50,
                 "kl_coeff": 1,
-                "likelihood_coeff": 10,
+                "likelihood_coeff": 1,
                 "normalize_gradients": False,
             },
             # "optimizer": torch.optim.Adam,
