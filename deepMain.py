@@ -13,22 +13,20 @@ SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
-PADDING = 0
+PADDING = 2
 GRAPHS = True
 MODULO = 5
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
 DATASETS_PATH = "datasets"
-ALL_GPU = True
 HESSIAN_COMP = False
 
 if __name__ == "__main__":
     ### SEED ###
     torch.manual_seed(SEED)
-    if torch.cuda.is_available() and ALL_GPU:
-        torch.cuda.manual_seed(SEED)
-        torch.set_default_device(DEVICE)
-        torch.set_default_dtype(torch.float32)
+    torch.cuda.manual_seed(SEED)
+    torch.set_default_device(DEVICE)
+    torch.set_default_dtype(torch.float32)
 
     ### INIT DATALOADER ###
     loader = GPULoading(padding=PADDING,
@@ -41,16 +39,16 @@ if __name__ == "__main__":
             "nn_type": models.BiBayesianNN,
             "nn_parameters": {
                 # NETWORK ###w
-                "layers": [1024],
+                "layers": [512],
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
-                "std": 0.01,
-                "n_samples_forward": 10,
+                "std": 0.1,
+                "n_samples_forward": 5,
                 "n_samples_backward": 5,
                 "tau": 1,
                 "binarized": False,
-                "activation_function": Sign.apply,
+                "activation_function": torch.functional.F.relu,
                 "output_function": "log_softmax",
                 "normalization": "instancenorm",
                 "eps": 1e-5,
@@ -64,16 +62,15 @@ if __name__ == "__main__":
                 'batch_size': 128,
                 'resize': True,
                 'data_aug_it': 10,
-                "continual": True,
+                "continual": False,
             },
             "criterion": torch.functional.F.nll_loss,
             "reduction": "sum",
             "optimizer": BHUparallel,
             "optimizer_parameters": {
-                "lr_asymmetry": 50,
-                "lr_max": 50,
-                "kl_coeff": 1,
-                "likelihood_coeff": 1,
+                "lr_max": 100,
+                "likelihood_coeff": 0,
+                "kl_coeff": 0,
                 "normalize_gradients": False,
             },
             # "optimizer": torch.optim.Adam,
@@ -142,10 +139,10 @@ if __name__ == "__main__":
                 net_trainer = trainer.GPUTrainer(batch_size=batch_size,
                                                  model=model, **data, device=DEVICE)
             print(net_trainer.model)
-            if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
-                batch_params = []
-                for i in range(data["n_tasks"]):
-                    batch_params.append(net_trainer.model.save_bn_states())
+            # if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
+            #     batch_params = []
+            #     for i in range(data["n_tasks"]):
+            #         batch_params.append(net_trainer.model.save_bn_states())
             for k in range(data["n_repetition"]):
                 ### TASK SELECTION ###
                 # Setting the task iterator: The idea is that we yield datasets corresponding to the framework we want to use
@@ -193,8 +190,8 @@ if __name__ == "__main__":
                         #                versionning('hessian', 'hessian', ".pt"))
                         #     torch.save(net_trainer.model.layers[-2].lambda_,
                         #                versionning('hessian', 'lambda', ".pt"))
-                        if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
-                            batch_params[i] = net_trainer.model.save_bn_states()
+                        # if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
+                        #     batch_params[i] = net_trainer.model.save_bn_states()
                         ### TESTING ###
                         # Depending on the task, we also need to use the framework on the test set and show training or not
                         name_loader, predictions, labels = iterable_evaluation_selector(
@@ -202,14 +199,18 @@ if __name__ == "__main__":
                             test_dataset=test_dataset,
                             net_trainer=net_trainer,
                             permutations=permutations,
-                            batch_params=batch_params if data["optimizer"] in [
-                                MetaplasticAdam] and net_trainer.model.affine else None,
+                            # batch_params=batch_params if data["optimizer"] in [
+                            #     MetaplasticAdam] and net_trainer.model.affine else None,
                             train_dataset=train_dataset)
-                        net_trainer.pbar_update(
-                            pbar, epoch, data["training_parameters"]["n_epochs"], name_loader=name_loader)
-                        if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
-                            net_trainer.model.load_bn_states(batch_params[i])
-                            ### EXPORT VISUALIZATION OF PARAMETERS ###
+
+                        mean_accuracy = net_trainer.mean_testing_accuracy[-1]
+                        print(
+                            f"Task {i+1} - Epoch {epoch+1}/{data['training_parameters']['n_epochs']} \nMean accuracy: {mean_accuracy.item()*100:.2f}%\n" + " - ".join(
+                                [f"Task {j+1}: {net_trainer.testing_accuracy[-1][j].item()*100:.2f}%" for j in range(len(net_trainer.testing_accuracy[-1]))]))
+
+                        # if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
+                        #     net_trainer.model.load_bn_states(batch_params[i])
+                        ### EXPORT VISUALIZATION OF PARAMETERS ###
                         if GRAPHS:
                             graphs(main_folder, net_trainer,
                                    i, epoch, predictions, labels, MODULO)

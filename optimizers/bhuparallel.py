@@ -6,7 +6,6 @@ class BHUparallel(torch.optim.Optimizer):
 
     def __init__(self,
                  params,
-                 lr_asymmetry: float = 1,
                  lr_max: float = 30,
                  likelihood_coeff: float = 1.0,
                  kl_coeff: float = 1.0,
@@ -21,10 +20,7 @@ class BHUparallel(torch.optim.Optimizer):
 
         """
 
-        if not 0.0 <= lr_asymmetry:
-            raise ValueError("Invalid learning rate: {}".format(lr_asymmetry))
-        defaults = dict(lr_asymmetry=lr_asymmetry,
-                        lr_max=lr_max,
+        defaults = dict(lr_max=lr_max,
                         likelihood_coeff=likelihood_coeff,
                         kl_coeff=kl_coeff,
                         normalize_gradients=normalize_gradients)
@@ -50,7 +46,6 @@ class BHUparallel(torch.optim.Optimizer):
                 if len(state) == 0:
                     state['step'] = 0
                 state['step'] += 1
-                lr_asymmetry = group['lr_asymmetry']
                 lr_max = group['lr_max']
                 likelihood_coeff = group['likelihood_coeff']
                 kl_coeff = group['kl_coeff']
@@ -63,12 +58,7 @@ class BHUparallel(torch.optim.Optimizer):
                     # clip gradients
                     p.grad.data = torch.clamp(p.grad.data, -0.1, 0.1)
                 # Update rule for lambda with Hessian correction
-                hessian_lower_bound = 2 * \
-                    torch.abs(p.grad.data) + lr_asymmetry / \
-                    (lr_max*likelihood_coeff)
-                asymmetry = lr_asymmetry * 1/(kl_coeff*(1-torch.tanh(lambda_)**2)+likelihood_coeff *
-                                              (2*p.grad.data*torch.tanh(lambda_) +
-                                               hessian_lower_bound))
+                asymmetry = 1/(kl_coeff*(1-torch.tanh(lambda_)**2) + likelihood_coeff*(2*p.grad.data*torch.tanh(lambda_) + 2 * torch.abs(p.grad.data)) + 1 / lr_max)
                 lr_array.append(asymmetry)
                 p.data = lambda_ - asymmetry * p.grad.data
         self.state['lr'] = lr_array

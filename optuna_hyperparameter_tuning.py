@@ -8,7 +8,7 @@ import optuna
 import json
 from models.layers.activation import Sign
 import argparse
-
+from utils.iterable import *
 
 ### ARGUMENTS ###
 parser = argparse.ArgumentParser(description="Gridsearch for the BiNN")
@@ -24,6 +24,13 @@ parser.add_argument(
     "--task", type=str, default="PermutedMNIST", help="Task to perform (FrameworkDataset). Ex: PermutedMNIST, StreamFashion, CILCIFAR100")
 parser.add_argument(
     "--norm", type=str, default="batchnorm", help="Normalization to use (batchnorm, layernorm, groupnorm)")
+parser.add_argument(
+    "--layers", type=str, default="512", help="Hidden layers of the network. Ex: 512, 1024-1024")
+parser.add_argument(
+    "--activation", type=str, default="relu", help="Activation function to use. Ex: relu, sign")
+parser.add_argument(
+    "--n_tasks", type=int, default=10, help="Number of tasks to perform")
+
 
 ### GENERAL CONFIGURATION ###
 DEVICE = f"cuda:{parser.parse_args().device}" if parser.parse_args(
@@ -44,49 +51,55 @@ def train_iteration(trial):
         trial (optuna.Trial): Optuna trial
     """
     ### PARAMETERS ###
-    lr = trial.suggest_float("lr", 0.5, 100, step=0.05)
-    lr_max = trial.suggest_float("lr_max", 0.5, 100, step=0.05)
+    lr_max = trial.suggest_float("lr_max", 1, 100, step=0.5)
     likelihood_coeff = trial.suggest_float(
-        "likelihood_coeff", 0.5, 100, step=0.05)
+        "likelihood_coeff", 0, 50, step=0.1)
     kl_coeff = trial.suggest_float(
-        "kl_coeff", 0.5, 100, step=0.05)
+        "kl_coeff", 0, 10, step=0.1)
 
-    seed = trial.suggest_categorical("seed", [1000])
-    epochs = trial.suggest_categorical("epochs", [20])
-    num_mcmc_samples = trial.suggest_categorical("num_mcmc_samples", [1])
+    ### LAMBDA PARAMETERS ###
+    # suggest int
+    n_samples_backward = trial.suggest_int("n_samples_backward", 1, 10, step=1)
     init_law = trial.suggest_categorical("init_law", ["gaussian"])
-    init_param = trial.suggest_categorical("init_param", [0])
-    temperature = trial.suggest_categorical("temperature", [1])
+    init_param = trial.suggest_float("init_param", 0, 0.15, step=0.01)
+    temperature = trial.suggest_float("temperature", 0.5, 1, step=0.1)
+
+    ### TASK PARAMETERS ###
+    seed = trial.suggest_categorical(
+        "seed", [1000])
+    epochs = trial.suggest_categorical(
+        "epochs", [20])
     batch_size = trial.suggest_categorical(
-        "batch_size", [128])
-    task = trial.suggest_categorical("task", [parser.parse_args().task])
-    n_tasks = trial.suggest_categorical("n_tasks", [10])
-    n_classes = trial.suggest_categorical("n_classes", [1])
-    layer = trial.suggest_categorical("layer", [1024])
+        "batch_size", [128, 256, 512])
+    task = trial.suggest_categorical(
+        "task", [parser.parse_args().task])
+    n_tasks = trial.suggest_categorical(
+        "n_tasks", [parser.parse_args().n_tasks])
+    n_classes = trial.suggest_categorical(
+        "n_classes", [1])
     normalization = trial.suggest_categorical(
         "normalization", [parser.parse_args().norm])
 
     torch.manual_seed(seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed(seed)
-        torch.set_default_device(DEVICE)
-        torch.set_default_dtype(torch.float32)
+    torch.cuda.manual_seed(seed)
+    torch.set_default_device(DEVICE)
+    torch.set_default_dtype(torch.float32)
 
     ### DATA TO DISPLAY IN OPTUNA ###
     data = {
         "nn_type": models.BiBayesianNN,
         "nn_parameters": {
-            "layers": [layer],
+            "layers": [int(i) for i in parser.parse_args().layers.split("-")],
             "device": DEVICE,
             "dropout": False,
             "normalization": normalization,
             "init": init_law,
             "std": init_param,
             "n_samples_forward": 1,
-            "n_samples_backward": num_mcmc_samples,
+            "n_samples_backward": n_samples_backward,
             "tau": temperature,
             "binarized": False,
-            "activation_function": torch.functional.F.relu,
+            "activation_function": torch.functional.F.relu if parser.parse_args().activation == "relu" else Sign(),
             "output_function": "log_softmax",
             "eps": 1e-5,
             "momentum": 0,
@@ -105,7 +118,6 @@ def train_iteration(trial):
         },
         "optimizer": BHUparallel,
         "optimizer_parameters": {
-            "lr": lr,
             "lr_max": lr_max,
             "kl_coeff": kl_coeff,
             "likelihood_coeff": likelihood_coeff,
@@ -123,86 +135,67 @@ def train_iteration(trial):
                         as_dataset=False)
     resize = data["training_parameters"]["resize"] if "resize" in data["training_parameters"] else False
     ### LOADING DATASET ###
-    train_loader, test_loader, shape, target_size = task_selection(loader=loader,
-                                                                   task=data["task"],
-                                                                   n_tasks=data["n_tasks"],
-                                                                   batch_size=batch_size,
-                                                                   resize=resize,
-                                                                   iterations=data["training_parameters"]["data_aug_it"])
+    train_dataset, test_dataset, shape, target_size = task_selection(loader=loader,
+                                                                     task=data["task"],
+                                                                     n_tasks=data["n_tasks"],
+                                                                     batch_size=batch_size,
+                                                                     resize=resize,
+                                                                     iterations=data["training_parameters"]["data_aug_it"])
+    ### CREATING PERMUTATIONS ###
+    permutations = None
+    if "Permuted" in data["task"]:
+        permutations = [torch.randperm(torch.prod(torch.tensor(shape)))
+                        for _ in range(data["n_tasks"])]
+    if "CIL" in data["task"]:
+        # Create the permutations for the class incremental scenario: n_classes per task with no overlap
+        random_permutation = torch.randperm(target_size)
+        permutations = [random_permutation[i *
+                                           data["n_classes"]: (i + 1) * data["n_classes"]] for i in range(data["n_tasks"])]
 
     ### NETWORK CONFIGURATION ###
     data['nn_parameters']['layers'].insert(0, torch.prod(torch.tensor(shape)))
     data['nn_parameters']['layers'].append(target_size)
     model = data["nn_type"](**data["nn_parameters"])
-
-    ### TRAINER SELECTION ###
-    if data["optimizer"] in [BinaryHomosynapticUncertaintyTest]:
-        net_trainer = trainer.BayesTrainer(batch_size=batch_size,
-                                           model=model, **data, device=DEVICE)
-    else:
-        net_trainer = trainer.GPUTrainer(batch_size=batch_size,
-                                         model=model, **data, device=DEVICE)
+    net_trainer = trainer.GPUTrainer(
+        batch_size=batch_size, model=model, **data, device=DEVICE)
 
     ### TASK SELECTION ###
     # Setting the task iterator: The idea is that we yield datasets corresponding to the framework we want to use
     # For example, if we want to use the permuted framework, we will yield datasets with permuted images, not dependant on the dataset
-    task_iterator = None
-    if "Permuted" in data["task"]:
-        # Create n_tasks permutations of the dataset
-        permutations = [torch.randperm(torch.prod(torch.tensor(shape)))
-                        for _ in range(data["n_tasks"])]
-        task_iterator = train_loader[0].permute_dataset(permutations)
-    elif "CIL" in data["task"]:
-        # Create n_tasks subsets of n_classes (need to permute the selection of classes for each task)
-        rand = torch.randperm(target_size)
-        # n_tasks subsets of n_classes without overlapping
-        permutations = [rand[i:i+data["n_classes"]]
-                        for i in range(0, target_size, data["n_classes"])]
-        task_iterator = train_loader[0].class_incremental_dataset(
-            permutations=permutations)
-    elif "Stream" in data["task"]:
-        # Split the dataset in n_tasks subsets
-        task_iterator = train_loader[0].stream_dataset(
-            data["n_subsets"])
-    else:
-        task_iterator = train_loader
-    ### TRAINING ###
-    for i, task in enumerate(task_iterator):
-        ### STARTING TRAINING ###
-        for epoch in range(data["training_parameters"]["n_epochs"]):
-            net_trainer.epoch_step(task)
-            ### TEST EVALUATION ###
-            # Depending on the task, we also need to use the framework on the test set and show training or not
-            if "Permuted" in data["task"]:
-                net_trainer.evaluate(test_loader[0].permute_dataset(
-                    permutations))
-            elif "CIL" in data["task"]:
-                net_trainer.evaluate(test_loader[0].class_incremental_dataset(
-                    permutations=permutations))
-            else:
-                net_trainer.evaluate(
-                    test_loader)
-            ### MEAN LOSS ACCURACY FOR CONTINUAL LEARNING ###
-            # The idea is to put every task that has not been trained yet to 0.01, such that the mean is not affected during the optimization process of Optuna
-            # If we didn't do that, tasks where the random initialization gives bad results on non-trained tasks would be pruned
-            if not "Stream" in data["task"]:
-                other_tasks_stack = torch.zeros(
-                    len(net_trainer.testing_accuracy[-1]) - i - 1)
-                other_tasks_stack.fill_(0.01)
-                ongoing_accuracy = torch.cat(
-                    (torch.stack(net_trainer.testing_accuracy[-1][:i+1]), other_tasks_stack)).mean()
-            else:
-                ongoing_accuracy = net_trainer.testing_accuracy[-1][0]
-            print(
-                f"Task {i+1} - Epoch {epoch+1}/{data['training_parameters']['n_epochs']} - Mean accuracy: {ongoing_accuracy.item()*100:.2f}%")
-            trial.report(
-                ongoing_accuracy.item(),
-                step=i*data["training_parameters"]["n_epochs"]+epoch,
-            )
-            if trial.should_prune():
-                raise optuna.TrialPruned()
+    for i in range(data["n_tasks"]):
+        epochs = data["training_parameters"]["n_epochs"][i + k * data["n_tasks"]] if isinstance(
+            data["training_parameters"]["n_epochs"], list) else data["training_parameters"]["n_epochs"]
+        for epoch in range(epochs):
+            num_batches = len(train_dataset) // (
+                batch_size * data["n_tasks"]) if "CIL" in data["task"] or "Stream" in data["task"] else len(train_dataset) // batch_size
+            train_dataset.shuffle()
+            for n_batch in range(num_batches):
+                batch, labels = special_task_selector(
+                    data,
+                    train_dataset,
+                    batch_size=batch_size,
+                    task_id=i,
+                    iteration=n_batch,
+                    max_iterations=epochs*num_batches,
+                    permutations=permutations,
+                    epoch=epoch,
+                    continual=True
+                )
+                net_trainer.batch_step(batch, labels)
+            if "Permuted" not in data["task"] and "CIL" not in data["task"]:
+                _, _, _ = iterable_evaluation_selector(
+                    data=data, test_dataset=test_dataset, net_trainer=net_trainer, permutations=permutations, train_dataset=train_dataset)
+                metrics = net_trainer.testing_accuracy[-1][i].item()
+                trial.report(metrics, epoch + i * epochs)
+                if trial.should_prune():
+                    raise optuna.TrialPruned()
 
-    ### EXPORT PARAMETERS ###
+        if "Permuted" in data["task"] or "CIL" in data["task"]:
+            _, _, _ = iterable_evaluation_selector(
+                data=data, test_dataset=test_dataset, net_trainer=net_trainer, permutations=permutations, train_dataset=train_dataset)
+            metrics = objective_computation(net_trainer, i)
+            print(f"Task {i} - AA: {metrics[0]} - FT: {metrics[1]}")
+
     # Save all parameters of the trial in a json file
     os.makedirs(f"gridsearch/{STUDY}", exist_ok=True)
     with open(os.path.join(f"gridsearch/{STUDY}", f"{trial.number}.json"), "w") as f:
@@ -210,22 +203,48 @@ def train_iteration(trial):
             f"task_{i}": net_trainer.testing_accuracy[-1][i].item() for i in range(len(net_trainer.testing_accuracy[-1]))
         }
         score = {
-            "mean_acc": net_trainer.mean_testing_accuracy[-1].item(),
+            "average": net_trainer.mean_testing_accuracy[-1].item(),
             "params": trial.params,
             "tasks_acc": all_accuracies,
         }
         json.dump(score, f)
-    return net_trainer.mean_testing_accuracy[-1].item()
+    return metrics
+
+
+def objective_computation(net_trainer, i):
+    # 1st: Average Accuracy (AA)
+    average_accuracy = net_trainer.mean_testing_accuracy[-1].item()
+
+    # 2nd: Forward Transfer (FT) (average forgetting of all tasks)
+    forward_transfer = 0
+    max_of_max = []
+    for task in range(i+1):
+        # Max accuracy on dimension 0 for the task "task"
+        max_task_acc = []
+        for epoch in range(len(net_trainer.testing_accuracy)):
+            max_task_acc.append(
+                net_trainer.testing_accuracy[epoch][task].item())
+        forward_transfer += max(max_task_acc) - \
+            net_trainer.testing_accuracy[-1][task].item()
+        max_of_max.append(max(max_task_acc))
+    forward_transfer /= i if i != 0 else 1
+
+    # 3rd: Highest Accuracy (HA)
+    highest_accuracy = max(max_of_max)
+    return average_accuracy, forward_transfer, highest_accuracy
 
 
 if __name__ == "__main__":
-    os.makedirs(STUDY, exist_ok=True)
     ### OPTUNA CONFIGURATION ###
     # Create a new study that "maximize" the accuracy of all tasks
     study = optuna.create_study(
-        direction="maximize",
+        directions=["maximize", "minimize", "maximize"] if "Permuted" in parser.parse_args().task else [
+            "maximize"],
+        sampler=optuna.samplers.TPESampler(),
         pruner=optuna.pruners.HyperbandPruner(
-            min_resource=5, reduction_factor=2),
+            min_resource=5,
+            reduction_factor=3,
+        ),
         storage=f"sqlite:///{parser.parse_args().db}",
         study_name=STUDY,
         load_if_exists=True,
@@ -234,7 +253,7 @@ if __name__ == "__main__":
     study.optimize(train_iteration, n_trials=N_TRIALS)
     # Save the best trial in a json file
     trial = study.best_trial
-    with open(os.path.join(STUDY, "best_trial.json"), "w") as f:
+    with open(os.path.join(f"gridsearch/{STUDY}", "best_trial.json"), "w") as f:
         output = {"number": trial.number,
                   "value": trial.value,
                   "params": trial.params,
