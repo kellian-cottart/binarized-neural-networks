@@ -51,11 +51,12 @@ def train_iteration(trial):
         trial (optuna.Trial): Optuna trial
     """
     ### PARAMETERS ###
+    lr_mult = trial.suggest_float("lr_mult", 1, 20, step=0.1)
     lr_max = trial.suggest_float("lr_max", 1, 100, step=0.5)
     likelihood_coeff = trial.suggest_float(
-        "likelihood_coeff", 0, 50, step=0.1)
+        "likelihood_coeff", 0, 5, step=0.01)
     kl_coeff = trial.suggest_float(
-        "kl_coeff", 0, 10, step=0.1)
+        "kl_coeff", 0, 2, step=0.01)
 
     ### LAMBDA PARAMETERS ###
     # suggest int
@@ -99,7 +100,7 @@ def train_iteration(trial):
             "n_samples_backward": n_samples_backward,
             "tau": temperature,
             "binarized": False,
-            "activation_function": torch.functional.F.relu if parser.parse_args().activation == "relu" else Sign(),
+            "activation_function": torch.functional.F.relu if parser.parse_args().activation == "relu" else Sign.apply,
             "output_function": "log_softmax",
             "eps": 1e-5,
             "momentum": 0,
@@ -118,6 +119,7 @@ def train_iteration(trial):
         },
         "optimizer": BHUparallel,
         "optimizer_parameters": {
+            "lr_mult": lr_mult,
             "lr_max": lr_max,
             "kl_coeff": kl_coeff,
             "likelihood_coeff": likelihood_coeff,
@@ -163,8 +165,7 @@ def train_iteration(trial):
     # Setting the task iterator: The idea is that we yield datasets corresponding to the framework we want to use
     # For example, if we want to use the permuted framework, we will yield datasets with permuted images, not dependant on the dataset
     for i in range(data["n_tasks"]):
-        epochs = data["training_parameters"]["n_epochs"][i + k * data["n_tasks"]] if isinstance(
-            data["training_parameters"]["n_epochs"], list) else data["training_parameters"]["n_epochs"]
+        epochs = data["training_parameters"]["n_epochs"]
         for epoch in range(epochs):
             num_batches = len(train_dataset) // (
                 batch_size * data["n_tasks"]) if "CIL" in data["task"] or "Stream" in data["task"] else len(train_dataset) // batch_size
@@ -194,7 +195,6 @@ def train_iteration(trial):
             _, _, _ = iterable_evaluation_selector(
                 data=data, test_dataset=test_dataset, net_trainer=net_trainer, permutations=permutations, train_dataset=train_dataset)
             metrics = objective_computation(net_trainer, i)
-            print(f"Task {i} - AA: {metrics[0]} - FT: {metrics[1]}")
 
     # Save all parameters of the trial in a json file
     os.makedirs(f"gridsearch/{STUDY}", exist_ok=True)
@@ -214,31 +214,16 @@ def train_iteration(trial):
 def objective_computation(net_trainer, i):
     # 1st: Average Accuracy (AA)
     average_accuracy = net_trainer.mean_testing_accuracy[-1].item()
-
-    # 2nd: Forward Transfer (FT) (average forgetting of all tasks)
-    forward_transfer = 0
-    max_of_max = []
-    for task in range(i+1):
-        # Max accuracy on dimension 0 for the task "task"
-        max_task_acc = []
-        for epoch in range(len(net_trainer.testing_accuracy)):
-            max_task_acc.append(
-                net_trainer.testing_accuracy[epoch][task].item())
-        forward_transfer += max(max_task_acc) - \
-            net_trainer.testing_accuracy[-1][task].item()
-        max_of_max.append(max(max_task_acc))
-    forward_transfer /= i if i != 0 else 1
-
-    # 3rd: Highest Accuracy (HA)
-    highest_accuracy = max(max_of_max)
-    return average_accuracy, forward_transfer, highest_accuracy
+    print(
+        f"AA: {average_accuracy}, Task_{i}: {net_trainer.testing_accuracy[-1][i].item()}")
+    return average_accuracy, net_trainer.testing_accuracy[-1][i].item()
 
 
 if __name__ == "__main__":
     ### OPTUNA CONFIGURATION ###
     # Create a new study that "maximize" the accuracy of all tasks
     study = optuna.create_study(
-        directions=["maximize", "minimize", "maximize"] if "Permuted" in parser.parse_args().task else [
+        directions=["maximize", "maximize"] if "Permuted" in parser.parse_args().task else [
             "maximize"],
         sampler=optuna.samplers.TPESampler(),
         pruner=optuna.pruners.HyperbandPruner(

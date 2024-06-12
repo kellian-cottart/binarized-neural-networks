@@ -13,7 +13,7 @@ SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
-PADDING = 2
+PADDING = 0
 GRAPHS = True
 MODULO = 5
 ### PATHS ###
@@ -36,10 +36,14 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "nn_type": models.BiBayesianNN,
+            "nn_type": models.BiBayesianLinearConv,
             "nn_parameters": {
                 # NETWORK ###w
-                "layers": [512],
+                "layers": [2048, 512],
+                "features": [16, 32],
+                "kernel_size": 3,
+                "padding": "same",
+                "stride": 1,
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
@@ -48,7 +52,7 @@ if __name__ == "__main__":
                 "n_samples_backward": 5,
                 "tau": 1,
                 "binarized": False,
-                "activation_function": torch.functional.F.relu,
+                "activation_function": Sign.apply,
                 "output_function": "log_softmax",
                 "normalization": "instancenorm",
                 "eps": 1e-5,
@@ -60,7 +64,7 @@ if __name__ == "__main__":
             "training_parameters": {
                 'n_epochs': 20,
                 'batch_size': 128,
-                'resize': True,
+                'resize': False,
                 'data_aug_it': 10,
                 "continual": False,
             },
@@ -68,31 +72,26 @@ if __name__ == "__main__":
             "reduction": "sum",
             "optimizer": BHUparallel,
             "optimizer_parameters": {
-                "lr_max": 100,
-                "likelihood_coeff": 0,
-                "kl_coeff": 0,
+                "lr_mult": 1,
+                "lr_max": 50,
+                "likelihood_coeff": 1,
+                "kl_coeff": 0.1,
                 "normalize_gradients": False,
             },
             # "optimizer": torch.optim.Adam,
             # "optimizer_parameters": {
             #     "lr": 0.001,
             # },
-            "task": "PermutedMNIST",
-            "n_tasks": 10,
+            "task": "CIFAR10",
+            "n_tasks": 1,
             "n_classes": 1,
             "n_repetition": 1,
-            'label_trick': False,
-            "show_train": False,
         }
     ]
 
     for index, data in enumerate(networks_data):
         ### FOLDER INITIALIZATION ###
         name = f"{data['optimizer'].__name__}-BS{data['training_parameters']['batch_size']}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers']])}-{data['task']}-{data['nn_parameters']['activation_function'].__name__}"
-        name = versionning(SAVE_FOLDER, name, "")
-        print(f"Training {name}...")
-        main_folder = name
-
         ### ACCURACY INITIALIZATION ###
         accuracies, training_accuracies = [], []
         batch_size = data['training_parameters']['batch_size']
@@ -117,12 +116,24 @@ if __name__ == "__main__":
         if "CIL" in data["task"]:
             # Create the permutations for the class incremental scenario: n_classes per task with no overlap
             random_permutation = torch.randperm(target_size)
-            permutations = [random_permutation[i *
-                                               data["n_classes"]: (i + 1) * data["n_classes"]] for i in range(data["n_tasks"])]
+            permutations = [random_permutation[i * data["n_classes"]:(i + 1) * data["n_classes"]] for i in range(data["n_tasks"])]
+
         # add input/output size to the layer of the network parameters
-        data['nn_parameters']['layers'].insert(
-            0, torch.prod(torch.tensor(shape)))
+        if "Conv" in data["nn_type"].__name__:  # Convolutional network
+            name += "-conv-"
+            name += "-".join([str(feature)
+                              for feature in data['nn_parameters']['features']])
+            data['nn_parameters']['features'].insert(
+                0, shape[0])
+        else:
+            data['nn_parameters']['layers'].insert(
+                0, torch.prod(torch.tensor(shape)))
         data['nn_parameters']['layers'].append(target_size)
+
+        name = versionning(SAVE_FOLDER, name, "")
+        print(f"Training {name}...")
+        main_folder = name
+
         for iteration in range(N_NETWORKS):
             ### INIT NETWORK ###
             if iteration != 0:
@@ -203,11 +214,8 @@ if __name__ == "__main__":
                             #     MetaplasticAdam] and net_trainer.model.affine else None,
                             train_dataset=train_dataset)
 
-                        mean_accuracy = net_trainer.mean_testing_accuracy[-1]
-                        print(
-                            f"Task {i+1} - Epoch {epoch+1}/{data['training_parameters']['n_epochs']} \nMean accuracy: {mean_accuracy.item()*100:.2f}%\n" + " - ".join(
-                                [f"Task {j+1}: {net_trainer.testing_accuracy[-1][j].item()*100:.2f}%" for j in range(len(net_trainer.testing_accuracy[-1]))]))
-
+                        net_trainer.pbar_update(
+                            pbar, epoch, n_epochs=epochs, name_loader=name_loader)
                         # if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
                         #     net_trainer.model.load_bn_states(batch_params[i])
                         ### EXPORT VISUALIZATION OF PARAMETERS ###

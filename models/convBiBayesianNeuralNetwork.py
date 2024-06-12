@@ -45,7 +45,25 @@ class BiBayesianNN(DNN):
                 tau=self.tau,
                 binarized=self.binarized,
                 device=self.device))
-            self.layers.append(self._norm_init(layers[i+1]))
+            self._batch_norm_init(layers, i)
+
+    def _weight_init(self, init='normal', std=0.1):
+        """ Initialize weights of each layer
+
+        Args:
+            init (str): Initialization method for weights
+            std (float): Standard deviation for initialization
+        """
+        for layer in self.layers:
+            if isinstance(layer, torch.nn.Module) and hasattr(layer, 'lambda_') and layer.lambda_ is not None:
+                if init == 'gaussian':
+                    torch.nn.init.normal_(
+                        layer.lambda_.data, mean=0.0, std=std)
+                elif init == 'uniform':
+                    torch.nn.init.uniform_(
+                        layer.lambda_.data, a=-std/2, b=std/2)
+                elif init == 'xavier':
+                    torch.nn.init.xavier_normal_(layer.lambda_.data)
 
     def forward(self, x, backwards=True):
         """ Forward pass of DNN

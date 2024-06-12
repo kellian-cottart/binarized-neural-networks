@@ -6,6 +6,7 @@ class BHUparallel(torch.optim.Optimizer):
 
     def __init__(self,
                  params,
+                 lr_mult: float = 1.0,
                  lr_max: float = 30,
                  likelihood_coeff: float = 1.0,
                  kl_coeff: float = 1.0,
@@ -20,7 +21,8 @@ class BHUparallel(torch.optim.Optimizer):
 
         """
 
-        defaults = dict(lr_max=lr_max,
+        defaults = dict(lr_mult=lr_mult,
+                        lr_max=lr_max,
                         likelihood_coeff=likelihood_coeff,
                         kl_coeff=kl_coeff,
                         normalize_gradients=normalize_gradients)
@@ -46,6 +48,7 @@ class BHUparallel(torch.optim.Optimizer):
                 if len(state) == 0:
                     state['step'] = 0
                 state['step'] += 1
+                lr_mult = group['lr_mult']
                 lr_max = group['lr_max']
                 likelihood_coeff = group['likelihood_coeff']
                 kl_coeff = group['kl_coeff']
@@ -58,8 +61,12 @@ class BHUparallel(torch.optim.Optimizer):
                     # clip gradients
                     p.grad.data = torch.clamp(p.grad.data, -0.1, 0.1)
                 # Update rule for lambda with Hessian correction
-                asymmetry = 1/(kl_coeff*(1-torch.tanh(lambda_)**2) + likelihood_coeff*(2*p.grad.data*torch.tanh(lambda_) + 2 * torch.abs(p.grad.data)) + 1 / lr_max)
-                lr_array.append(asymmetry)
-                p.data = lambda_ - asymmetry * p.grad.data
+                kl = kl_coeff/torch.cosh(lambda_)**2
+                likelihood = likelihood_coeff*2*p.grad.data*torch.tanh(lambda_)
+                hessian = likelihood_coeff * 2 * \
+                    torch.abs(p.grad.data) + 1/lr_max
+                lr_asymmetry = 1/(kl + likelihood + hessian)
+                p.data = lambda_ - lr_mult * lr_asymmetry * p.grad.data
+                lr_array.append(lr_asymmetry*lr_mult)
         self.state['lr'] = lr_array
         return loss

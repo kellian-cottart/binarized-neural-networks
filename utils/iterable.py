@@ -41,7 +41,7 @@ def class_incremental_dataset(train_dataset, batch_size, iteration, permutations
 
 
 def stream_dataset(train_dataset, iteration, n_tasks, current_task, batch_size=1):
-    """ Returns a batch of data and targets for the stream learning scenario, 
+    """ Returns a batch of data and targets for the stream learning scenario,
     not including the rest of the unused data as in drop last
 
     Args:
@@ -96,6 +96,10 @@ def special_task_selector(data, train_dataset, batch_size=128, continual=None, t
                                         iteration: batch_size * (iteration + 1)]
         targets = train_dataset.targets[batch_size *
                                         iteration: batch_size * (iteration + 1)]
+    batch_data = batch_data.view(batch_size,
+                                 train_dataset.data.shape[-3],
+                                 train_dataset.data.shape[-2],
+                                 train_dataset.data.shape[-1])
     return batch_data, targets
 
 

@@ -79,6 +79,7 @@ class DNN(torch.nn.Module):
             dropout (bool): Whether to use dropout
             bias (bool): Whether to use bias
         """
+        self.layers.append(nn.Flatten().to(self.device))
         for i, _ in enumerate(layers[:-1]):
             # Linear layers with BatchNorm
             if self.dropout and i != 0:
@@ -88,44 +89,22 @@ class DNN(torch.nn.Module):
                 layers[i+1],
                 bias=bias,
                 device=self.device))
-            self._batch_norm_init(layers, i)
+            self.layers.append(self._norm_init(layers[i+1]))
 
-    def _batch_norm_init(self, layers, i):
+    def _norm_init(self, n_features):
+        """ Initialize normalization layers"""
         if self.normalization == "batchnorm":
-            self.layers.append(torch.nn.BatchNorm1d(
-                num_features=layers[i+1],
-                affine=self.affine,
-                track_running_stats=self.running_stats,
-                device=self.device,
-                eps=self.eps,
-                momentum=self.momentum))
+            return torch.nn.BatchNorm1d(n_features, eps=self.eps, momentum=self.momentum, affine=self.affine, track_running_stats=self.running_stats).to(self.device)
         elif self.normalization == "layernorm":
-            self.layers.append(torch.nn.LayerNorm(
-                normalized_shape=[layers[i+1]],
-                eps=self.eps,
-                elementwise_affine=self.affine,
-                device=self.device))
+            return torch.nn.LayerNorm(n_features).to(self.device)
         elif self.normalization == "instancenorm":
-            self.layers.append(torch.nn.InstanceNorm1d(
-                num_features=layers[i+1],
-                eps=self.eps,
-                momentum=self.momentum,
-                affine=self.affine,
-                device=self.device))
+            return torch.nn.InstanceNorm1d(n_features, eps=self.eps, affine=self.affine, track_running_stats=self.running_stats).to(self.device)
         elif self.normalization == "groupnorm":
-            self.layers.append(torch.nn.GroupNorm(
-                num_groups=self.gnnum_groups,
-                num_channels=layers[i+1],
-                eps=self.eps,
-                affine=self.affine,
-                device=self.device))
-        elif self.normalization == "standardizenorm":
-            self.layers.append(StandardizeNorm(eps=self.eps))
-        elif self.normalization is None:
-            pass
-        elif self.normalization is not None:
-            raise ValueError(
-                f"Invalid normalization method: {self.normalization}. Choose between 'batchnorm', 'layernorm', 'instancenorm', 'groupnorm'")
+            return torch.nn.GroupNorm(self.gnnum_groups, n_features).to(self.device)
+        elif self.normalization == "standardize":
+            return StandardizeNorm().to(self.device)
+        else:
+            return torch.nn.Identity().to(self.device)
 
     def _weight_init(self, init='normal', std=0.1):
         """ Initialize weights of each layer
@@ -138,12 +117,12 @@ class DNN(torch.nn.Module):
             if isinstance(layer, torch.nn.Module) and hasattr(layer, 'weight') and layer.weight is not None:
                 if init == 'gaussian':
                     torch.nn.init.normal_(
-                        layer.weight, mean=0.0, std=std)
+                        layer.weight.data, mean=0.0, std=std)
                 elif init == 'uniform':
                     torch.nn.init.uniform_(
-                        layer.weight, a=-std/2, b=std/2)
+                        layer.weight.data, a=-std/2, b=std/2)
                 elif init == 'xavier':
-                    torch.nn.init.xavier_normal_(layer.weight)
+                    torch.nn.init.xavier_normal_(layer.weight.data)
 
     def forward(self, x, *args, **kwargs):
         """ Forward pass of DNN
@@ -155,10 +134,6 @@ class DNN(torch.nn.Module):
             torch.Tensor: Output tensor
 
         """
-        # Flatten input if necessary
-        if len(x.shape) > 2:
-            x = x.view(x.size(0), -1)
-
         unique_layers = set(type(layer) for layer in self.layers)
         ### FORWARD PASS ###
         for i, layer in enumerate(self.layers):

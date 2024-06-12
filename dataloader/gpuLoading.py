@@ -110,7 +110,6 @@ class GPULoading:
             test_x (torch.tensor): Testing data
             test_y (torch.tensor): Testing labels
             batch_size (int): Batch size
-            data_augmentation (bool, optional): Whether to use data augmentation. Defaults to False.
 
         Returns:
             DataLoader, DataLoader: Training and testing DataLoader
@@ -210,7 +209,7 @@ class GPULoading:
             return self.to_dataset(train_x, train_y, test_x, test_y)
         # Normalize and pad the data
         train_x, test_x = self.normalization(train_x, test_x)
-        return self.to_dataset(train_x, train_y, test_x, test_y, batch_size, data_augmentation=True)
+        return self.to_dataset(train_x, train_y, test_x, test_y)
 
     def cifar100(self, batch_size, path_databatch, path_testbatch, iterations=10, *args, **kwargs):
         """ Load a local dataset on GPU corresponding to CIFAR100 """
@@ -243,7 +242,7 @@ class GPULoading:
         else:
             # Normalize and pad the data
             train_x, test_x = self.normalization(train_x, test_x)
-            return self.to_dataset(train_x, train_y, test_x, test_y, batch_size, data_augmentation=True)
+            return self.to_dataset(train_x, train_y, test_x, test_y)
 
     def feature_extraction(self, folder, train_x, train_y, test_x, test_y, task="cifar100", iterations=10):
         # The idea here is to use the resnet18 as feature extractor

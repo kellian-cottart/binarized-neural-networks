@@ -21,6 +21,7 @@ class BiNN(DNN):
         super().__init__(*args, **kwargs)
 
     def _layer_init(self, layers, bias=False):
+        self.layers.append(nn.Flatten().to(self.device))
         for i, _ in enumerate(layers[:-1]):
             # Linear layers with BatchNorm
             if self.dropout and i != 0:
@@ -30,7 +31,7 @@ class BiNN(DNN):
                 layers[i+1],
                 bias=bias,
                 device=self.device))
-            self._batch_norm_init(layers, i)
+            self.layers.append(self._norm_init(layers[i+1]))
 
     def forward(self, x, *args, **kwargs):
         """ Forward pass of DNN

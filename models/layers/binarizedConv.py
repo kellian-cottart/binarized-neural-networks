@@ -1,6 +1,6 @@
 
 import torch
-from .activation.sign import Sign
+from .activation.sign import SignWeights
 
 
 class BinarizedConv2d(torch.nn.Conv2d):
@@ -30,17 +30,13 @@ class BinarizedConv2d(torch.nn.Conv2d):
             dilation=dilation,
             bias=bias,
             device=device)
-        self.latent_weights = latent_weights
 
     def forward(self, input):
         """Forward propagation of the binarized linear layer"""
-        if not self.latent_weights:
-            self.weight.data = self.weight.data.sign()
-            if self.bias is not False and self.bias is not None:
-                self.bias.data = self.bias.data.sign()
-            return torch.nn.functional.conv2d(input, self.weight, self.bias, self.stride, self.padding)
+        if self.bias is not None:
+            output = torch.nn.functional.conv2d(input, SignWeights.apply(
+                self.weight), SignWeights.apply(self.bias), self.stride, self.padding)
         else:
-            if self.bias is not None:
-                return torch.nn.functional.conv2d(input, Sign.apply(self.weight), Sign.apply(self.bias), self.stride, self.padding)
-            else:
-                return torch.nn.functional.conv2d(input, Sign.apply(self.weight), None, self.stride, self.padding)
+            output = torch.nn.functional.conv2d(input, SignWeights.apply(
+                self.weight), None, self.stride, self.padding)
+        return output
