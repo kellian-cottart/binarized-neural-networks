@@ -35,6 +35,7 @@ class BiBayesianNN(DNN):
             dropout (bool): Whether to use dropout
             bias (bool): Whether to use bias
         """
+        self.layers.append(nn.Flatten(start_dim=2).to(self.device))
         for i, _ in enumerate(layers[:-1]):
             # BiBayesian layers with BatchNorm
             if self.dropout and i != 0:
@@ -46,6 +47,8 @@ class BiBayesianNN(DNN):
                 binarized=self.binarized,
                 device=self.device))
             self.layers.append(self._norm_init(layers[i+1]))
+            if i < len(layers)-2:
+                self.layers.append(self._activation_init())
 
     def forward(self, x, backwards=True):
         """ Forward pass of DNN
@@ -57,10 +60,9 @@ class BiBayesianNN(DNN):
             torch.Tensor: Output tensor
 
         """
-        # Flatten input if necessary
-        if len(x.shape) > 2:
-            x = x.view(x.size(0), -1)
         unique_layers = set(type(layer) for layer in self.layers)
+        if x.dim() == 4:
+            x = x.unsqueeze(0)
         ### FORWARD PASS ###
         for i, layer in enumerate(self.layers):
             if isinstance(layer, BiBayesianLinear):
@@ -68,18 +70,18 @@ class BiBayesianNN(DNN):
                     x = layer(x, self.n_samples_backward)
                 else:
                     x = layer.sample(x, self.n_samples_forward)
-            else:
+            elif not isinstance(layer, torch.nn.Flatten):
                 # Normalization layers, but input is (n_samples, batch, features)
                 shape = x.shape
                 x = x.reshape([shape[0]*shape[1], shape[2]])
                 x = layer(x)
                 x = x.reshape([shape[0], shape[1], shape[2]])
-            if layer is not self.layers[-1] and (i+1) % len(unique_layers) == 0:
-                x = self.activation_function(x)
+            else:
+                x = layer(x)
         if self.output_function == "softmax":
             x = torch.nn.functional.softmax(x, dim=2)
         elif self.output_function == "log_softmax":
             x = torch.nn.functional.log_softmax(x, dim=2)
         elif self.output_function == "sigmoid":
             x = torch.nn.functional.sigmoid(x, dim=1)
-        return x.mean(0)
+        return x

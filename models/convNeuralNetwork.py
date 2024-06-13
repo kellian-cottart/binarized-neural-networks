@@ -1,5 +1,7 @@
 import torch
 from typing import Union
+
+from models.layers.activation.sign import SignActivation
 from .deepNeuralNetwork import DNN
 
 
@@ -83,12 +85,27 @@ class ConvNN(torch.nn.Module):
             self.features.append(torch.nn.Conv2d(features[i], features[i+1], kernel_size=self.kernel_size,
                                  padding=self.padding, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device))
             self.features.append(self._norm_init(features[i+1]))
+            self.features.append(self._activation_init())
             self.features.append(torch.nn.Conv2d(features[i+1], features[i+1], kernel_size=self.kernel_size,
                                  padding=self.padding, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device))
             self.features.append(self._norm_init(features[i+1]))
+            self.features.append(self._activation_init())
             self.features.append(torch.nn.MaxPool2d(kernel_size=2))
+
             if self.dropout == True:
                 self.features.append(torch.nn.Dropout2d(p=0.2))
+
+    def _activation_init(self):
+        if self.activation_function == "relu":
+            return torch.nn.ReLU().to(self.device)
+        elif self.activation_function == "leaky_relu":
+            return torch.nn.LeakyReLU().to(self.device)
+        elif self.activation_function == "tanh":
+            return torch.nn.Tanh().to(self.device)
+        elif self.activation_function == "sign":
+            return SignActivation().to(self.device)
+        else:
+            raise ValueError("Activation function not recognized")
 
     def _norm_init(self, n_features):
         """Returns a layer of normalization"""

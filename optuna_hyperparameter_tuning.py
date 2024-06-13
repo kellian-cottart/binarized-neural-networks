@@ -6,7 +6,6 @@ import torch
 import os
 import optuna
 import json
-from models.layers.activation import Sign
 import argparse
 from utils.iterable import *
 
@@ -51,18 +50,18 @@ def train_iteration(trial):
         trial (optuna.Trial): Optuna trial
     """
     ### PARAMETERS ###
-    lr_mult = trial.suggest_float("lr_mult", 1, 20, step=0.1)
+    lr_mult = trial.suggest_float("lr_mult", 0.5, 20, step=0.1)
     lr_max = trial.suggest_float("lr_max", 1, 100, step=0.5)
     likelihood_coeff = trial.suggest_float(
-        "likelihood_coeff", 0, 5, step=0.01)
+        "likelihood_coeff", 0, 15, step=0.01)
     kl_coeff = trial.suggest_float(
-        "kl_coeff", 0, 2, step=0.01)
+        "kl_coeff", 0, 15, step=0.01)
 
     ### LAMBDA PARAMETERS ###
     # suggest int
     n_samples_backward = trial.suggest_int("n_samples_backward", 1, 10, step=1)
     init_law = trial.suggest_categorical("init_law", ["gaussian"])
-    init_param = trial.suggest_float("init_param", 0, 0.15, step=0.01)
+    init_param = trial.suggest_float("init_param", 0, 0.3, step=0.01)
     temperature = trial.suggest_float("temperature", 0.5, 1, step=0.1)
 
     ### TASK PARAMETERS ###
@@ -100,7 +99,7 @@ def train_iteration(trial):
             "n_samples_backward": n_samples_backward,
             "tau": temperature,
             "binarized": False,
-            "activation_function": torch.functional.F.relu if parser.parse_args().activation == "relu" else Sign.apply,
+            "activation_function": parser.parse_args().activation,
             "output_function": "log_softmax",
             "eps": 1e-5,
             "momentum": 0,

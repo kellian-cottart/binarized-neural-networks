@@ -20,6 +20,10 @@ def permuted_dataset(train_dataset, batch_size, continual, task_id, iteration, m
             iteration + 1)].view(-1, shape)[:, perm]
     targets = train_dataset.targets[batch_size *
                                     iteration: batch_size * (iteration + 1)]
+    batch_data = batch_data.view(batch_size,
+                                 train_dataset.data.shape[-3],
+                                 train_dataset.data.shape[-2],
+                                 train_dataset.data.shape[-1])
     return batch_data, targets
 
 
@@ -37,6 +41,11 @@ def class_incremental_dataset(train_dataset, batch_size, iteration, permutations
         iteration + 1)].view(-1, shape)
     targets = train_dataset.targets[indexes][batch_size *
                                              iteration: batch_size * (iteration + 1)]
+
+    batch_data = batch_data.view(batch_size,
+                                 train_dataset.data.shape[-3],
+                                 train_dataset.data.shape[-2],
+                                 train_dataset.data.shape[-1])
     return batch_data, targets
 
 
@@ -57,6 +66,10 @@ def stream_dataset(train_dataset, iteration, n_tasks, current_task, batch_size=1
                                                iteration: batch_size * (iteration + 1)]
     targets = train_dataset.targets[start:end][batch_size *
                                                iteration: batch_size * (iteration + 1)]
+    batch_data = batch_data.view(batch_size,
+                                 train_dataset.data.shape[-3],
+                                 train_dataset.data.shape[-2],
+                                 train_dataset.data.shape[-1])
     return batch_data, targets
 
 
@@ -96,10 +109,10 @@ def special_task_selector(data, train_dataset, batch_size=128, continual=None, t
                                         iteration: batch_size * (iteration + 1)]
         targets = train_dataset.targets[batch_size *
                                         iteration: batch_size * (iteration + 1)]
-    batch_data = batch_data.view(batch_size,
-                                 train_dataset.data.shape[-3],
-                                 train_dataset.data.shape[-2],
-                                 train_dataset.data.shape[-1])
+        batch_data = batch_data.view(batch_size,
+                                     train_dataset.data.shape[-3],
+                                     train_dataset.data.shape[-2],
+                                     train_dataset.data.shape[-1])
     return batch_data, targets
 
 
@@ -123,8 +136,14 @@ def iterable_evaluation_selector(data, test_dataset, net_trainer, permutations, 
         max_batch = test_dataset.data.shape[0]
         batch_data = test_dataset.data[:max_batch]
         targets = test_dataset.targets[:max_batch]
+        batch_data = batch_data.view(max_batch,
+                                     train_dataset.data.shape[-3],
+                                     train_dataset.data.shape[-2],
+                                     train_dataset.data.shape[-1])
+
         loader = [[(batch_data, targets)]]
         predictions, labels = net_trainer.evaluate(
             loader,
             batch_params=batch_params)
+
     return name_loader, predictions, labels

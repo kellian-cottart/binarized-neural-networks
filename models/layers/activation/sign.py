@@ -5,7 +5,7 @@ import torch
 class Sign(torch.autograd.Function):
     """ Sign Activation Function
 
-    Allows for backpropagation of the sign function because it is not differentiable. 
+    Allows for backpropagation of the sign function because it is not differentiable.
     Uses the hardtanh function to do the backward pass because of the clamping of the gradient.
     """
 
@@ -41,3 +41,17 @@ class SignWeights(torch.autograd.Function):
         """ Backward pass: identity function"""
         # Returns the gradient of input
         return grad_output
+
+
+class SignActivation(torch.nn.Module):
+    """ Sign Activation Layer
+
+    Applies the sign activation function to the input tensor.
+    """
+
+    def __call__(self, *args: torch.Any, **kwds: torch.Any) -> torch.Any:
+        return super().__call__(*args, **kwds)
+
+    def forward(self, tensor_input):
+        """ Forward pass: sign(input"""
+        return Sign.apply(tensor_input)

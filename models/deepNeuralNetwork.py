@@ -90,6 +90,20 @@ class DNN(torch.nn.Module):
                 bias=bias,
                 device=self.device))
             self.layers.append(self._norm_init(layers[i+1]))
+            if i < len(layers)-2:
+                self.layers.append(self._activation_init())
+
+    def _activation_init(self):
+        if self.activation_function == "relu":
+            return torch.nn.ReLU().to(self.device)
+        elif self.activation_function == "leaky_relu":
+            return torch.nn.LeakyReLU().to(self.device)
+        elif self.activation_function == "tanh":
+            return torch.nn.Tanh().to(self.device)
+        elif self.activation_function == "sign":
+            return SignActivation().to(self.device)
+        else:
+            raise ValueError("Activation function not recognized")
 
     def _norm_init(self, n_features):
         """ Initialize normalization layers"""

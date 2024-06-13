@@ -7,16 +7,18 @@ from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from optimizers import *
 
 
-def graphs(main_folder, net_trainer, i, epoch, predictions=None, labels=None, modulo=10):
+def graphs(main_folder, net_trainer, task, epoch, predictions=None, labels=None, modulo=10, task_test_length=10000):
     if (epoch % modulo == modulo-1 or epoch == 0):
         # print predicted and associated certainty
-        # visualize_certainty(
-        #     predictions=predictions,
-        #     labels=labels,
-        #     path=os.path.join(main_folder, "certainty"),
-        #     task=i+1,
-        #     epoch=epoch+1,
-        # )
+        visualize_certainty(
+            predictions=predictions,
+            labels=labels,
+            path=os.path.join(main_folder, "certainty"),
+            task=task+1,
+            epoch=epoch+1,
+            log=True,
+            task_test_length=task_test_length,
+        )
         params = [
             p for p in net_trainer.optimizer.param_groups[0]['params']]
         visualize_grad(
@@ -25,7 +27,7 @@ def graphs(main_folder, net_trainer, i, epoch, predictions=None, labels=None, mo
                 net_trainer.optimizer, BinaryHomosynapticUncertaintyTest) else [
                 p.grad for p in net_trainer.optimizer.param_groups[0]['params']],
             path=os.path.join(main_folder, "grad"),
-            task=i+1,
+            task=task+1,
             epoch=epoch+1,
         )
         visualize_lambda(
@@ -34,7 +36,7 @@ def graphs(main_folder, net_trainer, i, epoch, predictions=None, labels=None, mo
                 net_trainer.optimizer, BinaryHomosynapticUncertaintyTest) else params,
             path=os.path.join(main_folder, "lambda"),
             threshold=10,
-            task=i+1,
+            task=task+1,
             epoch=epoch+1,
         )
         if net_trainer.optimizer.state['lr'] != {}:
@@ -42,7 +44,7 @@ def graphs(main_folder, net_trainer, i, epoch, predictions=None, labels=None, mo
                 parameters=params,
                 lr=net_trainer.optimizer.state['lr'],
                 path=os.path.join(main_folder, "lr"),
-                task=i+1,
+                task=task+1,
                 epoch=epoch+1,
             )
 
@@ -424,7 +426,7 @@ def visualize_lambda(parameters, lambda_, path, threshold=10, task=None, epoch=N
     plt.close()
 
 
-def visualize_certainty(predictions, labels, path, task=None, epoch=None, log=True):
+def visualize_certainty(predictions, labels, path, task=None, epoch=None, log=True, task_test_length=10000):
     """ Visualize the certainty of the model with respected to correct and incorrect predictions
 
     Args:
@@ -435,7 +437,7 @@ def visualize_certainty(predictions, labels, path, task=None, epoch=None, log=Tr
         epoch (int): Epoch number
         log (bool): If the predictions are in log space
     """
-    if log:
+    if log == True:
         predictions = torch.exp(predictions)
 
     predicted = torch.argmax(torch.mean(predictions, dim=0), dim=1) == labels
@@ -447,18 +449,26 @@ def visualize_certainty(predictions, labels, path, task=None, epoch=None, log=Tr
     bins = 50
     minimum = torch.min(aleatoric).item()
     maximum = torch.max(aleatoric).item()
-    correct_hist = torch.histc(
-        aleatoric[predicted], bins=bins, min=minimum, max=maximum).detach().cpu()
 
+    aleatoric_seen = aleatoric[:task_test_length*task]
+    aleatoric_unseen = aleatoric[task_test_length*task:]
+    predicted_seen = predicted[:task_test_length*task]
+
+    correct_hist = torch.histc(
+        aleatoric_seen[predicted_seen], bins=bins, min=minimum, max=maximum).detach().cpu()
     incorrect_hist = torch.histc(
-        aleatoric[~predicted], bins=bins, min=minimum, max=maximum).detach().cpu()
+        aleatoric_seen[~predicted_seen], bins=bins, min=minimum, max=maximum).detach().cpu()
+    unseen_hist = torch.histc(
+        aleatoric_unseen, bins=bins, min=minimum, max=maximum).detach().cpu()
 
     # Plot as bars
     x = torch.linspace(minimum, maximum, bins).detach().cpu()
-    plt.bar(x, correct_hist * 100 / len(aleatoric), width=3/bins,
+    plt.bar(x, correct_hist * 100 / len(aleatoric), width=maximum/(2*bins),
             alpha=0.5, label="Correct predictions", color='blue')
     plt.bar(x, incorrect_hist * 100 /
-            len(aleatoric), width=3/bins, alpha=0.5, label="Incorrect predictions", color='red')
+            len(aleatoric), width=maximum/(2*bins), alpha=0.5, label="Incorrect predictions", color='orange')
+    plt.bar(x, unseen_hist * 100 /
+            len(aleatoric), width=maximum/(2*bins), alpha=0.5, label="Unseen predictions", color='red')
 
     ax.set_xlabel('Aleatoric Uncertainty [-]')
     ax.set_ylabel('Histogram [%]')
@@ -479,17 +489,23 @@ def visualize_certainty(predictions, labels, path, task=None, epoch=None, log=Tr
     predictive = - torch.sum(mean_predictions *
                              torch.log(mean_predictions + 1e-8), dim=-1)
 
-    epistemic = predictive - aleatoric
+    epistemic = (predictive - aleatoric)
+
+    epistemic_seen = epistemic[:task_test_length*task]
+    epistemic_unseen = epistemic[task_test_length*task:]
+
     # We want to plot the histogram of aleatoric uncertainty for correct and incorrect predictions
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-    bins = 50
     minimum = torch.min(epistemic).item()
     maximum = torch.max(epistemic).item()
 
     correct_hist = torch.histc(
-        epistemic[predicted], bins=bins, min=minimum, max=maximum).detach().cpu()
+        epistemic_seen[predicted_seen], bins=bins, min=minimum, max=maximum).detach().cpu()
     incorrect_hist = torch.histc(
-        epistemic[~predicted], bins=bins, min=minimum, max=maximum).detach().cpu()
+        epistemic_seen[~predicted_seen], bins=bins, min=minimum, max=maximum).detach().cpu()
+    unseen_hist = torch.histc(
+        epistemic_unseen, bins=bins, min=minimum, max=maximum).detach().cpu()
+
     x = torch.linspace(minimum, maximum, bins).detach().cpu()
     plt.bar(x,
             correct_hist * 100 / len(epistemic),
@@ -502,7 +518,14 @@ def visualize_certainty(predictions, labels, path, task=None, epoch=None, log=Tr
             width=maximum/bins,
             alpha=0.5,
             label="Incorrect predictions",
+            color='orange')
+    plt.bar(x,
+            unseen_hist * 100 / len(epistemic),
+            width=maximum/bins,
+            alpha=0.5,
+            label="Unseen predictions",
             color='red')
+
     ax.set_xlabel('Epistemic Uncertainty [-]')
     ax.set_ylabel('Histogram [%]')
     ax.legend()

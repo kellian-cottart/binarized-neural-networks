@@ -60,8 +60,10 @@ class GPUTrainer:
         ### LOSS ###
         self.model.train()
         forward = self.model.forward(inputs).to(self.device)
+        if forward.dim() == 2:
+            forward = forward.unsqueeze(0)
         self.loss = self.criterion(
-            forward,
+            forward.mean(dim=0),
             targets.to(self.device),
             reduction=self.reduction,
         )
@@ -172,14 +174,18 @@ class GPUTrainer:
 
         """
         ### ACCURACY COMPUTATION ###
-        predictions = self.predict(inputs)
+        full_predictions = self.predict(inputs)
+        if len(full_predictions.shape) < 3:
+            full_predictions = full_predictions.unsqueeze(0)
+        predictions = torch.mean(full_predictions, dim=0)
+
         if self.model.output_function == "sigmoid":
             # apply exponential to get the probability
             predicted = torch.where(predictions >= 0.5, torch.ones_like(
                 predictions), torch.zeros_like(predictions))
         else:
             predicted = torch.argmax(predictions, dim=1)
-        return torch.mean((predicted == labels.to(self.device)).float()), predictions
+        return torch.mean((predicted == labels.to(self.device)).float()), full_predictions
 
     def pbar_update(self, pbar, epoch, n_epochs, name_loader=None, task=None):
         """Update the progress bar with the current loss and accuracy"""

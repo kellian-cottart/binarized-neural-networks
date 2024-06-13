@@ -7,13 +7,12 @@ from optimizers import *
 import os
 import json
 import tqdm
-from models.layers.activation import Sign
 
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
-PADDING = 0
+PADDING = 2
 GRAPHS = True
 MODULO = 5
 ### PATHS ###
@@ -36,23 +35,23 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "nn_type": models.BiBayesianLinearConv,
+            "nn_type": models.BiBayesianNN,
             "nn_parameters": {
                 # NETWORK ###w
-                "layers": [2048, 512],
-                "features": [16, 32],
-                "kernel_size": 3,
-                "padding": "same",
-                "stride": 1,
+                "layers": [300, 300],
+                # "features": [32, 64, 128],
+                # "kernel_size": 3,
+                # "padding": "same",
+                # "stride": 1,
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
-                "std": 0.1,
-                "n_samples_forward": 5,
-                "n_samples_backward": 5,
+                "std": 0.01,
+                "n_samples_forward": 10,
+                "n_samples_backward": 10,
                 "tau": 1,
                 "binarized": False,
-                "activation_function": Sign.apply,
+                "activation_function": "sign",
                 "output_function": "log_softmax",
                 "normalization": "instancenorm",
                 "eps": 1e-5,
@@ -66,24 +65,24 @@ if __name__ == "__main__":
                 'batch_size': 128,
                 'resize': False,
                 'data_aug_it': 10,
-                "continual": False,
+                "continual": True,
             },
             "criterion": torch.functional.F.nll_loss,
             "reduction": "sum",
             "optimizer": BHUparallel,
             "optimizer_parameters": {
-                "lr_mult": 1,
-                "lr_max": 50,
-                "likelihood_coeff": 1,
-                "kl_coeff": 0.1,
+                "lr_mult": 2,
+                "lr_max": 40,
+                "likelihood_coeff": 2,
+                "kl_coeff": 0.5,
                 "normalize_gradients": False,
             },
             # "optimizer": torch.optim.Adam,
             # "optimizer_parameters": {
             #     "lr": 0.001,
             # },
-            "task": "CIFAR10",
-            "n_tasks": 1,
+            "task": "PermutedMNIST",
+            "n_tasks": 10,
             "n_classes": 1,
             "n_repetition": 1,
         }
@@ -91,7 +90,7 @@ if __name__ == "__main__":
 
     for index, data in enumerate(networks_data):
         ### FOLDER INITIALIZATION ###
-        name = f"{data['optimizer'].__name__}-BS{data['training_parameters']['batch_size']}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers']])}-{data['task']}-{data['nn_parameters']['activation_function'].__name__}"
+        name = f"{data['optimizer'].__name__}-BS{data['training_parameters']['batch_size']}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers']])}-{data['task']}-{data['nn_parameters']['activation_function']}"
         ### ACCURACY INITIALIZATION ###
         accuracies, training_accuracies = [], []
         batch_size = data['training_parameters']['batch_size']
@@ -116,7 +115,7 @@ if __name__ == "__main__":
         if "CIL" in data["task"]:
             # Create the permutations for the class incremental scenario: n_classes per task with no overlap
             random_permutation = torch.randperm(target_size)
-            permutations = [random_permutation[i * data["n_classes"]:(i + 1) * data["n_classes"]] for i in range(data["n_tasks"])]
+            permutations = [random_permutation[i * data["n_classes"]                                               :(i + 1) * data["n_classes"]] for i in range(data["n_tasks"])]
 
         # add input/output size to the layer of the network parameters
         if "Conv" in data["nn_type"].__name__:  # Convolutional network
@@ -220,8 +219,15 @@ if __name__ == "__main__":
                         #     net_trainer.model.load_bn_states(batch_params[i])
                         ### EXPORT VISUALIZATION OF PARAMETERS ###
                         if GRAPHS:
-                            graphs(main_folder, net_trainer,
-                                   i, epoch, predictions, labels, MODULO)
+                            graphs(main_folder=main_folder,
+                                   net_trainer=net_trainer,
+                                   task=i,
+                                   epoch=epoch,
+                                   predictions=predictions,
+                                   labels=labels,
+                                   task_test_length=test_dataset.data.shape[0],
+                                   modulo=MODULO)
+
                     ### TASK BOUNDARIES ###
                     if data["optimizer"] in [BayesBiNN]:
                         net_trainer.optimizer.update_prior_lambda()

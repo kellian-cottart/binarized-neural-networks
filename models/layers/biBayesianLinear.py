@@ -41,8 +41,6 @@ class BiBayesianLinear(torch.nn.Module):
         # Sample the weights according to 2*Ber(p) - 1
         weights = 2*Bernoulli(p).sample((n_samples,)).to(x.device)-1
         # Notation: s samples, b batch, o out_features, i in_features
-        if x.dim() == 2:
-            x = x.unsqueeze(0)
         return torch.einsum('soi, sbi -> sbo', weights, x)
 
     def forward(self, x, n_samples=1):
@@ -59,8 +57,6 @@ class BiBayesianLinear(torch.nn.Module):
         else:
             relaxed_weights = torch.tanh(
                 (self.weight + delta)/self.tau)
-        if x.dim() == 2:
-            x = x.unsqueeze(0)
         # just a little bit faster if we have one sample
         if relaxed_weights.shape[0] == 1:
             return (x.squeeze(0) @ relaxed_weights.squeeze(0).T).unsqueeze(0)

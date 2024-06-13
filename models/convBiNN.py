@@ -50,28 +50,16 @@ class ConvBiNN(ConvNN):
             activation_function (torch.nn.functional): Activation function
             output_function (str): Output function
         """
-        super().__init__()
-        self.kernel_size = kernel_size
-        self.padding = padding
-        self.stride = stride
-        self.dilation = dilation
-        self.device = device
-        self.features = torch.nn.ModuleList().to(self.device)
-        self.dropout = dropout
-        self.normalization = normalization
-        self.eps = eps
-        self.momentum = momentum
-        self.running_stats = running_stats
-        self.affine = affine
-        self.activation_function = activation_function
-        self.output_function = output_function
-        self.gnnum_groups = gnnum_groups
-        ### LAYER INITIALIZATION ###
-        self._features_init(features, bias)
-        ### WEIGHT INITIALIZATION ###
-        self._weight_init(init, std)
-        self.classifier = BiNN(layers, init, std, device, dropout, normalization, bias, running_stats,
-                               affine, eps, momentum, gnnum_groups, activation_function, output_function)
+        super().__init__(layers=layers, features=features, init=init, std=std, device=device,
+                         dropout=dropout, normalization=normalization, bias=bias,
+                         running_stats=running_stats, affine=affine, eps=eps, momentum=momentum,
+                         activation_function=activation_function, output_function=output_function,
+                         kernel_size=kernel_size, padding=padding, stride=stride, dilation=dilation,
+                         gnnum_groups=gnnum_groups, *args, **kwargs)
+        self.classifier = BiNN(layers=layers, init=init, std=std, device=device,
+                               dropout=dropout, normalization=normalization, bias=bias,
+                               running_stats=running_stats, affine=affine, eps=eps, momentum=momentum,
+                               activation_function=activation_function, output_function=output_function)
 
     def _features_init(self, features, bias=False):
         """ Initialize layers of the network for convolutional layers
@@ -86,9 +74,11 @@ class ConvBiNN(ConvNN):
             self.features.append(BinarizedConv2d(features[i], features[i+1], kernel_size=self.kernel_size,
                                  padding=self.padding, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device))
             self.features.append(self._norm_init(features[i+1]))
+            self.features.append(self._activation_init())
             self.features.append(BinarizedConv2d(features[i+1], features[i+1], kernel_size=self.kernel_size,
                                  padding=self.padding, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device))
             self.features.append(self._norm_init(features[i+1]))
+            self.features.append(self._activation_init())
             self.features.append(torch.nn.MaxPool2d(kernel_size=2))
             if self.dropout == True:
                 self.features.append(torch.nn.Dropout2d(p=0.2))
