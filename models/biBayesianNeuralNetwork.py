@@ -2,6 +2,7 @@
 import torch
 from .layers import *
 from .deepNeuralNetwork import *
+from .layers.activation import *
 
 
 class BiBayesianNN(DNN):
@@ -46,9 +47,12 @@ class BiBayesianNN(DNN):
                 tau=self.tau,
                 binarized=self.binarized,
                 device=self.device))
+            if self.squared_inputs == True:
+                self.layers.append(SquaredActivation().to(self.device))
             self.layers.append(self._norm_init(layers[i+1]))
             if i < len(layers)-2:
                 self.layers.append(self._activation_init())
+                # self.layers.append(self._norm_init(layers[i+1]))
 
     def forward(self, x, backwards=True):
         """ Forward pass of DNN
@@ -60,24 +64,24 @@ class BiBayesianNN(DNN):
             torch.Tensor: Output tensor
 
         """
-        unique_layers = set(type(layer) for layer in self.layers)
         if x.dim() == 4:
             x = x.unsqueeze(0)
         ### FORWARD PASS ###
-        for i, layer in enumerate(self.layers):
+        for layer in self.layers:
             if isinstance(layer, BiBayesianLinear):
                 if backwards:
                     x = layer(x, self.n_samples_backward)
                 else:
                     x = layer.sample(x, self.n_samples_forward)
-            elif not isinstance(layer, torch.nn.Flatten):
-                # Normalization layers, but input is (n_samples, batch, features)
-                shape = x.shape
-                x = x.reshape([shape[0]*shape[1], shape[2]])
-                x = layer(x)
-                x = x.reshape([shape[0], shape[1], shape[2]])
             else:
-                x = layer(x)
+                try:
+                    x = layer(x)
+                except:
+                    # Normalization layers, but input is (n_samples, batch, features)
+                    shape = x.shape
+                    x = x.reshape([shape[0]*shape[1], shape[2]])
+                    x = layer(x)
+                    x = x.reshape([shape[0], shape[1], shape[2]])
         if self.output_function == "softmax":
             x = torch.nn.functional.softmax(x, dim=2)
         elif self.output_function == "log_softmax":

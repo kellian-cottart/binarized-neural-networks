@@ -1,6 +1,7 @@
 import copy
 import torch
 from .layers import *
+from .layers.activation import *
 
 
 class StandardizeNorm(torch.nn.Module):
@@ -35,6 +36,7 @@ class DNN(torch.nn.Module):
                  gnnum_groups: int = 32,
                  activation_function: torch.nn.functional = torch.nn.functional.relu,
                  output_function: str = "softmax",
+                 squared_inputs: bool = False,
                  *args,
                  **kwargs):
         """ NN initialization
@@ -54,6 +56,7 @@ class DNN(torch.nn.Module):
             gnnum_groups (int): Number of groups in GroupNorm
             activation_function (torch.nn.functional): Activation function
             output_function (str): Output function
+            squared_inputs (bool): Whether to square the inputs
         """
         super(DNN, self).__init__()
         self.device = device
@@ -67,6 +70,7 @@ class DNN(torch.nn.Module):
         self.activation_function = activation_function
         self.output_function = output_function
         self.gnnum_groups = gnnum_groups
+        self.squared_inputs = squared_inputs
         ### LAYER INITIALIZATION ###
         self._layer_init(layers, bias)
         ### WEIGHT INITIALIZATION ###
@@ -89,9 +93,12 @@ class DNN(torch.nn.Module):
                 layers[i+1],
                 bias=bias,
                 device=self.device))
+            if self.squared_inputs == True:
+                self.layers.append(SquaredActivation().to(self.device))
             self.layers.append(self._norm_init(layers[i+1]))
             if i < len(layers)-2:
                 self.layers.append(self._activation_init())
+                self.layers.append(self._norm_init(layers[i+1]))
 
     def _activation_init(self):
         if self.activation_function == "relu":
@@ -102,8 +109,14 @@ class DNN(torch.nn.Module):
             return torch.nn.Tanh().to(self.device)
         elif self.activation_function == "sign":
             return SignActivation().to(self.device)
+        elif self.activation_function == "squared":
+            return SquaredActivation().to(self.device)
+        elif self.activation_function == "elephant":
+            return ElephantActivation().to(self.device)
+        elif self.activation_function == "signelephant":
+            return SignElephantActivation().to(self.device)
         else:
-            raise ValueError("Activation function not recognized")
+            return torch.nn.Identity().to(self.device)
 
     def _norm_init(self, n_features):
         """ Initialize normalization layers"""
@@ -115,7 +128,7 @@ class DNN(torch.nn.Module):
             return torch.nn.InstanceNorm1d(n_features, eps=self.eps, affine=self.affine, track_running_stats=self.running_stats).to(self.device)
         elif self.normalization == "groupnorm":
             return torch.nn.GroupNorm(self.gnnum_groups, n_features).to(self.device)
-        elif self.normalization == "standardize":
+        elif self.normalization == "standardizenorm":
             return StandardizeNorm().to(self.device)
         else:
             return torch.nn.Identity().to(self.device)
@@ -148,12 +161,9 @@ class DNN(torch.nn.Module):
             torch.Tensor: Output tensor
 
         """
-        unique_layers = set(type(layer) for layer in self.layers)
         ### FORWARD PASS ###
-        for i, layer in enumerate(self.layers):
+        for layer in self.layers:
             x = layer(x)
-            if layer is not self.layers[-1] and (i+1) % len(unique_layers) == 0:
-                x = self.activation_function(x)
         if self.output_function == "softmax":
             x = torch.nn.functional.softmax(x, dim=1)
         if self.output_function == "log_softmax":

@@ -23,17 +23,14 @@ def graphs(main_folder, net_trainer, task, epoch, predictions=None, labels=None,
             p for p in net_trainer.optimizer.param_groups[0]['params']]
         visualize_grad(
             parameters=params,
-            grad=net_trainer.optimizer.state['grad'] if isinstance(
-                net_trainer.optimizer, BinaryHomosynapticUncertaintyTest) else [
-                p.grad for p in net_trainer.optimizer.param_groups[0]['params']],
+            grad=[p.grad for p in net_trainer.optimizer.param_groups[0]['params']],
             path=os.path.join(main_folder, "grad"),
             task=task+1,
             epoch=epoch+1,
         )
         visualize_lambda(
             parameters=params,
-            lambda_=net_trainer.optimizer.state['lambda'] if isinstance(
-                net_trainer.optimizer, BinaryHomosynapticUncertaintyTest) else params,
+            lambda_=params,
             path=os.path.join(main_folder, "lambda"),
             threshold=10,
             task=task+1,
@@ -329,9 +326,9 @@ def visualize_grad(parameters, grad, path, task=None, epoch=None):
                        color='purple')
 
         # write on the graph the maximum value and the minimum value
-        current_ax.text(0.5, 0.95, f"Max: {grad.max():.6f}",
+        current_ax.text(0.5, 0.95, f"Mean (abs): {torch.abs(grad).mean().item():.6f}",
                         fontsize=6, ha='center', va='center', transform=current_ax.transAxes)
-        current_ax.text(0.5, 0.9, f"Min: {grad.min():.6f}",
+        current_ax.text(0.5, 0.9, f"Std (abs): {torch.abs(grad).std().item():.6f}",
                         fontsize=6, ha='center', va='center', transform=current_ax.transAxes)
 
         current_ax.set_xlabel(r'Gradient [-]')

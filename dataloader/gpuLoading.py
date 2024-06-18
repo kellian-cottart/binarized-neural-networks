@@ -175,7 +175,7 @@ class GPULoading:
         train_x, test_x = self.normalization(train_x, test_x)
         return self.to_dataset(train_x, train_y, test_x, test_y)
 
-    def cifar10(self, batch_size, path_databatch, path_testbatch, *args, **kwargs):
+    def cifar10(self, batch_size, path_databatch, path_testbatch, iterations=10, *args, **kwargs):
         """ Load a local dataset on GPU corresponding to CIFAR10 """
         # Deal with the training data
         train_x = []
@@ -198,13 +198,17 @@ class GPULoading:
         if "resize" in kwargs and kwargs["resize"] == True:
             folder = "datasets/cifar10_resnet18"
             os.makedirs(folder, exist_ok=True)
-            if not os.listdir(folder):
+            if not os.listdir(folder) or not os.path.exists(f"{folder}/cifar10_{iterations}_features_train.pt"):
                 self.feature_extraction(
-                    folder, train_x, train_y, test_x, test_y, task="cifar10")
-            train_x = torch.load(f"{folder}/cifar10_features_train.pt")
-            train_y = torch.load(f"{folder}/cifar10_target_train.pt")
-            test_x = torch.load(f"{folder}/cifar10_features_test.pt")
-            test_y = torch.load(f"{folder}/cifar10_target_test.pt")
+                    folder, train_x, train_y, test_x, test_y, task="cifar10", iterations=iterations)
+            train_x = torch.load(
+                f"{folder}/cifar10_{iterations}_features_train.pt")
+            train_y = torch.load(
+                f"{folder}/cifar10_{iterations}_target_train.pt")
+            test_x = torch.load(
+                f"{folder}/cifar10_{iterations}_features_test.pt")
+            test_y = torch.load(
+                f"{folder}/cifar10_{iterations}_target_test.pt")
             # Normalize and pad the data
             return self.to_dataset(train_x, train_y, test_x, test_y)
         # Normalize and pad the data

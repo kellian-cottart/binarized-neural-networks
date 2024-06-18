@@ -17,9 +17,6 @@ class BiNN(DNN):
         dropout (bool): Whether to use dropout
     """
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     def _layer_init(self, layers, bias=False):
         self.layers.append(nn.Flatten().to(self.device))
         for i, _ in enumerate(layers[:-1]):
@@ -31,22 +28,12 @@ class BiNN(DNN):
                 layers[i+1],
                 bias=bias,
                 device=self.device))
+            if self.squared_inputs == True:
+                self.layers.append(SquaredActivation().to(self.device))
             self.layers.append(self._norm_init(layers[i+1]))
             if i < len(layers)-2:
                 self.layers.append(self._activation_init())
-
-    def forward(self, x, *args, **kwargs):
-        """ Forward pass of DNN
-
-        Args:
-            x (torch.Tensor): Input tensor
-
-        Returns:
-            torch.Tensor: Output tensor
-
-        """
-        # Call forward of parent class
-        return super().forward(x)
+                # self.layers.append(self._norm_init(layers[i+1]))
 
     def __repr__(self):
         return f"BNN({self.layers}, dropout={self.dropout}, device={self.device}, normalization={self.normalization})"

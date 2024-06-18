@@ -49,20 +49,27 @@ def train_iteration(trial):
     Args:
         trial (optuna.Trial): Optuna trial
     """
-    ### PARAMETERS ###
-    lr_mult = trial.suggest_float("lr_mult", 0.5, 20, step=0.1)
-    lr_max = trial.suggest_float("lr_max", 1, 100, step=0.5)
+    ### OPTIM PARAMETERS ###
+    lr_mult = trial.suggest_float("lr_mult", 0.1, 10, step=0.1)
+    lr_max = trial.suggest_float("lr_max", 0.1, 20, step=0.1)
     likelihood_coeff = trial.suggest_float(
-        "likelihood_coeff", 0, 15, step=0.01)
+        "likelihood_coeff", 0, 5, step=0.1)
     kl_coeff = trial.suggest_float(
-        "kl_coeff", 0, 15, step=0.01)
-
+        "kl_coeff", 0, 5, step=0.1)
+    # clamp = trial.suggest_float("clamp", 0, 0.6, step=0.01)
+    # normalize_gradients = trial.suggest_categorical(
+    #     "normalize_gradients", [False])
+    # mesuified = trial.suggest_categorical(
+    #     "mesuified", [False])
+    # N = trial.suggest_int("N", 5000, 50000, step=1000)
+    squared_inputs = trial.suggest_categorical(
+        "squared_inputs", [False])
     ### LAMBDA PARAMETERS ###
     # suggest int
-    n_samples_backward = trial.suggest_int("n_samples_backward", 1, 10, step=1)
+    n_samples_backward = trial.suggest_int("n_samples_backward", 5, 10, step=1)
     init_law = trial.suggest_categorical("init_law", ["gaussian"])
-    init_param = trial.suggest_float("init_param", 0, 0.3, step=0.01)
-    temperature = trial.suggest_float("temperature", 0.5, 1, step=0.1)
+    init_param = trial.suggest_float("init_param", 0, 0.1, step=0.01)
+    temperature = trial.suggest_float("temperature", 0.5, 1.1, step=0.1)
 
     ### TASK PARAMETERS ###
     seed = trial.suggest_categorical(
@@ -70,7 +77,7 @@ def train_iteration(trial):
     epochs = trial.suggest_categorical(
         "epochs", [20])
     batch_size = trial.suggest_categorical(
-        "batch_size", [128, 256, 512])
+        "batch_size", [128])
     task = trial.suggest_categorical(
         "task", [parser.parse_args().task])
     n_tasks = trial.suggest_categorical(
@@ -100,6 +107,7 @@ def train_iteration(trial):
             "tau": temperature,
             "binarized": False,
             "activation_function": parser.parse_args().activation,
+            "squared_inputs": squared_inputs,
             "output_function": "log_softmax",
             "eps": 1e-5,
             "momentum": 0,
@@ -122,7 +130,11 @@ def train_iteration(trial):
             "lr_max": lr_max,
             "kl_coeff": kl_coeff,
             "likelihood_coeff": likelihood_coeff,
-            "normalize_gradients": False,
+            # "normalize_gradients": normalize_gradients,
+            # "eps": 1e-7,
+            # "clamp": clamp,
+            # "mesuified": mesuified,
+            # "N": N,
         },
         "task": task,
         "n_tasks": n_tasks,
@@ -213,16 +225,22 @@ def train_iteration(trial):
 def objective_computation(net_trainer, i):
     # 1st: Average Accuracy (AA)
     average_accuracy = net_trainer.mean_testing_accuracy[-1].item()
+    network_weight_mean_sum = 0
+    for layer in net_trainer.model.layers:
+        if hasattr(layer, "weight") and layer.weight is not None:
+            network_weight_mean_sum += torch.mean(
+                torch.abs(layer.weight.data)).item()
+
     print(
-        f"AA: {average_accuracy}, Task_{i}: {net_trainer.testing_accuracy[-1][i].item()}")
-    return average_accuracy, net_trainer.testing_accuracy[-1][i].item()
+        f"AA: {average_accuracy}, Task_{i}: {net_trainer.testing_accuracy[-1][i].item()}, Network Weight Mean Sum: {network_weight_mean_sum}")
+    return average_accuracy, net_trainer.testing_accuracy[-1][i].item(), network_weight_mean_sum
 
 
 if __name__ == "__main__":
     ### OPTUNA CONFIGURATION ###
     # Create a new study that "maximize" the accuracy of all tasks
     study = optuna.create_study(
-        directions=["maximize", "maximize"] if "Permuted" in parser.parse_args().task else [
+        directions=["maximize", "maximize", "minimize"] if "Permuted" in parser.parse_args().task else [
             "maximize"],
         sampler=optuna.samplers.TPESampler(),
         pruner=optuna.pruners.HyperbandPruner(

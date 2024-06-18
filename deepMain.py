@@ -14,7 +14,7 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
 PADDING = 2
 GRAPHS = True
-MODULO = 5
+MODULO = 10
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
 DATASETS_PATH = "datasets"
@@ -38,7 +38,7 @@ if __name__ == "__main__":
             "nn_type": models.BiBayesianNN,
             "nn_parameters": {
                 # NETWORK ###w
-                "layers": [300, 300],
+                "layers": [1024],
                 # "features": [32, 64, 128],
                 # "kernel_size": 3,
                 # "padding": "same",
@@ -46,12 +46,13 @@ if __name__ == "__main__":
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
-                "std": 0.01,
+                "std": 0.05,
                 "n_samples_forward": 10,
                 "n_samples_backward": 10,
                 "tau": 1,
                 "binarized": False,
-                "activation_function": "sign",
+                "squared_inputs": False,
+                "activation_function": "signelephant",
                 "output_function": "log_softmax",
                 "normalization": "instancenorm",
                 "eps": 1e-5,
@@ -63,23 +64,40 @@ if __name__ == "__main__":
             "training_parameters": {
                 'n_epochs': 20,
                 'batch_size': 128,
-                'resize': False,
-                'data_aug_it': 10,
-                "continual": True,
+                'resize': True,
+                'data_aug_it': 1,
+                "continual": False,
+                "task_boundaries": False,
             },
             "criterion": torch.functional.F.nll_loss,
             "reduction": "sum",
             "optimizer": BHUparallel,
             "optimizer_parameters": {
-                "lr_mult": 2,
-                "lr_max": 40,
-                "likelihood_coeff": 2,
-                "kl_coeff": 0.5,
+                "lr_mult": 6,
+                "lr_max": 2,
+                "likelihood_coeff": 1,
+                "kl_coeff": 1,
                 "normalize_gradients": False,
+                "eps": 1e-7,
+                "clamp": 0.1,
+                "mesuified": False,
+                "N": 10_000,
             },
+            # "optimizer": BayesBiNNParallel,
+            # "optimizer_parameters": {
+            #     "lr": 50,
+            #     "clamp_cosh": 20,
+            #     "beta": 0,
+            #     "scale": 0,
+            # },
             # "optimizer": torch.optim.Adam,
             # "optimizer_parameters": {
             #     "lr": 0.001,
+            # },
+            # "optimizer": MetaplasticAdam,
+            # "optimizer_parameters": {
+            #     "lr": 0.005,
+            #     "metaplasticity": 1.35
             # },
             "task": "PermutedMNIST",
             "n_tasks": 10,
@@ -142,17 +160,17 @@ if __name__ == "__main__":
             model = data['nn_type'](**data['nn_parameters'])
             ident = f"{name} - {index}"
             ### INSTANTIATE THE TRAINER ###
-            if data["optimizer"] in [BayesBiNN, BinaryHomosynapticUncertaintyTest]:
+            if data["optimizer"] in [BayesBiNN]:
                 net_trainer = trainer.BayesTrainer(batch_size=batch_size,
                                                    model=model, **data, device=DEVICE)
             else:
                 net_trainer = trainer.GPUTrainer(batch_size=batch_size,
                                                  model=model, **data, device=DEVICE)
             print(net_trainer.model)
-            # if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
-            #     batch_params = []
-            #     for i in range(data["n_tasks"]):
-            #         batch_params.append(net_trainer.model.save_bn_states())
+            if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
+                batch_params = []
+                for i in range(data["n_tasks"]):
+                    batch_params.append(net_trainer.model.save_bn_states())
             for k in range(data["n_repetition"]):
                 ### TASK SELECTION ###
                 # Setting the task iterator: The idea is that we yield datasets corresponding to the framework we want to use
@@ -163,7 +181,7 @@ if __name__ == "__main__":
                     pbar = tqdm.trange(epochs)
                     for epoch in pbar:
                         num_batches = len(train_dataset) // (
-                            batch_size * data["n_tasks"]) if "CIL" in data["task"] or "Stream" in data["task"]else len(train_dataset) // batch_size
+                            batch_size * data["n_tasks"]) - 1 if "CIL" in data["task"] or "Stream" in data["task"] else len(train_dataset) // batch_size - 1
                         train_dataset.shuffle()
                         for n_batch in range(num_batches):
                             # if HESSIAN_COMP == True:
@@ -200,8 +218,8 @@ if __name__ == "__main__":
                         #                versionning('hessian', 'hessian', ".pt"))
                         #     torch.save(net_trainer.model.layers[-2].lambda_,
                         #                versionning('hessian', 'lambda', ".pt"))
-                        # if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
-                        #     batch_params[i] = net_trainer.model.save_bn_states()
+                        if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
+                            batch_params[i] = net_trainer.model.save_bn_states()
                         ### TESTING ###
                         # Depending on the task, we also need to use the framework on the test set and show training or not
                         name_loader, predictions, labels = iterable_evaluation_selector(
@@ -209,14 +227,13 @@ if __name__ == "__main__":
                             test_dataset=test_dataset,
                             net_trainer=net_trainer,
                             permutations=permutations,
-                            # batch_params=batch_params if data["optimizer"] in [
-                            #     MetaplasticAdam] and net_trainer.model.affine else None,
+                            batch_params=batch_params if data["optimizer"] in [
+                                MetaplasticAdam] and net_trainer.model.affine else None,
                             train_dataset=train_dataset)
-
                         net_trainer.pbar_update(
                             pbar, epoch, n_epochs=epochs, name_loader=name_loader)
-                        # if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
-                        #     net_trainer.model.load_bn_states(batch_params[i])
+                        if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
+                            net_trainer.model.load_bn_states(batch_params[i])
                         ### EXPORT VISUALIZATION OF PARAMETERS ###
                         if GRAPHS:
                             graphs(main_folder=main_folder,
@@ -225,11 +242,12 @@ if __name__ == "__main__":
                                    epoch=epoch,
                                    predictions=predictions,
                                    labels=labels,
-                                   task_test_length=test_dataset.data.shape[0],
+                                   task_test_length=test_dataset.data.shape[0] if "Permuted" in data[
+                                       "task"] else test_dataset.data.shape[0] // data["n_tasks"],
                                    modulo=MODULO)
 
                     ### TASK BOUNDARIES ###
-                    if data["optimizer"] in [BayesBiNN]:
+                    if data["training_parameters"]["task_boundaries"] == True:
                         net_trainer.optimizer.update_prior_lambda()
             ### SAVING DATA ###
             os.makedirs(main_folder, exist_ok=True)

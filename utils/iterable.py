@@ -20,7 +20,7 @@ def permuted_dataset(train_dataset, batch_size, continual, task_id, iteration, m
             iteration + 1)].view(-1, shape)[:, perm]
     targets = train_dataset.targets[batch_size *
                                     iteration: batch_size * (iteration + 1)]
-    batch_data = batch_data.view(batch_size,
+    batch_data = batch_data.view(batch_data.shape[0],
                                  train_dataset.data.shape[-3],
                                  train_dataset.data.shape[-2],
                                  train_dataset.data.shape[-1])
@@ -41,8 +41,7 @@ def class_incremental_dataset(train_dataset, batch_size, iteration, permutations
         iteration + 1)].view(-1, shape)
     targets = train_dataset.targets[indexes][batch_size *
                                              iteration: batch_size * (iteration + 1)]
-
-    batch_data = batch_data.view(batch_size,
+    batch_data = batch_data.view(batch_data.shape[0],
                                  train_dataset.data.shape[-3],
                                  train_dataset.data.shape[-2],
                                  train_dataset.data.shape[-1])
@@ -66,7 +65,7 @@ def stream_dataset(train_dataset, iteration, n_tasks, current_task, batch_size=1
                                                iteration: batch_size * (iteration + 1)]
     targets = train_dataset.targets[start:end][batch_size *
                                                iteration: batch_size * (iteration + 1)]
-    batch_data = batch_data.view(batch_size,
+    batch_data = batch_data.view(batch_data.shape[0],
                                  train_dataset.data.shape[-3],
                                  train_dataset.data.shape[-2],
                                  train_dataset.data.shape[-1])
@@ -80,7 +79,7 @@ def test_permuted_dataset(test_dataset, permutations):
 
 def test_class_incremental_dataset(test_dataset, permutations):
     for i in range(len(permutations)):
-        yield [class_incremental_dataset(train_dataset=test_dataset, batch_size=test_dataset.data.shape[0], iteration=0, permutations=permutations, task_id=i)]
+        yield [class_incremental_dataset(train_dataset=test_dataset, batch_size=test_dataset.data.shape[0]//len(permutations), iteration=0, permutations=permutations, task_id=i)]
 
 
 def special_task_selector(data, train_dataset, batch_size=128, continual=None, task_id=None, iteration=None, max_iterations=None, permutations=None, epoch=None):
