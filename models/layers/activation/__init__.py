@@ -1,4 +1,4 @@
 from .sign import *
 from .elephant import *
-from .signelephant import *
+from .gate import *
 from .squared import *

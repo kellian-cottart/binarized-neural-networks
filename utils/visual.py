@@ -164,6 +164,24 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accu
     plt.savefig(versionning(folder, title, ".svg"), bbox_inches='tight')
 
 
+def get_mean_std_accuracies(l_accuracies, t_start, t_end):
+    # Compute the number of epochs
+    n_epochs = len(l_accuracies[0]) // len(l_accuracies[0][0])
+    # l_accuracies is a vector of n network accuracies
+    # l_accuracies[0] is the accuracy of the first network for each task
+    l_accuracies = torch.tensor(l_accuracies).detach().cpu()
+    mean_acc = torch.mean(l_accuracies, dim=0)
+    std_acc = l_accuracies.std(dim=0)
+    # Get the last epochs at t_end
+    final_epoch = t_end * n_epochs - 1
+    mean_acc = mean_acc[final_epoch]
+    std_acc = std_acc[final_epoch]
+    # Retrieve only the tasks between t_start and t_end
+    mean_acc = mean_acc[t_start-1:t_end+1] * 100
+    std_acc = std_acc[t_start-1:t_end+1] * 100
+    return mean_acc, std_acc
+
+
 def visualize_task_frame(title, l_accuracies, folder, t_start, t_end):
     """ Visualize the accuracy of each task between t_start and t_end
 
@@ -174,24 +192,7 @@ def visualize_task_frame(title, l_accuracies, folder, t_start, t_end):
         t_start (int): start task
         t_end (int): end task (included)
     """
-    # Compute the number of epochs
-    n_epochs = len(l_accuracies[0]) // len(l_accuracies[0][0])
-
-    # l_accuracies is a vector of n network accuracies
-    # l_accuracies[0] is the accuracy of the first network for each task
-    l_accuracies = torch.tensor(l_accuracies).detach().cpu()
-    mean_acc = torch.mean(l_accuracies, dim=0)
-    std_acc = l_accuracies.std(dim=0)
-
-    # Get the last epochs at t_end
-    final_epoch = t_end * n_epochs - 1
-    mean_acc = mean_acc[final_epoch]
-    std_acc = std_acc[final_epoch]
-
-    # Retrieve only the tasks between t_start and t_end
-    mean_acc = mean_acc[t_start-1:t_end+1] * 100
-    std_acc = std_acc[t_start-1:t_end+1] * 100
-
+    mean_acc, std_acc = get_mean_std_accuracies(l_accuracies, t_start, t_end)
     plt.figure()
     # Scatter with line
     plt.plot(range(len(mean_acc)), mean_acc,

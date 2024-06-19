@@ -10,15 +10,43 @@ class StandardizeNorm(torch.nn.Module):
     """
 
     def __init__(self, eps=1e-5):
+        """
+        Args:
+            eps (float): Epsilon value for numerical stability
+        """
         super(StandardizeNorm, self).__init__()
         self.eps = eps
 
     def forward(self, x):
+        """
+        Args:
+            x (torch.Tensor): Input tensor
+
+        Returns:
+            torch.Tensor: Normalized tensor
+        """
         return (x - x.mean(dim=1, keepdim=True)) / (x.std(dim=1, keepdim=True) + self.eps)
 
 
 class DNN(torch.nn.Module):
-    """ Neural Network Base Class
+    """ Deep Neural Network
+
+    Args:
+        layers (list): List of layer sizes (including input and output layers)
+        init (str): Initialization method for weights
+        std (float): Standard deviation for initialization
+        device (str): Device to use for computation (e.g. 'cuda' or 'cpu')
+        dropout (bool): Whether to use dropout
+        normalization (str): Normalization method to choose (e.g. 'batchnorm', 'layernorm', 'instancenorm', 'groupnorm')
+        bias (bool): Whether to use bias
+        eps (float): BatchNorm epsilon
+        momentum (float): BatchNorm momentum
+        running_stats (bool): Whether to use running stats in BatchNorm
+        affine (bool): Whether to use affine transformation in BatchNorm
+        gnnum_groups (int): Number of groups in GroupNorm
+        activation_function (torch.nn.functional): Activation function
+        output_function (str): Output function
+        squared_inputs (bool): Whether to square the inputs
     """
 
     def __init__(self,
@@ -39,25 +67,6 @@ class DNN(torch.nn.Module):
                  squared_inputs: bool = False,
                  *args,
                  **kwargs):
-        """ NN initialization
-
-        Args:
-            layers (list): List of layer sizes (including input and output layers)
-            init (str): Initialization method for weights
-            std (float): Standard deviation for initialization
-            device (str): Device to use for computation (e.g. 'cuda' or 'cpu')
-            dropout (bool): Whether to use dropout
-            normalization (str): Normalization method to choose (e.g. 'batchnorm', 'layernorm', 'instancenorm', 'groupnorm')
-            bias (bool): Whether to use bias
-            eps (float): BatchNorm epsilon
-         (float): BatchNorm momentum
-            running_stats (bool): Whether to use running stats in BatchNorm
-            affine (bool): Whether to use affine transformation in BatchNorm
-            gnnum_groups (int): Number of groups in GroupNorm
-            activation_function (torch.nn.functional): Activation function
-            output_function (str): Output function
-            squared_inputs (bool): Whether to square the inputs
-        """
         super(DNN, self).__init__()
         self.device = device
         self.layers = torch.nn.ModuleList().to(self.device)
@@ -71,6 +80,8 @@ class DNN(torch.nn.Module):
         self.output_function = output_function
         self.gnnum_groups = gnnum_groups
         self.squared_inputs = squared_inputs
+        if "activation_parameters" in kwargs:
+            self.activation_parameters = kwargs["activation_parameters"]
         ### LAYER INITIALIZATION ###
         self._layer_init(layers, bias)
         ### WEIGHT INITIALIZATION ###
@@ -80,7 +91,7 @@ class DNN(torch.nn.Module):
         """ Initialize layers of NN
 
         Args:
-            dropout (bool): Whether to use dropout
+            layers (list): List of layer sizes (including input and output layers)
             bias (bool): Whether to use bias
         """
         self.layers.append(nn.Flatten().to(self.device))
@@ -98,58 +109,6 @@ class DNN(torch.nn.Module):
             self.layers.append(self._norm_init(layers[i+1]))
             if i < len(layers)-2:
                 self.layers.append(self._activation_init())
-                self.layers.append(self._norm_init(layers[i+1]))
-
-    def _activation_init(self):
-        if self.activation_function == "relu":
-            return torch.nn.ReLU().to(self.device)
-        elif self.activation_function == "leaky_relu":
-            return torch.nn.LeakyReLU().to(self.device)
-        elif self.activation_function == "tanh":
-            return torch.nn.Tanh().to(self.device)
-        elif self.activation_function == "sign":
-            return SignActivation().to(self.device)
-        elif self.activation_function == "squared":
-            return SquaredActivation().to(self.device)
-        elif self.activation_function == "elephant":
-            return ElephantActivation().to(self.device)
-        elif self.activation_function == "signelephant":
-            return SignElephantActivation().to(self.device)
-        else:
-            return torch.nn.Identity().to(self.device)
-
-    def _norm_init(self, n_features):
-        """ Initialize normalization layers"""
-        if self.normalization == "batchnorm":
-            return torch.nn.BatchNorm1d(n_features, eps=self.eps, momentum=self.momentum, affine=self.affine, track_running_stats=self.running_stats).to(self.device)
-        elif self.normalization == "layernorm":
-            return torch.nn.LayerNorm(n_features).to(self.device)
-        elif self.normalization == "instancenorm":
-            return torch.nn.InstanceNorm1d(n_features, eps=self.eps, affine=self.affine, track_running_stats=self.running_stats).to(self.device)
-        elif self.normalization == "groupnorm":
-            return torch.nn.GroupNorm(self.gnnum_groups, n_features).to(self.device)
-        elif self.normalization == "standardizenorm":
-            return StandardizeNorm().to(self.device)
-        else:
-            return torch.nn.Identity().to(self.device)
-
-    def _weight_init(self, init='normal', std=0.1):
-        """ Initialize weights of each layer
-
-        Args:
-            init (str): Initialization method for weights
-            std (float): Standard deviation for initialization
-        """
-        for layer in self.layers:
-            if isinstance(layer, torch.nn.Module) and hasattr(layer, 'weight') and layer.weight is not None:
-                if init == 'gaussian':
-                    torch.nn.init.normal_(
-                        layer.weight.data, mean=0.0, std=std)
-                elif init == 'uniform':
-                    torch.nn.init.uniform_(
-                        layer.weight.data, a=-std/2, b=std/2)
-                elif init == 'xavier':
-                    torch.nn.init.xavier_normal_(layer.weight.data)
 
     def forward(self, x, *args, **kwargs):
         """ Forward pass of DNN
@@ -186,9 +145,66 @@ class DNN(torch.nn.Module):
     def save_bn_states(self):
         """ Save batch normalization states
 
+        Returns:
+            dict: State dictionary
         """
         state_dict = {}
         for i, layer in enumerate(self.layers):
             if isinstance(layer, torch.nn.BatchNorm1d):
                 state_dict[f"layers.{i}"] = copy.deepcopy(layer.state_dict())
         return state_dict
+
+    def _activation_init(self):
+        """
+        Returns:
+            torch.nn.Module: Activation function module
+        """
+        activation_functions = {
+            "relu": torch.nn.ReLU,
+            "leaky_relu": torch.nn.LeakyReLU,
+            "tanh": torch.nn.Tanh,
+            "sign": SignActivation,
+            "squared": SquaredActivation,
+            "elephant": ElephantActivation,
+            "gate": GateActivation
+        }
+        # add parameters to activation function if needed
+        if hasattr(self, 'activation_parameters'):
+            return activation_functions.get(self.activation_function, torch.nn.Identity)(**self.activation_parameters).to(self.device)
+        else:
+            return activation_functions.get(self.activation_function, torch.nn.Identity)().to(self.device)
+
+    def _norm_init(self, n_features):
+        """
+        Args:
+            n_features (int): Number of features
+
+        Returns:
+            torch.nn.Module: Normalization layer module
+        """
+        normalization_layers = {
+            "batchnorm": lambda: torch.nn.BatchNorm1d(n_features, eps=self.eps, momentum=self.momentum, affine=self.affine, track_running_stats=self.running_stats),
+            "layernorm": lambda: torch.nn.LayerNorm(n_features),
+            "instancenorm": lambda: torch.nn.InstanceNorm1d(n_features, eps=self.eps, affine=self.affine, track_running_stats=self.running_stats),
+            "groupnorm": lambda: torch.nn.GroupNorm(self.gnnum_groups, n_features),
+            "standardizenorm": lambda: StandardizeNorm()
+        }
+        return normalization_layers.get(self.normalization, torch.nn.Identity)().to(self.device)
+
+    def _weight_init(self, init='normal', std=0.1):
+        """ Initialize weights of each layer
+
+        Args:
+            init (str): Initialization method for weights
+            std (float): Standard deviation for initialization
+        """
+        for layer in self.layers:
+            if isinstance(layer, torch.nn.Module) and hasattr(layer, 'weight') and layer.weight is not None:
+                if init == 'gaussian':
+                    torch.nn.init.normal_(
+                        layer.weight.data, mean=0.0, std=std)
+                elif init == 'uniform':
+                    torch.nn.init.uniform_(
+                        layer.weight.data, a=-std/2, b=std/2)
+                elif init == 'xavier':
+                    torch.nn.init.xavier_normal_(layer.weight.data)

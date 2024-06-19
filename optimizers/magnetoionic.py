@@ -4,11 +4,19 @@ from torch.nn.utils import parameters_to_vector, vector_to_parameters
 
 
 class Magnetoionic(torch.optim.Optimizer):
+    """ Magnetoionic Optimizer made for simulating magnetic fields in magnetoinic devices
+
+    Args: 
+        params (iterable): iterable of parameters to optimize or dicts defining
+            parameter groups
+        lr (float, optional): learning rate
+        field (str, optional): type of magnetic field applied, either "strong", "weak" or "linear"
+        eps (float, optional): term added to the denominator to improve numerical stability
+    """
 
     def __init__(self,
                  params,
                  lr=1e-3,
-                 step=1e-3,
                  field="weak",
                  eps=1e-8):
         if not 0.0 <= lr:

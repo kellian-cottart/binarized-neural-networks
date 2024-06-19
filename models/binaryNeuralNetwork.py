@@ -33,7 +33,6 @@ class BiNN(DNN):
             self.layers.append(self._norm_init(layers[i+1]))
             if i < len(layers)-2:
                 self.layers.append(self._activation_init())
-                # self.layers.append(self._norm_init(layers[i+1]))
 
     def __repr__(self):
         return f"BNN({self.layers}, dropout={self.dropout}, device={self.device}, normalization={self.normalization})"

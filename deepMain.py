@@ -46,13 +46,16 @@ if __name__ == "__main__":
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
-                "std": 0.05,
+                "std": 0.01,
                 "n_samples_forward": 10,
                 "n_samples_backward": 10,
                 "tau": 1,
                 "binarized": False,
                 "squared_inputs": False,
-                "activation_function": "signelephant",
+                "activation_function": "gate",
+                "activation_parameters": {
+                    "width": 1
+                },
                 "output_function": "log_softmax",
                 "normalization": "instancenorm",
                 "eps": 1e-5,
@@ -73,9 +76,9 @@ if __name__ == "__main__":
             "reduction": "sum",
             "optimizer": BHUparallel,
             "optimizer_parameters": {
-                "lr_mult": 6,
-                "lr_max": 2,
-                "likelihood_coeff": 1,
+                "lr_mult": 25,
+                "lr_max": 15,
+                "likelihood_coeff": 0,
                 "kl_coeff": 1,
                 "normalize_gradients": False,
                 "eps": 1e-7,
@@ -85,8 +88,8 @@ if __name__ == "__main__":
             },
             # "optimizer": BayesBiNNParallel,
             # "optimizer_parameters": {
-            #     "lr": 50,
-            #     "clamp_cosh": 20,
+            #     "lr": 25,
+            #     "clamp_cosh": 15,
             #     "beta": 0,
             #     "scale": 0,
             # },
@@ -98,6 +101,12 @@ if __name__ == "__main__":
             # "optimizer_parameters": {
             #     "lr": 0.005,
             #     "metaplasticity": 1.35
+            # },
+            # "optimizer": Magnetoionic,
+            # "optimizer_parameters": {
+            #     "lr": 0.001,
+            #     "field": field,
+            #     "eps": 1e-8
             # },
             "task": "PermutedMNIST",
             "n_tasks": 10,
@@ -133,7 +142,7 @@ if __name__ == "__main__":
         if "CIL" in data["task"]:
             # Create the permutations for the class incremental scenario: n_classes per task with no overlap
             random_permutation = torch.randperm(target_size)
-            permutations = [random_permutation[i * data["n_classes"]                                               :(i + 1) * data["n_classes"]] for i in range(data["n_tasks"])]
+            permutations = [random_permutation[i * data["n_classes"]:(i + 1) * data["n_classes"]] for i in range(data["n_tasks"])]
 
         # add input/output size to the layer of the network parameters
         if "Conv" in data["nn_type"].__name__:  # Convolutional network
