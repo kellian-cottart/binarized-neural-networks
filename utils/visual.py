@@ -19,18 +19,20 @@ def graphs(main_folder, net_trainer, task, epoch, predictions=None, labels=None,
             log=True,
             task_test_length=task_test_length,
         )
-        params = [
-            p for p in net_trainer.optimizer.param_groups[0]['params']]
-        visualize_grad(
-            parameters=params,
-            grad=[p.grad for p in net_trainer.optimizer.param_groups[0]['params']],
-            path=os.path.join(main_folder, "grad"),
-            task=task+1,
-            epoch=epoch+1,
-        )
+        params = [p for p in net_trainer.optimizer.param_groups[0]['params']]
+        grad = [p.grad for p in net_trainer.optimizer.param_groups[0]['params']]
+        if grad[0] is not None:
+            visualize_grad(
+                parameters=params,
+                grad=grad,
+                path=os.path.join(main_folder, "grad"),
+                task=task+1,
+                epoch=epoch+1,
+            )
         visualize_lambda(
             parameters=params,
-            lambda_=params,
+            lambda_=params if not isinstance(
+                net_trainer.optimizer, BayesBiNN) else net_trainer.optimizer.state['lambda'],
             path=os.path.join(main_folder, "lambda"),
             threshold=10,
             task=task+1,
@@ -124,7 +126,11 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accu
         plt.text(0.8, 0.15, f"Average of tasks: {average_accuracies[-1]:.2f}%",
                  fontsize=9, ha='center', va='center', transform=ax.transAxes, fontweight='bold')
         # Difference between first and last task at the last epoch
-        difference = mean_accuracies[epochs-1, 0] - mean_accuracies[-1, -1]
+        if isinstance(epochs, int):
+            difference = mean_accuracies[epochs-1, 0] - mean_accuracies[-1, -1]
+        else:
+            difference = mean_accuracies[epochs[0]-1,
+                                         0] - mean_accuracies[epochs[-1]-1, -1]
         plt.text(0.8, 0.10, f"Vanishing Plasticity: {difference:.2f}%",
                  fontsize=9, ha='center', va='center', transform=ax.transAxes, fontweight='bold')
 
@@ -152,7 +158,7 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accu
                              upper_bound_training_tasks[i], lower_bound_training_tasks[i], alpha=0.2, color=colors(i))
     ### LEGEND ###
     plt.legend(
-        loc="best",
+        loc="center right",
         prop={'size': 9},
         frameon=False,
         fancybox=True,

@@ -9,7 +9,7 @@ import json
 import tqdm
 
 SEED = 1000  # Random seed
-N_NETWORKS = 1  # Number of networks to train
+N_NETWORKS = 5  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
 PADDING = 2
@@ -35,28 +35,26 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "nn_type": models.BiBayesianNN,
+            "nn_type": models.BiNN,
             "nn_parameters": {
-                # NETWORK ###w
-                "layers": [1024],
-                # "features": [32, 64, 128],
+                # NETWORK ###
+                "layers": [512],
+                # "features": [8, 16],
                 # "kernel_size": 3,
                 # "padding": "same",
                 # "stride": 1,
                 "device": DEVICE,
                 "dropout": False,
+                "bias": False,
                 "init": "gaussian",
-                "std": 0.01,
+                "std": 0.0,
                 "n_samples_forward": 10,
                 "n_samples_backward": 10,
-                "tau": 1,
-                "binarized": False,
-                "squared_inputs": False,
+                "tau": 1.3,
                 "activation_function": "gate",
                 "activation_parameters": {
-                    "width": 1
+                    "width": 1,
                 },
-                "output_function": "log_softmax",
                 "normalization": "instancenorm",
                 "eps": 1e-5,
                 "momentum": 0,
@@ -65,52 +63,40 @@ if __name__ == "__main__":
                 "bias": False,
             },
             "training_parameters": {
-                'n_epochs': 20,
+                'n_epochs': [20, 100],
                 'batch_size': 128,
                 'resize': True,
                 'data_aug_it': 1,
-                "continual": False,
+                "continual": True,
                 "task_boundaries": False,
+                "test_mcmc_samples": 10,
             },
+            "label_trick": True,
+            "output_function": "log_softmax",
             "criterion": torch.functional.F.nll_loss,
             "reduction": "sum",
             "optimizer": BHUparallel,
             "optimizer_parameters": {
-                "lr_mult": 25,
-                "lr_max": 15,
-                "likelihood_coeff": 0,
-                "kl_coeff": 1,
-                "normalize_gradients": False,
-                "eps": 1e-7,
-                "clamp": 0.1,
-                "mesuified": False,
-                "N": 10_000,
+                "lr_max": 12.0,
+                "metaplasticity": 1.5,
+                "ratio_coeff": 0.0,
+                # "mesuified": False,
+                # "N": 20_000,
             },
-            # "optimizer": BayesBiNNParallel,
+            # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
-            #     "lr": 25,
-            #     "clamp_cosh": 15,
+            #     "lr": 1e-5,
             #     "beta": 0,
-            #     "scale": 0,
-            # },
-            # "optimizer": torch.optim.Adam,
-            # "optimizer_parameters": {
-            #     "lr": 0.001,
+            #     "temperature": 1,
+            #     "num_mcmc_samples": 10,
+            #     "scale": 1,
+            #     "init_lambda": 0,
             # },
             # "optimizer": MetaplasticAdam,
-            # "optimizer_parameters": {
-            #     "lr": 0.005,
-            #     "metaplasticity": 1.35
-            # },
-            # "optimizer": Magnetoionic,
-            # "optimizer_parameters": {
-            #     "lr": 0.001,
-            #     "field": field,
-            #     "eps": 1e-8
-            # },
-            "task": "PermutedMNIST",
-            "n_tasks": 10,
-            "n_classes": 1,
+            # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
+            "task": "CILCIFAR10",
+            "n_tasks": 2,
+            "n_classes": 5,
             "n_repetition": 1,
         }
     ]

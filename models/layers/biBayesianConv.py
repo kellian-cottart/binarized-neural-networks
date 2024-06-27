@@ -76,4 +76,4 @@ class BiBayesianConv(torch.nn.Module):
 
     def extra_repr(self):
         return 'in_features={}, out_features={}, bias={}'.format(
-            self.in_features, self.out_features, self.bias is not None)
+            self.in_features, self.out_features, self.bias)

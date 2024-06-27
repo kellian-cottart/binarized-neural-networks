@@ -82,8 +82,12 @@ class ConvBiBayesianNeuralNetwork(ConvNN):
                 else:
                     x = layer.sample(x, self.n_samples_forward)
             else:
-                shape = x.shape
-                x = x.reshape([shape[0]*shape[1], *x.shape[2:]])
-                x = layer(x)
-                x = x.reshape([shape[0], shape[1], *x.shape[1:]])
+                try:
+                    x = layer(x)
+                except:
+                    # Normalization layers, but input is (n_samples, batch, features)
+                    shape = x.shape
+                    x = x.reshape([shape[0]*shape[1], *x.shape[2:]])
+                    x = layer(x)
+                    x = x.reshape([shape[0], shape[1], *x.shape[1:]])
         return self.classifier.forward(x, backwards=backwards)

@@ -6,10 +6,9 @@ class BHUparallel(torch.optim.Optimizer):
 
     def __init__(self,
                  params,
-                 lr_mult: float = 1.0,
+                 metaplasticity: float = 1.0,
                  lr_max: float = 30,
-                 likelihood_coeff: float = 1.0,
-                 kl_coeff: float = 1.0,
+                 ratio_coeff: float = 1.0,
                  normalize_gradients: bool = False,
                  eps: float = 1e-7,
                  clamp: float = 0.1,
@@ -18,10 +17,9 @@ class BHUparallel(torch.optim.Optimizer):
         """ Binary Bayesian optimizer for continual learning
 
         Args:
-            lr_asymmetry: Inversely proportional to the asymmetry of the network (stronger means less assymetry)
-            lr_max: Maximum learning rate that the system can have
-            likelihood_coeff: Coefficient for the likelihood term
-            kl_coeff: Coefficient for the KL divergence term
+            metaplasticity: Metaplasticity parameter
+            lr_max: Maximum learning rate imposed to the optimizer
+            ratio_coeff: Ratio coefficient between KL and likelihood (KL/likelihood)
             normalize_gradients: Whether to normalize gradients
             eps: Small constant to avoid division by zero
             clamp: Clamping value for gradients
@@ -29,10 +27,9 @@ class BHUparallel(torch.optim.Optimizer):
             N: Number of tasks maximally learned
         """
 
-        defaults = dict(lr_mult=lr_mult,
+        defaults = dict(metaplasticity=metaplasticity,
                         lr_max=lr_max,
-                        likelihood_coeff=likelihood_coeff,
-                        kl_coeff=kl_coeff,
+                        ratio_coeff=ratio_coeff,
                         normalize_gradients=normalize_gradients,
                         eps=eps,
                         clamp=clamp,
@@ -60,15 +57,14 @@ class BHUparallel(torch.optim.Optimizer):
                 if len(state) == 0:
                     state['step'] = 0
                 state['step'] += 1
-                lr_mult = group['lr_mult']
                 lr_max = group['lr_max']
-                likelihood_coeff = group['likelihood_coeff']
-                kl_coeff = group['kl_coeff']
+                ratio_coeff = group['ratio_coeff']
                 normalize_gradients = group['normalize_gradients']
                 eps = group['eps']
                 clamp = group['clamp']
                 mesuified = group['mesuified']
                 N = group['N']
+                metaplasticity = group['metaplasticity']
                 lambda_ = p.data
                 # Normalize gradients if specified
                 if normalize_gradients:
@@ -76,20 +72,20 @@ class BHUparallel(torch.optim.Optimizer):
                         (torch.norm(p.grad.data, p=2) + eps)
                     p.grad.data = torch.clamp(p.grad.data, -clamp, clamp)
                 # Update rule for lambda with Hessian correction
-                kl = kl_coeff/torch.cosh(lambda_)**2
-                likelihood = likelihood_coeff*2*p.grad.data*torch.tanh(lambda_)
-                hessian = likelihood_coeff * 2 * \
-                    torch.abs(p.grad.data) + 1/lr_max
-                lr_asymmetry = 1/(kl + likelihood + hessian)
+                kl = 1/torch.cosh(lambda_)**2
+                likelihood = 2*p.grad.data*torch.tanh(lambda_)
+                hessian = 2*torch.abs(p.grad.data)
 
+                lr_asymmetry = 1/(metaplasticity*(ratio_coeff*kl +
+                                  likelihood + hessian) + 1/lr_max)
                 # Update the weights
-                if mesuified == False:
-                    p.data = lambda_ - \
-                        lr_mult * lr_asymmetry * p.grad.data
+                if mesuified == True:
+                    prior = torch.zeros_like(p.grad.data)
+                    p.data = lambda_ - lr_asymmetry * \
+                        (p.grad.data + (lambda_ - prior) /
+                         (2*N*torch.cosh(lambda_)**2))
                 else:
-                    p.data = lambda_ - lr_mult * lr_asymmetry * (p.grad.data) \
-                        - lr_mult * lr_asymmetry * lambda_ / \
-                        (N*torch.cosh(lambda_)**2)
-                lr_array.append(lr_asymmetry*lr_mult)
+                    p.data = lambda_ - lr_asymmetry * p.grad.data
+                lr_array.append(lr_asymmetry)
         self.state['lr'] = lr_array
         return loss

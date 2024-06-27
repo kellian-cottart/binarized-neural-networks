@@ -4,30 +4,6 @@ from .layers import *
 from .layers.activation import *
 
 
-class StandardizeNorm(torch.nn.Module):
-    """ 0 mean, 1 variance normalization
-    This is exactly the same as instance normalization
-    """
-
-    def __init__(self, eps=1e-5):
-        """
-        Args:
-            eps (float): Epsilon value for numerical stability
-        """
-        super(StandardizeNorm, self).__init__()
-        self.eps = eps
-
-    def forward(self, x):
-        """
-        Args:
-            x (torch.Tensor): Input tensor
-
-        Returns:
-            torch.Tensor: Normalized tensor
-        """
-        return (x - x.mean(dim=1, keepdim=True)) / (x.std(dim=1, keepdim=True) + self.eps)
-
-
 class DNN(torch.nn.Module):
     """ Deep Neural Network
 
@@ -62,8 +38,7 @@ class DNN(torch.nn.Module):
                  eps: float = 1e-5,
                  momentum: float = 0.15,
                  gnnum_groups: int = 32,
-                 activation_function: torch.nn.functional = torch.nn.functional.relu,
-                 output_function: str = "softmax",
+                 activation_function: str = "relu",
                  squared_inputs: bool = False,
                  *args,
                  **kwargs):
@@ -77,7 +52,6 @@ class DNN(torch.nn.Module):
         self.running_stats = running_stats
         self.affine = affine
         self.activation_function = activation_function
-        self.output_function = output_function
         self.gnnum_groups = gnnum_groups
         self.squared_inputs = squared_inputs
         if "activation_parameters" in kwargs:
@@ -123,12 +97,6 @@ class DNN(torch.nn.Module):
         ### FORWARD PASS ###
         for layer in self.layers:
             x = layer(x)
-        if self.output_function == "softmax":
-            x = torch.nn.functional.softmax(x, dim=1)
-        if self.output_function == "log_softmax":
-            x = torch.nn.functional.log_softmax(x, dim=1)
-        if self.output_function == "sigmoid":
-            x = torch.nn.functional.sigmoid(x)
         return x
 
     def load_bn_states(self, state_dict):
@@ -169,9 +137,9 @@ class DNN(torch.nn.Module):
             "gate": GateActivation
         }
         # add parameters to activation function if needed
-        if hasattr(self, 'activation_parameters'):
+        try:
             return activation_functions.get(self.activation_function, torch.nn.Identity)(**self.activation_parameters).to(self.device)
-        else:
+        except:
             return activation_functions.get(self.activation_function, torch.nn.Identity)().to(self.device)
 
     def _norm_init(self, n_features):
@@ -187,7 +155,6 @@ class DNN(torch.nn.Module):
             "layernorm": lambda: torch.nn.LayerNorm(n_features),
             "instancenorm": lambda: torch.nn.InstanceNorm1d(n_features, eps=self.eps, affine=self.affine, track_running_stats=self.running_stats),
             "groupnorm": lambda: torch.nn.GroupNorm(self.gnnum_groups, n_features),
-            "standardizenorm": lambda: StandardizeNorm()
         }
         return normalization_layers.get(self.normalization, torch.nn.Identity)().to(self.device)
 

@@ -3,6 +3,7 @@ from typing import Union
 
 from models.layers.activation.sign import SignActivation
 from .deepNeuralNetwork import DNN
+from .layers.activation import *
 
 
 class ConvNN(torch.nn.Module):
@@ -22,8 +23,7 @@ class ConvNN(torch.nn.Module):
                  affine: bool = False,
                  eps: float = 1e-5,
                  momentum: float = 0.15,
-                 activation_function: torch.nn.functional = torch.nn.functional.relu,
-                 output_function: str = "softmax",
+                 activation_function: str = "relu",
                  kernel_size: int = 3,
                  padding: Union[int, tuple] = "same",
                  stride: int = 1,
@@ -63,14 +63,13 @@ class ConvNN(torch.nn.Module):
         self.running_stats = running_stats
         self.affine = affine
         self.activation_function = activation_function
-        self.output_function = output_function
         self.gnnum_groups = gnnum_groups
         ### LAYER INITIALIZATION ###
         self._features_init(features, bias)
         ### WEIGHT INITIALIZATION ###
         self._weight_init(init, std)
         self.classifier = DNN(layers, init, std, device, dropout, normalization, bias, running_stats,
-                              affine, eps, momentum, gnnum_groups, activation_function, output_function)
+                              affine, eps, momentum, gnnum_groups, activation_function)
 
     def _features_init(self, features, bias=False):
         """ Initialize layers of the network for convolutional layers
@@ -96,16 +95,24 @@ class ConvNN(torch.nn.Module):
                 self.features.append(torch.nn.Dropout2d(p=0.2))
 
     def _activation_init(self):
-        if self.activation_function == "relu":
-            return torch.nn.ReLU().to(self.device)
-        elif self.activation_function == "leaky_relu":
-            return torch.nn.LeakyReLU().to(self.device)
-        elif self.activation_function == "tanh":
-            return torch.nn.Tanh().to(self.device)
-        elif self.activation_function == "sign":
-            return SignActivation().to(self.device)
-        else:
-            raise ValueError("Activation function not recognized")
+        """
+        Returns:
+            torch.nn.Module: Activation function module
+        """
+        activation_functions = {
+            "relu": torch.nn.ReLU,
+            "leaky_relu": torch.nn.LeakyReLU,
+            "tanh": torch.nn.Tanh,
+            "sign": SignActivation,
+            "squared": SquaredActivation,
+            "elephant": ElephantActivation,
+            "gate": GateActivation
+        }
+        # add parameters to activation function if needed
+        try:
+            return activation_functions.get(self.activation_function, torch.nn.Identity)(**self.activation_parameters).to(self.device)
+        except:
+            return activation_functions.get(self.activation_function, torch.nn.Identity)().to(self.device)
 
     def _norm_init(self, n_features):
         """Returns a layer of normalization"""
@@ -151,5 +158,4 @@ class ConvNN(torch.nn.Module):
         """
         for layer in self.features:
             x = layer(x)
-        x = self.classifier.forward(x)
-        return x
+        return self.classifier.forward(x)

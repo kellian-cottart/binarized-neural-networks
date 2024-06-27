@@ -30,19 +30,12 @@ class BayesTrainer(GPUTrainer):
         def closure():
             # Closure for the optimizer sending the loss to the optimizer
             self.optimizer.zero_grad()
-            forward = self.model.forward(inputs).to(self.device)
-            if self.label_trick is not None and self.label_trick == True:
-                unique_labels, trick_targets = self.label_trick(targets)
-                loss = self.criterion(
-                    forward[:, unique_labels].to(self.device),
-                    trick_targets.to(self.device),
-                    reduction='sum'
-                )
-            else:
-                loss = self.criterion(
-                    forward,
-                    targets.to(self.device),
-                    reduction='sum')
+            forward = self.output_apply(
+                self.model.forward(inputs).to(self.device))
+            loss = self.criterion(
+                forward,
+                targets.to(self.device),
+                reduction='sum')
             return loss
         ### LOSS ###
         self.loss = self.optimizer.step(closure=closure)
@@ -86,7 +79,8 @@ class BayesTrainer(GPUTrainer):
                 # Sample neural networks weights
                 torch.nn.utils.vector_to_parameters(n, parameters)
                 # Predict with this sampled network
-                prediction = self.model.forward(inputs.to(self.device))
+                prediction = self.output_apply(
+                    self.model.forward(inputs.to(self.device)))
                 predictions.append(prediction)
         return predictions
 
@@ -102,7 +96,7 @@ class BayesTrainer(GPUTrainer):
         """
         predictions = self.predict(inputs, n_samples=self.test_mcmc_samples)
         predictions = torch.stack(predictions, dim=0)
-        if self.model.output_function == "sigmoid":
+        if self.output_function == "sigmoid":
             # apply exponential to get the probability
             predicted = torch.where(torch.mean(predictions, dim=0) >= 0.5, torch.ones_like(
                 predictions), torch.zeros_like(predictions))

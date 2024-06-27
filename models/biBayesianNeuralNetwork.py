@@ -81,10 +81,4 @@ class BiBayesianNN(DNN):
                     x = x.reshape([shape[0]*shape[1], shape[2]])
                     x = layer(x)
                     x = x.reshape([shape[0], shape[1], shape[2]])
-        if self.output_function == "softmax":
-            x = torch.nn.functional.softmax(x, dim=2)
-        elif self.output_function == "log_softmax":
-            x = torch.nn.functional.log_softmax(x, dim=2)
-        elif self.output_function == "sigmoid":
-            x = torch.nn.functional.sigmoid(x, dim=1)
         return x

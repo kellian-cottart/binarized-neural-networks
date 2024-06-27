@@ -29,7 +29,14 @@ parser.add_argument(
     "--activation", type=str, default="relu", help="Activation function to use. Ex: relu, sign")
 parser.add_argument(
     "--n_tasks", type=int, default=10, help="Number of tasks to perform")
-
+parser.add_argument(
+    "--n_classes", type=int, default=1, help="Number of classes per task")
+parser.add_argument(
+    "--batch_size", type=int, default=128, help="Batch size")
+parser.add_argument(
+    "--epochs", type=int, default=20, help="Number of epochs")
+parser.add_argument(
+    "--label_trick", type=bool, default=False, help="Label trick to use")
 
 ### GENERAL CONFIGURATION ###
 DEVICE = f"cuda:{parser.parse_args().device}" if parser.parse_args(
@@ -50,40 +57,31 @@ def train_iteration(trial):
         trial (optuna.Trial): Optuna trial
     """
     ### OPTIM PARAMETERS ###
-    lr_mult = trial.suggest_float("lr_mult", 0.1, 10, step=0.1)
-    lr_max = trial.suggest_float("lr_max", 0.1, 20, step=0.1)
-    likelihood_coeff = trial.suggest_float(
-        "likelihood_coeff", 0, 5, step=0.1)
-    kl_coeff = trial.suggest_float(
-        "kl_coeff", 0, 5, step=0.1)
-    # clamp = trial.suggest_float("clamp", 0, 0.6, step=0.01)
-    # normalize_gradients = trial.suggest_categorical(
-    #     "normalize_gradients", [False])
-    # mesuified = trial.suggest_categorical(
-    #     "mesuified", [False])
-    # N = trial.suggest_int("N", 5000, 50000, step=1000)
-    squared_inputs = trial.suggest_categorical(
-        "squared_inputs", [False])
+    metaplasticity = trial.suggest_float("metaplasticity", 0, 3, step=0.01)
+    lr_max = trial.suggest_float("lr_max", 1, 15, step=0.5)
+    ratio_coeff = trial.suggest_float(
+        "ratio_coeff", 0, 1, step=0.01)
+    width = trial.suggest_float("width", 0.8, 1.2, step=0.1)
     ### LAMBDA PARAMETERS ###
     # suggest int
-    n_samples_backward = trial.suggest_int("n_samples_backward", 5, 10, step=1)
+    n_samples_backward = trial.suggest_categorical("n_samples_backward", [10])
     init_law = trial.suggest_categorical("init_law", ["gaussian"])
     init_param = trial.suggest_float("init_param", 0, 0.1, step=0.01)
-    temperature = trial.suggest_float("temperature", 0.5, 1.1, step=0.1)
+    temperature = trial.suggest_float("temperature", 0.5, 1.5, step=0.1)
 
     ### TASK PARAMETERS ###
     seed = trial.suggest_categorical(
         "seed", [1000])
     epochs = trial.suggest_categorical(
-        "epochs", [20])
+        "epochs", [parser.parse_args().epochs])
     batch_size = trial.suggest_categorical(
-        "batch_size", [128])
+        "batch_size", [parser.parse_args().batch_size])
     task = trial.suggest_categorical(
         "task", [parser.parse_args().task])
     n_tasks = trial.suggest_categorical(
         "n_tasks", [parser.parse_args().n_tasks])
     n_classes = trial.suggest_categorical(
-        "n_classes", [1])
+        "n_classes", [parser.parse_args().n_classes])
     normalization = trial.suggest_categorical(
         "normalization", [parser.parse_args().norm])
 
@@ -107,34 +105,32 @@ def train_iteration(trial):
             "tau": temperature,
             "binarized": False,
             "activation_function": parser.parse_args().activation,
-            "squared_inputs": squared_inputs,
-            "output_function": "log_softmax",
+            "activation_parameters": {
+                "width": width,
+            },
             "eps": 1e-5,
             "momentum": 0,
             "running_stats": False,
             "affine": False,
             "bias": False,
         },
+
+        "output_function": "log_softmax",
         "criterion": torch.nn.functional.nll_loss,
         "reduction": "sum",
+        "label_trick": parser.parse_args().label_trick,
         "training_parameters": {
             'n_epochs': epochs,
             'batch_size': batch_size,
             'resize': True,
-            'data_aug_it': 10,
+            'data_aug_it': 1,
             "continual": True,
         },
         "optimizer": BHUparallel,
         "optimizer_parameters": {
-            "lr_mult": lr_mult,
             "lr_max": lr_max,
-            "kl_coeff": kl_coeff,
-            "likelihood_coeff": likelihood_coeff,
-            # "normalize_gradients": normalize_gradients,
-            # "eps": 1e-7,
-            # "clamp": clamp,
-            # "mesuified": mesuified,
-            # "N": N,
+            "metaplasticity": metaplasticity,
+            "ratio_coeff": ratio_coeff,
         },
         "task": task,
         "n_tasks": n_tasks,
@@ -179,7 +175,7 @@ def train_iteration(trial):
         epochs = data["training_parameters"]["n_epochs"]
         for epoch in range(epochs):
             num_batches = len(train_dataset) // (
-                batch_size * data["n_tasks"]) if "CIL" in data["task"] or "Stream" in data["task"] else len(train_dataset) // batch_size
+                batch_size * data["n_tasks"]) - 1 if "CIL" in data["task"] or "Stream" in data["task"] else len(train_dataset) // batch_size - 1
             train_dataset.shuffle()
             for n_batch in range(num_batches):
                 batch, labels = special_task_selector(
@@ -191,21 +187,24 @@ def train_iteration(trial):
                     max_iterations=epochs*num_batches,
                     permutations=permutations,
                     epoch=epoch,
-                    continual=True
+                    continual=False
                 )
                 net_trainer.batch_step(batch, labels)
-            if "Permuted" not in data["task"] and "CIL" not in data["task"]:
+            if epoch % 5 == 4 or epoch == 0:
                 _, _, _ = iterable_evaluation_selector(
-                    data=data, test_dataset=test_dataset, net_trainer=net_trainer, permutations=permutations, train_dataset=train_dataset)
-                metrics = net_trainer.testing_accuracy[-1][i].item()
+                    data=data,
+                    test_dataset=test_dataset,
+                    net_trainer=net_trainer,
+                    permutations=permutations,
+                    train_dataset=train_dataset
+                )
+                if "Stream" in data["task"]:
+                    metrics = net_trainer.testing_accuracy[-1][i].item()
+                else:
+                    metrics = net_trainer.mean_testing_accuracy[-1].item()
                 trial.report(metrics, epoch + i * epochs)
                 if trial.should_prune():
                     raise optuna.TrialPruned()
-
-        if "Permuted" in data["task"] or "CIL" in data["task"]:
-            _, _, _ = iterable_evaluation_selector(
-                data=data, test_dataset=test_dataset, net_trainer=net_trainer, permutations=permutations, train_dataset=train_dataset)
-            metrics = objective_computation(net_trainer, i)
 
     # Save all parameters of the trial in a json file
     os.makedirs(f"gridsearch/{STUDY}", exist_ok=True)
@@ -222,26 +221,11 @@ def train_iteration(trial):
     return metrics
 
 
-def objective_computation(net_trainer, i):
-    # 1st: Average Accuracy (AA)
-    average_accuracy = net_trainer.mean_testing_accuracy[-1].item()
-    network_weight_mean_sum = 0
-    for layer in net_trainer.model.layers:
-        if hasattr(layer, "weight") and layer.weight is not None:
-            network_weight_mean_sum += torch.mean(
-                torch.abs(layer.weight.data)).item()
-
-    print(
-        f"AA: {average_accuracy}, Task_{i}: {net_trainer.testing_accuracy[-1][i].item()}, Network Weight Mean Sum: {network_weight_mean_sum}")
-    return average_accuracy, net_trainer.testing_accuracy[-1][i].item(), network_weight_mean_sum
-
-
 if __name__ == "__main__":
     ### OPTUNA CONFIGURATION ###
     # Create a new study that "maximize" the accuracy of all tasks
     study = optuna.create_study(
-        directions=["maximize", "maximize", "minimize"] if "Permuted" in parser.parse_args().task else [
-            "maximize"],
+        directions=["maximize"],
         sampler=optuna.samplers.TPESampler(),
         pruner=optuna.pruners.HyperbandPruner(
             min_resource=5,

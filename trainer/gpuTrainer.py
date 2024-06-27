@@ -18,7 +18,7 @@ class GPUTrainer:
             scheduler_parameters (dict, optional): Parameters of the scheduler. Defaults to None.
     """
 
-    def __init__(self, model, optimizer, optimizer_parameters, criterion, reduction, device, *args, **kwargs):
+    def __init__(self, model, optimizer, optimizer_parameters, criterion, reduction, device, output_function, *args, **kwargs):
         self.model = model
         self.optimizer = optimizer(
             self.model.parameters(),
@@ -30,16 +30,18 @@ class GPUTrainer:
         self.testing_accuracy = []
         self.mean_testing_accuracy = []
         self.reduction = reduction
+        self.output_function = output_function
         self.hessian = []
         self.gradient = []
+        # Label trick
+        if "label_trick" in kwargs:
+            self.label_trick = kwargs["label_trick"]
         # Scheduler addition
         if "scheduler" in kwargs:
             scheduler = kwargs["scheduler"]
             scheduler_parameters = kwargs["scheduler_parameters"]
             self.scheduler = scheduler(
                 self.optimizer, **scheduler_parameters)
-        if "label_trick" in kwargs:
-            self.label_trick = kwargs["label_trick"]
 
     def reset_optimizer(self, optimizer_parameters):
         """Reset the optimizer parameters such as momentum and learning rate
@@ -49,6 +51,36 @@ class GPUTrainer:
         """
         self.optimizer = self.optimizer.__class__(
             self.model.parameters(), **optimizer_parameters)
+
+    def label_trick_loss(self, inputs, targets):
+        """ When dealing with CIL, we need to not update the synapses linked to neurons that are not used in the task
+        Args:
+            inputs (torch.Tensor): Inputs (forward pass with no activation)
+            targets (torch.Tensor): Targets (labels)
+        """
+        if not hasattr(self, "label_trick") or self.label_trick == False:
+            return inputs, targets
+        # Select unique labels in targets
+        unique_labels = torch.unique(targets).sort()[0]
+        # We update synapses only for the output neurons that are used in the task
+        new_targets = targets.clone()
+        for i, label in enumerate(unique_labels):
+            new_targets[targets == label] = i
+        if inputs.dim() == 2:
+            new_inputs = inputs[:, unique_labels]
+        else:
+            new_inputs = inputs[:, :, unique_labels]
+        return new_inputs, new_targets
+
+    def output_apply(self, forward):
+        if self.output_function == "sigmoid":
+            return torch.sigmoid(forward)
+        elif self.output_function == "softmax":
+            return torch.nn.functional.softmax(forward, dim=1 if forward.dim() == 2 else 2)
+        elif self.output_function == "log_softmax":
+            return torch.nn.functional.log_softmax(forward, dim=1 if forward.dim() == 2 else 2)
+        else:
+            return forward
 
     def batch_step(self, inputs, targets):
         """Perform the training of a single batch
@@ -60,10 +92,13 @@ class GPUTrainer:
         ### LOSS ###
         self.model.train()
         forward = self.model.forward(inputs).to(self.device)
+        forward, targets = self.label_trick_loss(forward, targets)
+        forward = self.output_apply(forward)
         if forward.dim() == 2:
             forward = forward.unsqueeze(0)
+        forward = forward.mean(dim=0)
         self.loss = self.criterion(
-            forward.mean(dim=0),
+            forward.to(self.device),
             targets.to(self.device),
             reduction=self.reduction,
         )
@@ -157,8 +192,12 @@ class GPUTrainer:
         self.model.eval()
         with torch.no_grad():
             # Specifying backwards=False in case the forward and the backward are different
-            predictions = self.model.forward(
-                inputs.to(self.device), backwards=False)
+            predictions = self.output_apply(
+                self.model.forward(
+                    inputs.to(self.device),
+                    backwards=False
+                )
+            )
         return predictions
 
     def test(self, inputs, labels):
@@ -178,8 +217,7 @@ class GPUTrainer:
         if len(full_predictions.shape) < 3:
             full_predictions = full_predictions.unsqueeze(0)
         predictions = torch.mean(full_predictions, dim=0)
-
-        if self.model.output_function == "sigmoid":
+        if self.output_function == "sigmoid":
             # apply exponential to get the probability
             predicted = torch.where(predictions >= 0.5, torch.ones_like(
                 predictions), torch.zeros_like(predictions))
