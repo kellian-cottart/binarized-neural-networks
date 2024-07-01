@@ -64,7 +64,7 @@ def train_iteration(trial):
     width = trial.suggest_float("width", 0.8, 1.2, step=0.1)
     ### LAMBDA PARAMETERS ###
     # suggest int
-    n_samples_backward = trial.suggest_categorical("n_samples_backward", [10])
+    n_samples_backward = trial.suggest_categorical("n_samples_backward", [5])
     init_law = trial.suggest_categorical("init_law", ["gaussian"])
     init_param = trial.suggest_float("init_param", 0, 0.1, step=0.01)
     temperature = trial.suggest_float("temperature", 0.5, 1.5, step=0.1)

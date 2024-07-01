@@ -134,7 +134,9 @@ class DNN(torch.nn.Module):
             "sign": SignActivation,
             "squared": SquaredActivation,
             "elephant": ElephantActivation,
-            "gate": GateActivation
+            "gate": GateActivation,
+            "gaussian": GaussianActivation,
+            "hyperbolic": HyperbolicCosineActivation,
         }
         # add parameters to activation function if needed
         try:

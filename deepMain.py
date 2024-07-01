@@ -9,7 +9,7 @@ import json
 import tqdm
 
 SEED = 1000  # Random seed
-N_NETWORKS = 5  # Number of networks to train
+N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
 PADDING = 2
@@ -35,7 +35,7 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "nn_type": models.BiNN,
+            "nn_type": models.BiBayesianNN,
             "nn_parameters": {
                 # NETWORK ###
                 "layers": [512],
@@ -50,7 +50,7 @@ if __name__ == "__main__":
                 "std": 0.0,
                 "n_samples_forward": 10,
                 "n_samples_backward": 10,
-                "tau": 1.3,
+                "tau": 1,
                 "activation_function": "gate",
                 "activation_parameters": {
                     "width": 1,
@@ -63,7 +63,7 @@ if __name__ == "__main__":
                 "bias": False,
             },
             "training_parameters": {
-                'n_epochs': [20, 100],
+                'n_epochs': 20,
                 'batch_size': 128,
                 'resize': True,
                 'data_aug_it': 1,
@@ -77,26 +77,26 @@ if __name__ == "__main__":
             "reduction": "sum",
             "optimizer": BHUparallel,
             "optimizer_parameters": {
-                "lr_max": 12.0,
-                "metaplasticity": 1.5,
-                "ratio_coeff": 0.0,
-                # "mesuified": False,
-                # "N": 20_000,
+                "lr_max": 6.5,
+                "metaplasticity": 1,
+                "ratio_coeff": 0.1,
+                "mesuified": False,
+                "N": 15_000,
             },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
-            #     "lr": 1e-5,
+            #     "lr": 5e-5,
             #     "beta": 0,
-            #     "temperature": 1,
-            #     "num_mcmc_samples": 10,
-            #     "scale": 1,
-            #     "init_lambda": 0,
+            #     "temperature": 0.1,
+            #     "num_mcmc_samples": 1,
+            #     "scale": 1.1e-6,
+            #     "init_lambda": 0.3,
             # },
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
-            "task": "CILCIFAR10",
-            "n_tasks": 2,
-            "n_classes": 5,
+            "task": "PermutedMNIST",
+            "n_tasks": 10,
+            "n_classes": 10,
             "n_repetition": 1,
         }
     ]
@@ -128,7 +128,8 @@ if __name__ == "__main__":
         if "CIL" in data["task"]:
             # Create the permutations for the class incremental scenario: n_classes per task with no overlap
             random_permutation = torch.randperm(target_size)
-            permutations = [random_permutation[i * data["n_classes"]:(i + 1) * data["n_classes"]] for i in range(data["n_tasks"])]
+            permutations = [random_permutation[i * data["n_classes"]                                               :(i + 1) * data["n_classes"]] for i in range(data["n_tasks"])]
+            print(permutations)
 
         # add input/output size to the layer of the network parameters
         if "Conv" in data["nn_type"].__name__:  # Convolutional network
@@ -234,11 +235,10 @@ if __name__ == "__main__":
                             graphs(main_folder=main_folder,
                                    net_trainer=net_trainer,
                                    task=i,
+                                   n_tasks=data["n_tasks"],
                                    epoch=epoch,
                                    predictions=predictions,
                                    labels=labels,
-                                   task_test_length=test_dataset.data.shape[0] if "Permuted" in data[
-                                       "task"] else test_dataset.data.shape[0] // data["n_tasks"],
                                    modulo=MODULO)
 
                     ### TASK BOUNDARIES ###

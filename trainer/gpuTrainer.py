@@ -177,8 +177,8 @@ class GPUTrainer:
                     batch.append(accuracy)
                 train.append(torch.mean(torch.tensor(batch)))
             self.training_accuracy.append(train)
-        # Return the vector of prediction, concatenated for each task, and the corresponding concatenated labels.
-        return torch.cat(test_predictions, dim=1), torch.cat(labels)
+        # Return the prediction, and the corresponding labels.
+        return test_predictions, labels
 
     def predict(self, inputs):
         """Predict the labels of the given inputs

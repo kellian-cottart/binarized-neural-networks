@@ -6,18 +6,20 @@ from matplotlib.ticker import AutoMinorLocator
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from optimizers import *
 
+plt.switch_backend('agg')
 
-def graphs(main_folder, net_trainer, task, epoch, predictions=None, labels=None, modulo=10, task_test_length=10000):
+
+def graphs(main_folder, net_trainer, task, n_tasks, epoch, predictions=None, labels=None, modulo=10):
     if (epoch % modulo == modulo-1 or epoch == 0):
         # print predicted and associated certainty
-        visualize_certainty(
+        visualize_certainty_task(
             predictions=predictions,
             labels=labels,
             path=os.path.join(main_folder, "certainty"),
-            task=task+1,
-            epoch=epoch+1,
+            task=task,
+            n_tasks=n_tasks,
+            epoch=epoch,
             log=True,
-            task_test_length=task_test_length,
         )
         params = [p for p in net_trainer.optimizer.param_groups[0]['params']]
         grad = [p.grad for p in net_trainer.optimizer.param_groups[0]['params']]
@@ -168,6 +170,7 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accu
     ### SAVE ###
     plt.savefig(versionning(folder, title, ".pdf"), bbox_inches='tight')
     plt.savefig(versionning(folder, title, ".svg"), bbox_inches='tight')
+    plt.close()
 
 
 def get_mean_std_accuracies(l_accuracies, t_start, t_end):
@@ -231,6 +234,7 @@ def visualize_task_frame(title, l_accuracies, folder, t_start, t_end):
     ### SAVE ###
     plt.savefig(versionning(folder, title, ".pdf"), bbox_inches='tight')
     plt.savefig(versionning(folder, title, ".svg"), bbox_inches='tight')
+    plt.close()
 
 
 def visualize_lr(parameters, lr, path, task=None, epoch=None):
@@ -406,16 +410,6 @@ def visualize_lambda(parameters, lambda_, path, threshold=10, task=None, epoch=N
 
         textsize = 6
         transform = current_ax.transAxes
-        # current_ax.text(0.5, 0.95, f"$\lambda$ values above {threshold}: {(lbda > threshold).sum() * 100 / length:.2f}%",
-        #            fontsize=textsize, ha='center', va='center', transform=transform)
-        # current_ax.text(0.5, 0.9, f"$\lambda$ values above 2: {((lbda > 2) & (lbda < threshold)).sum() * 100 / length:.2f}%",
-        #            fontsize=textsize, ha='center', va='center', transform=transform)
-        # current_ax.text(0.5, 0.85, f"$\lambda$  values below -2: {((lbda < -2) & (lbda > -threshold)).sum() * 100 / length:.2f}%",
-        #            fontsize=textsize, ha='center', va='center', transform=transform)
-        # current_ax.text(0.5, 0.8, f"$\lambda$ values below -{threshold}: {(lbda < -threshold).sum() * 100 / length:.2f}%",
-        #            fontsize=textsize, ha='center', va='center', transform=transform)
-        # current_ax.text(0.5, 0.75, f"$\lambda$ values between -2 and 2: {((lbda < 2) & (lbda > -2)).sum() * 100 / length:.2f}%",
-        #            fontsize=textsize, ha='center', va='center', transform=transform)
         # print text with the mean value of lambda and the std
         current_ax.text(0.5, 0.95, f"Mean (abs): {torch.abs(lbda).mean().item():.6f}",
                         fontsize=textsize, ha='center', va='center', transform=transform)
@@ -430,7 +424,7 @@ def visualize_lambda(parameters, lambda_, path, threshold=10, task=None, epoch=N
     plt.close()
 
 
-def visualize_certainty(predictions, labels, path, task=None, epoch=None, log=True, task_test_length=10000):
+def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoch=None, log=True):
     """ Visualize the certainty of the model with respected to correct and incorrect predictions
 
     Args:
@@ -441,39 +435,56 @@ def visualize_certainty(predictions, labels, path, task=None, epoch=None, log=Tr
         epoch (int): Epoch number
         log (bool): If the predictions are in log space
     """
+    # Concatenate the predictions
+    concat_predictions = torch.cat(predictions, dim=1)
     if log == True:
-        predictions = torch.exp(predictions)
+        concat_predictions = torch.exp(concat_predictions)
+    concat_labels = torch.cat(labels, dim=0)
 
-    predicted = torch.argmax(torch.mean(predictions, dim=0), dim=1) == labels
-    ### ALEATORIC UNCERTAINTY ###
-    aleatoric = - torch.sum(torch.mean(predictions *
-                                       torch.log(predictions + 1e-8), dim=0), dim=-1)
+    aleatoric = torch.zeros(
+        (concat_predictions.shape[2], concat_predictions.shape[1]))
+    epistemic = torch.zeros(
+        (concat_predictions.shape[2], concat_predictions.shape[1]))
+    # Compute the uncertainty associated with each class
+    for k in concat_labels.unique():
+        alea_uncertainty, epi_uncertainty = compute_task_uncertainty(
+            k, concat_predictions)
+        aleatoric[k] = alea_uncertainty
+        epistemic[k] = epi_uncertainty
+    # vectors are (n_classes, n_elements)
+    sum_aleatoric = torch.sum(aleatoric, dim=0)
+    sum_epistemic = torch.sum(epistemic, dim=0)
+
+    seen_indexes = torch.cat(
+        [pred for pred in predictions[:task+1]], dim=1).shape[1]
+    mean_predictions = torch.mean(concat_predictions, dim=0)
+
+    # in the seen indexes, get the right predictions and the wrong predictions
+    correct_predictions = torch.argmax(
+        mean_predictions[:seen_indexes, :], dim=1) == concat_labels[:seen_indexes]
+    false_predictions = torch.argmax(
+        mean_predictions[:seen_indexes, :], dim=1) != concat_labels[:seen_indexes]
+
     # We want to plot the histogram of aleatoric uncertainty for correct and incorrect predictions
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
     bins = 50
-    minimum = torch.min(aleatoric).item()
-    maximum = torch.max(aleatoric).item()
-
-    aleatoric_seen = aleatoric[:task_test_length*task]
-    aleatoric_unseen = aleatoric[task_test_length*task:]
-    predicted_seen = predicted[:task_test_length*task]
-
+    minimum = torch.min(sum_aleatoric).item()
+    maximum = torch.max(sum_aleatoric).item()
+    aleatoric_seen = sum_aleatoric[:seen_indexes]
+    aleatoric_unseen = sum_aleatoric[seen_indexes:]
     correct_hist = torch.histc(
-        aleatoric_seen[predicted_seen], bins=bins, min=minimum, max=maximum).detach().cpu()
+        aleatoric_seen[correct_predictions], bins=bins, min=minimum, max=maximum).detach().cpu()
     incorrect_hist = torch.histc(
-        aleatoric_seen[~predicted_seen], bins=bins, min=minimum, max=maximum).detach().cpu()
+        aleatoric_seen[false_predictions], bins=bins, min=minimum, max=maximum).detach().cpu()
     unseen_hist = torch.histc(
         aleatoric_unseen, bins=bins, min=minimum, max=maximum).detach().cpu()
-
-    # Plot as bars
-    x = torch.linspace(minimum, maximum, bins).detach().cpu()
-    plt.bar(x, correct_hist * 100 / len(aleatoric), width=maximum/(2*bins),
-            alpha=0.5, label="Correct predictions", color='blue')
-    plt.bar(x, incorrect_hist * 100 /
-            len(aleatoric), width=maximum/(2*bins), alpha=0.5, label="Incorrect predictions", color='orange')
-    plt.bar(x, unseen_hist * 100 /
-            len(aleatoric), width=maximum/(2*bins), alpha=0.5, label="Unseen predictions", color='red')
-
+    ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
+           correct_hist * 100 / len(aleatoric_seen), width=maximum/(2*bins),
+           alpha=0.5, label="Correct predictions", color='blue')
+    ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
+           incorrect_hist * 100 / len(aleatoric_seen), width=maximum/(2*bins), alpha=0.5, label="Incorrect predictions", color='orange')
+    ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
+           unseen_hist * 100 / len(aleatoric_unseen), width=maximum/(2*bins), alpha=0.5, label="Unseen predictions", color='red')
     ax.set_xlabel('Aleatoric Uncertainty [-]')
     ax.set_ylabel('Histogram [%]')
     ax.legend()
@@ -484,52 +495,29 @@ def visualize_certainty(predictions, labels, path, task=None, epoch=None, log=Tr
     ax.set_ylim(0, 20)
     # save output
     fig.savefig(versionning(
-        path, f"alea-certainty-task{task}-epoch{epoch}" if epoch is not None else "alea-certainty"),  bbox_inches='tight')
+        path, f"alea-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "alea-certainty"),  bbox_inches='tight')
     plt.close()
 
-    ### EPISTEMIC UNCERTAINTY ###
-    # Epistemic uncertainty is the variance of the predictions
-    mean_predictions = torch.mean(predictions, dim=0)
-    predictive = - torch.sum(mean_predictions *
-                             torch.log(mean_predictions + 1e-8), dim=-1)
-
-    epistemic = (predictive - aleatoric)
-
-    epistemic_seen = epistemic[:task_test_length*task]
-    epistemic_unseen = epistemic[task_test_length*task:]
-
-    # We want to plot the histogram of aleatoric uncertainty for correct and incorrect predictions
+    # We want to plot the histogram of epistemic uncertainty for correct and incorrect predictions
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-    minimum = torch.min(epistemic).item()
-    maximum = torch.max(epistemic).item()
-
+    bins = 50
+    minimum = torch.min(sum_epistemic).item()
+    maximum = torch.max(sum_epistemic).item()
+    epistemic_seen = sum_epistemic[:seen_indexes]
+    epistemic_unseen = sum_epistemic[seen_indexes:]
     correct_hist = torch.histc(
-        epistemic_seen[predicted_seen], bins=bins, min=minimum, max=maximum).detach().cpu()
+        epistemic_seen[correct_predictions], bins=bins, min=minimum, max=maximum).detach().cpu()
     incorrect_hist = torch.histc(
-        epistemic_seen[~predicted_seen], bins=bins, min=minimum, max=maximum).detach().cpu()
+        epistemic_seen[false_predictions], bins=bins, min=minimum, max=maximum).detach().cpu()
     unseen_hist = torch.histc(
         epistemic_unseen, bins=bins, min=minimum, max=maximum).detach().cpu()
-
-    x = torch.linspace(minimum, maximum, bins).detach().cpu()
-    plt.bar(x,
-            correct_hist * 100 / len(epistemic),
-            width=maximum/bins,
-            alpha=0.5,
-            label="Correct predictions",
-            color='blue')
-    plt.bar(x,
-            incorrect_hist * 100 / len(epistemic),
-            width=maximum/bins,
-            alpha=0.5,
-            label="Incorrect predictions",
-            color='orange')
-    plt.bar(x,
-            unseen_hist * 100 / len(epistemic),
-            width=maximum/bins,
-            alpha=0.5,
-            label="Unseen predictions",
-            color='red')
-
+    ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
+           correct_hist * 100 / len(epistemic_seen), width=maximum/bins,
+           alpha=0.5, label="Correct predictions", color='blue')
+    ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
+           incorrect_hist * 100 / len(epistemic_seen), width=maximum/bins, alpha=0.5, label="Incorrect predictions", color='orange')
+    ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
+           unseen_hist * 100 / len(epistemic_unseen), width=maximum/bins, alpha=0.5, label="Unseen predictions", color='red')
     ax.set_xlabel('Epistemic Uncertainty [-]')
     ax.set_ylabel('Histogram [%]')
     ax.legend()
@@ -540,5 +528,64 @@ def visualize_certainty(predictions, labels, path, task=None, epoch=None, log=Tr
     ax.set_ylim(0, 20)
     # save output
     fig.savefig(versionning(
-        path, f"epi-certainty-task{task}-epoch{epoch}" if epoch is not None else "epi-certainty"),  bbox_inches='tight')
+        path, f"epi-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "epi-certainty"),  bbox_inches='tight')
     plt.close()
+
+    # # turn the problem into a classification pb: is the data ood?
+    # correct_predictions = torch.argmax(torch.mean(
+    #     concat_predictions, dim=0), dim=1) == concat_labels
+    # false_predictions = torch.argmax(torch.mean(
+    #     concat_predictions, dim=0), dim=1) != concat_labels
+    # # the higher the true positive is, the likelier the data is ood
+    # epi_tp = sum_epistemic[correct_predictions]
+    # epi_fp = sum_epistemic[false_predictions]
+    # print(f"True positive: {epi_tp.shape}")
+    # print(f"False positive: {epi_fp.shape}")
+    # threshold = torch.linspace(0, 1, 10_000).cpu()
+    # tpr = torch.zeros_like(threshold)
+    # fpr = torch.zeros_like(threshold)
+    # for i, t in enumerate(threshold):
+    #     tpr[i] = (epi_tp > t).sum().item() / len(epi_tp)
+    #     fpr[i] = (epi_fp > t).sum().item() / len(epi_fp)
+    # fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+    # ax.plot(fpr, tpr, label="ROC curve", color='purple')
+    # ax.plot([0, 1], [0, 1], linestyle='--', color='grey')
+    # ax.set_xlabel('False Positive Rate [-]')
+    # ax.set_ylabel('True Positive Rate [-]')
+    # ax.legend()
+    # ax.xaxis.set_minor_locator(AutoMinorLocator(5))
+    # ax.yaxis.set_minor_locator(AutoMinorLocator(5))
+    # ax.tick_params(which='both', width=1)
+    # ax.tick_params(which='major', length=6)
+    # ax.set_ylim(0, 1)
+    # ax.set_xlim(0, 1)
+    # # save output
+    # fig.savefig(versionning(
+    #     path, f"roc-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "roc-certainty"),  bbox_inches='tight')
+    # plt.close()
+
+
+def compute_task_uncertainty(k, predictions):
+    """ Compute the aleatoric and epistemic uncertainty for a given class k
+
+    Args:
+        k (int): Class number
+        predictions (torch.Tensor): Predictions of the model (shape (n_samples, n_elements, n_classes))
+    Returns:
+        aleatoric_uncertainty (torch.Tensor): Aleatoric uncertainty (shape (n_elements))
+        epistemic_uncertainty (torch.Tensor): Epistemic uncertainty (shape (n_elements))
+    """
+    # TOTAL UNCERTAINTY ###
+    predictions_k = predictions[:, :, k]
+    mean_predictions = torch.mean(predictions_k, dim=0)
+    total_uncertainty = -mean_predictions * torch.log(mean_predictions + 1e-8)
+    epistemic_uncertainty = torch.zeros(
+        (predictions_k.shape[0], predictions_k.shape[1]))
+    for i in range(len(predictions_k)):
+        # KL divergence between predictions and mean predictions
+        epistemic_uncertainty[i] = predictions_k[i] * \
+            (torch.log(predictions_k[i] + 1e-8) -
+             torch.log(mean_predictions + 1e-8))
+    epistemic_uncertainty = torch.mean(epistemic_uncertainty, dim=0)
+    aleatoric_uncertainty = total_uncertainty - epistemic_uncertainty
+    return aleatoric_uncertainty, epistemic_uncertainty
