@@ -1,5 +1,4 @@
 import torch
-from torch.optim.optimizer import params_t
 from typing import Optional, Union
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 
@@ -20,7 +19,7 @@ class BayesBiNN(torch.optim.Optimizer):
     """
 
     def __init__(self,
-                 params: params_t,
+                 params: Union[torch.Tensor],
                  lr: Union[float, torch.Tensor] = 1e-4,
                  beta: float = 0,
                  temperature: float = 1,

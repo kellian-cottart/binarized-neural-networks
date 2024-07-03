@@ -18,7 +18,6 @@ class BinarizedConv2d(torch.nn.Conv2d):
                  padding: int,
                  dilation: int = 1,
                  bias=False,
-                 latent_weights=False,
                  device='cuda'
                  ):
         super(BinarizedConv2d, self).__init__(

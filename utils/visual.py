@@ -6,7 +6,7 @@ from matplotlib.ticker import AutoMinorLocator
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from optimizers import *
 
-plt.switch_backend('agg')
+#plt.switch_backend('agg')
 
 
 def graphs(main_folder, net_trainer, task, n_tasks, epoch, predictions=None, labels=None, modulo=10):

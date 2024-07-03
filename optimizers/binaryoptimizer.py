@@ -1,5 +1,5 @@
 import torch
-from torch.optim.optimizer import params_t, _get_value, _dispatch_sqrt
+from torch.optim.optimizer import _get_value, _dispatch_sqrt
 from typing import List, Optional, Union, Tuple
 
 
@@ -23,7 +23,7 @@ class BinaryOptimizer(torch.optim.Optimizer):
     """
 
     def __init__(self,
-                 params: params_t,
+                 params: Union[torch.Tensor, List[torch.Tensor]],
                  gamma: float = 1e-2,
                  threshold: float = 1e-7,
                  eps: float = 1e-8,
