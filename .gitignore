@@ -1,6 +1,7 @@
 saved*/
 paper/*
-
+*.svg
+*.pdf
 magnetoionic/*
 *.pt
 *.pth
