@@ -62,7 +62,7 @@ if __name__ == "__main__":
                 "bias": False,
             },
             "training_parameters": {
-                'n_epochs': 50,
+                'n_epochs': 20,
                 'batch_size': 128,
                 'resize': True,
                 'data_aug_it': 1,
@@ -70,7 +70,7 @@ if __name__ == "__main__":
                 "task_boundaries": False,
                 "test_mcmc_samples": 10,
             },
-            "label_trick": True,
+            "label_trick": False,
             "output_function": "log_softmax",
             "criterion": torch.functional.F.nll_loss,
             "reduction": "sum",
@@ -95,8 +95,8 @@ if __name__ == "__main__":
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             # "optimizer": torch.optim.Adam,
             # "optimizer_parameters": {"lr": 0.0001,},
-            "task": "PermutedMNIST",
-            "n_tasks": 10,
+            "task": "MNIST",
+            "n_tasks": 1,
             "n_classes": 1,
             "n_repetition": 1,
         }
