@@ -52,7 +52,7 @@ class BiBayesianConv(torch.nn.Module):
         if x.dim() == 4:
             x = x.unsqueeze(0)
         # weights: sfckl (samples, filters, channels, kernel_height (k), kernel_width (l))
-        # x: sbcwh (samples, batch, channels, width, height)
+        # x: sbcwh (samples, batch, channels, width, height)        
         output = torch.einsum('sfckl, sbcwh -> sbfwh', weights, x)
         return output
 

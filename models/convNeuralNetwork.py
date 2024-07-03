@@ -90,9 +90,7 @@ class ConvNN(torch.nn.Module):
             self.features.append(self._norm_init(features[i+1]))
             self.features.append(self._activation_init())
             self.features.append(torch.nn.MaxPool2d(kernel_size=2))
-
-            if self.dropout == True:
-                self.features.append(torch.nn.Dropout2d(p=0.2))
+            self.features.append(torch.nn.Dropout2d(p=0.2))
 
     def _activation_init(self):
         """

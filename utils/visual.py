@@ -531,38 +531,37 @@ def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoc
         path, f"epi-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "epi-certainty"),  bbox_inches='tight')
     plt.close()
 
-    # # turn the problem into a classification pb: is the data ood?
-    # correct_predictions = torch.argmax(torch.mean(
-    #     concat_predictions, dim=0), dim=1) == concat_labels
-    # false_predictions = torch.argmax(torch.mean(
-    #     concat_predictions, dim=0), dim=1) != concat_labels
-    # # the higher the true positive is, the likelier the data is ood
-    # epi_tp = sum_epistemic[correct_predictions]
-    # epi_fp = sum_epistemic[false_predictions]
-    # print(f"True positive: {epi_tp.shape}")
-    # print(f"False positive: {epi_fp.shape}")
-    # threshold = torch.linspace(0, 1, 10_000).cpu()
-    # tpr = torch.zeros_like(threshold)
-    # fpr = torch.zeros_like(threshold)
-    # for i, t in enumerate(threshold):
-    #     tpr[i] = (epi_tp > t).sum().item() / len(epi_tp)
-    #     fpr[i] = (epi_fp > t).sum().item() / len(epi_fp)
-    # fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-    # ax.plot(fpr, tpr, label="ROC curve", color='purple')
-    # ax.plot([0, 1], [0, 1], linestyle='--', color='grey')
-    # ax.set_xlabel('False Positive Rate [-]')
-    # ax.set_ylabel('True Positive Rate [-]')
-    # ax.legend()
-    # ax.xaxis.set_minor_locator(AutoMinorLocator(5))
-    # ax.yaxis.set_minor_locator(AutoMinorLocator(5))
-    # ax.tick_params(which='both', width=1)
-    # ax.tick_params(which='major', length=6)
-    # ax.set_ylim(0, 1)
-    # ax.set_xlim(0, 1)
-    # # save output
-    # fig.savefig(versionning(
-    #     path, f"roc-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "roc-certainty"),  bbox_inches='tight')
-    # plt.close()
+   
+    # We want to plot the ROC curve of the model between seen and unseen distributions
+    seen_epistemic = sum_epistemic[:seen_indexes]
+    unseen_epistemic = sum_epistemic[seen_indexes:]
+    if len(unseen_epistemic) == 0:
+        return
+    threshold = torch.linspace(0, 1, 100).cpu()
+    fpr = torch.zeros_like(threshold)
+    tpr = torch.zeros_like(threshold)
+    for i, t in enumerate(threshold):
+        fpr[i] = torch.sum(seen_epistemic > t).item() / len(seen_epistemic)
+        tpr[i] = torch.sum(unseen_epistemic > t).item() / len(unseen_epistemic)          
+    
+    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+    ax.text(0.5, 0.95, f"AUC: {-torch.trapz(tpr, fpr).item():.2f}",
+            fontsize=9, ha='center', va='center', transform=ax.transAxes, fontweight='bold')
+    ax.plot(fpr, tpr, label="ROC curve", color='purple')
+    ax.plot([0, 1], [0, 1], linestyle='--', color='grey')
+    ax.set_xlabel('Unseen Rate [-]')
+    ax.set_ylabel('Seen Rate [-]')
+    ax.legend()
+    ax.xaxis.set_minor_locator(AutoMinorLocator(5))
+    ax.yaxis.set_minor_locator(AutoMinorLocator(5))
+    ax.tick_params(which='both', width=1)
+    ax.tick_params(which='major', length=6)
+    ax.set_ylim(0, 1)
+    ax.set_xlim(0, 1)
+    # save output
+    fig.savefig(versionning(
+        path, f"roc-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "roc-certainty"),  bbox_inches='tight')
+    plt.close()
 
 
 def compute_task_uncertainty(k, predictions):

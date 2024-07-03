@@ -39,15 +39,14 @@ if __name__ == "__main__":
             "nn_parameters": {
                 # NETWORK ###
                 "layers": [512],
-                # "features": [8, 16],
+                # "features": [8],
                 # "kernel_size": 3,
                 # "padding": "same",
-                # "stride": 1,
                 "device": DEVICE,
                 "dropout": False,
                 "bias": False,
                 "init": "gaussian",
-                "std": 0.0,
+                "std": 0.01,
                 "n_samples_forward": 10,
                 "n_samples_backward": 10,
                 "tau": 1,
@@ -63,7 +62,7 @@ if __name__ == "__main__":
                 "bias": False,
             },
             "training_parameters": {
-                'n_epochs': 20,
+                'n_epochs': 50,
                 'batch_size': 128,
                 'resize': True,
                 'data_aug_it': 1,
@@ -94,9 +93,11 @@ if __name__ == "__main__":
             # },
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
+            # "optimizer": torch.optim.Adam,
+            # "optimizer_parameters": {"lr": 0.0001,},
             "task": "PermutedMNIST",
             "n_tasks": 10,
-            "n_classes": 10,
+            "n_classes": 1,
             "n_repetition": 1,
         }
     ]
@@ -128,7 +129,7 @@ if __name__ == "__main__":
         if "CIL" in data["task"]:
             # Create the permutations for the class incremental scenario: n_classes per task with no overlap
             random_permutation = torch.randperm(target_size)
-            permutations = [random_permutation[i * data["n_classes"]                                               :(i + 1) * data["n_classes"]] for i in range(data["n_tasks"])]
+            permutations = [random_permutation[i * data["n_classes"]:(i + 1) * data["n_classes"]] for i in range(data["n_tasks"])]
             print(permutations)
 
         # add input/output size to the layer of the network parameters
