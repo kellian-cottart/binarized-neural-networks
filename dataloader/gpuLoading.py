@@ -19,12 +19,13 @@ class GPUTensorDataset(torch.utils.data.Dataset):
     """
 
     def __init__(self, data, targets, device="cuda:0"):
-        self.data = data.to(device)
-        self.targets = targets.to(device)
+        self.data = data.to("cpu")
+        self.targets = targets.to("cpu")
+        self.device = device
 
     def __getitem__(self, index):
         """ Return a (data, target) pair """
-        return self.data[index], self.targets[index]
+        return self.data[index].to(self.device), self.targets[index].to(self.device)
 
     def __len__(self):
         """ Return the number of samples """
@@ -32,7 +33,7 @@ class GPUTensorDataset(torch.utils.data.Dataset):
 
     def shuffle(self):
         """ Shuffle the data and targets tensors """
-        perm = torch.randperm(len(self.data))
+        perm = torch.randperm(len(self.data), device="cpu")
         self.data = self.data[perm]
         self.targets = self.targets[perm]
 
@@ -80,7 +81,7 @@ class GPUDataLoader():
         data, targets = self.dataset.data[indexes], self.dataset.targets[indexes]
         if self.transform is not None:
             data = self.transform(data)
-        return data, targets
+        return data.to(self.device), targets.to(self.device)
 
     def __len__(self):
         """ Return the number of batches """
@@ -152,7 +153,7 @@ class GPULoading:
 
         return transform(train_x), transform(test_x)
 
-    def mnist(self, batch_size, path_train_x, path_train_y, path_test_x, path_test_y, *args, **kwargs):
+    def mnist(self, path_train_x, path_train_y, path_test_x, path_test_y, *args, **kwargs):
         """ Load a local dataset on GPU corresponding either to MNIST or FashionMNIST
 
         Args:
@@ -175,7 +176,7 @@ class GPULoading:
         train_x, test_x = self.normalization(train_x, test_x)
         return self.to_dataset(train_x, train_y, test_x, test_y)
 
-    def cifar10(self, batch_size, path_databatch, path_testbatch, iterations=10, *args, **kwargs):
+    def cifar10(self, path_databatch, path_testbatch, iterations=10, *args, **kwargs):
         """ Load a local dataset on GPU corresponding to CIFAR10 """
         # Deal with the training data
         train_x = []

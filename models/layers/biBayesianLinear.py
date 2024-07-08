@@ -49,7 +49,7 @@ class BiBayesianLinear(torch.nn.Module):
         epsilon = torch.distributions.Uniform(
             1e-10, 1).sample((n_samples, *self.weight.shape)).to(x.device)
         # Compute delta = 1/2 log(epsilon/(1-epsilon))
-        delta = 0.5 * torch.log(epsilon/(1-epsilon))
+        delta = (0.5 * torch.log(epsilon/(1-epsilon))).to(x.device)
         # Compute the new relaxed weights values
         if self.binarized:
             relaxed_weights = SignWeights.apply(

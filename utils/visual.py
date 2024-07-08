@@ -6,7 +6,7 @@ from matplotlib.ticker import AutoMinorLocator
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 from optimizers import *
 
-#plt.switch_backend('agg')
+# plt.switch_backend('agg')
 
 
 def graphs(main_folder, net_trainer, task, n_tasks, epoch, predictions=None, labels=None, modulo=10):
@@ -530,15 +530,14 @@ def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoc
     fig.savefig(versionning(
         path, f"epi-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "epi-certainty"),  bbox_inches='tight')
     plt.close()
-    
 
     # bar plot of the epistemic uncertainty per class
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
     ax.bar(torch.arange(0, epistemic.shape[0]).detach().cpu(),
-              epistemic[:, 0].detach().cpu(), color='blue', label='Epistemic')
+           epistemic[:, 0].detach().cpu(), color='blue', label='Epistemic')
     # stack bar aleatoric
     ax.bar(torch.arange(0, aleatoric.shape[0]).detach().cpu(),
-                aleatoric[:, 0].detach().cpu(), bottom=epistemic[:, 0].detach().cpu(), color='red', label='Aleatoric')
+           aleatoric[:, 0].detach().cpu(), bottom=epistemic[:, 0].detach().cpu(), color='red', label='Aleatoric')
     ax.set_xlabel('Class [-]')
     ax.set_ylabel('Uncertainty [-]')
     ax.yaxis.set_minor_locator(AutoMinorLocator(5))
@@ -555,8 +554,7 @@ def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoc
     fig.savefig(versionning(
         path, f"uncertaintyseen0-task{task+1}-epoch{epoch+1}" if epoch is not None else "uncertainty"),  bbox_inches='tight')
     plt.close()
-    
-    
+
     seen_epistemic = sum_epistemic[:seen_indexes]
     unseen_epistemic = sum_epistemic[seen_indexes:]
     if len(unseen_epistemic) == 0:
@@ -564,10 +562,10 @@ def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoc
     # bar plot of the epistemic uncertainty on the first unseen
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
     ax.bar(torch.arange(0, epistemic.shape[0]).detach().cpu(),
-                epistemic[:, seen_indexes+1].detach().cpu(), color='blue', label='Epistemic')
+           epistemic[:, seen_indexes+1].detach().cpu(), color='blue', label='Epistemic')
     # stack bar aleatoric
     ax.bar(torch.arange(0, aleatoric.shape[0]).detach().cpu(),
-                aleatoric[:, seen_indexes+1].detach().cpu(), bottom=epistemic[:, seen_indexes+1].detach().cpu(), color='red', label='Aleatoric')
+           aleatoric[:, seen_indexes+1].detach().cpu(), bottom=epistemic[:, seen_indexes+1].detach().cpu(), color='red', label='Aleatoric')
     ax.set_xlabel('Class [-]')
     ax.set_ylabel('Uncertainty [-]')
     ax.yaxis.set_minor_locator(AutoMinorLocator(5))
@@ -584,15 +582,15 @@ def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoc
     fig.savefig(versionning(
         path, f"uncertaintyunseen0-task{task+1}-epoch{epoch+1}" if epoch is not None else "uncertainty"),  bbox_inches='tight')
     plt.close()
-    
+
     # We want to plot the ROC curve of the model between seen and unseen distributions
     threshold = torch.linspace(0, 1, 100).cpu()
     fpr = torch.zeros_like(threshold)
     tpr = torch.zeros_like(threshold)
     for i, t in enumerate(threshold):
         fpr[i] = torch.sum(seen_epistemic > t).item() / len(seen_epistemic)
-        tpr[i] = torch.sum(unseen_epistemic > t).item() / len(unseen_epistemic)          
-    
+        tpr[i] = torch.sum(unseen_epistemic > t).item() / len(unseen_epistemic)
+
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
     ax.text(0.5, 0.95, f"AUC: {-torch.trapz(tpr, fpr).item():.2f}",
             fontsize=9, ha='center', va='center', transform=ax.transAxes, fontweight='bold')
@@ -631,8 +629,8 @@ def compute_task_uncertainty(predictions_k):
     for i in range(len(predictions_k)):
         # KL divergence between predictions and mean predictions
         epistemic_uncertainty[i] = predictions_k[i] * \
-            (torch.log(predictions_k[i] + 1e-8) -
-             torch.log(mean_predictions + 1e-8))
+            (torch.log2(predictions_k[i] + 1e-8) -
+             torch.log2(mean_predictions + 1e-8))
     epistemic_uncertainty = torch.mean(epistemic_uncertainty, dim=0)
     aleatoric_uncertainty = total_uncertainty - epistemic_uncertainty
     return aleatoric_uncertainty, epistemic_uncertainty

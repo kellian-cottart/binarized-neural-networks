@@ -49,11 +49,17 @@ class BiBayesianConv(torch.nn.Module):
         p = torch.sigmoid(2*self.weight)
         # Sample the weights according to 2*Ber(p) - 1
         weights = 2*Bernoulli(p).sample((n_samples,)).to(x.device)-1
+        weights = weights.view(weights.size(0)*weights.size(
+            1), weights.size(2), weights.size(3), weights.size(4))
         if x.dim() == 4:
             x = x.unsqueeze(0)
-        # weights: sfckl (samples, filters, channels, kernel_height (k), kernel_width (l))
-        # x: sbcwh (samples, batch, channels, width, height)        
-        output = torch.einsum('sfckl, sbcwh -> sbfwh', weights, x)
+        if x.size(0) == 1:
+            x = x.repeat(n_samples, 1, 1, 1, 1)
+        x = x.view(x.size(1), x.size(0)*x.size(2), x.size(3), x.size(4))
+        output = torch.functional.F.conv2d(
+            x, weights, padding=self.padding, stride=self.stride, dilation=self.dilation, groups=n_samples)
+        output = output.view(n_samples, output.size(0), output.size(1)//n_samples,
+                             output.size(2), output.size(3))
         return output
 
     def forward(self, x, n_samples=1):
@@ -68,10 +74,15 @@ class BiBayesianConv(torch.nn.Module):
         # Compute the output of the layer
         if x.dim() == 4:
             x = x.unsqueeze(0)
-        # relaxed_weights: sfckl (samples, filters, channels, kernel_height (k), kernel_width (l))
-        # x: sbcwh (samples, batch, channels, width, height)
-        # We want the following output: sbfwh (samples, batch, filters, width, height)
-        output = torch.einsum('sfckl, sbcwh -> sbfwh', relaxed_weights, x)
+        relaxed_weights = relaxed_weights.view(relaxed_weights.size(0)*relaxed_weights.size(
+            1), relaxed_weights.size(2), relaxed_weights.size(3), relaxed_weights.size(4))
+        if x.size(0) == 1:
+            x = x.repeat(n_samples, 1, 1, 1, 1)
+        x = x.view(x.size(1), x.size(0)*x.size(2), x.size(3), x.size(4))
+        output = torch.functional.F.conv2d(
+            x, relaxed_weights, padding=self.padding, stride=self.stride, dilation=self.dilation, groups=n_samples)
+        output = output.view(n_samples, output.size(0), output.size(1)//n_samples,
+                             output.size(2), output.size(3))
         return output
 
     def extra_repr(self):

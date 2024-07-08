@@ -61,15 +61,16 @@ class ConvBiBayesianNeuralNetwork(ConvNN):
         # Add conv layers to the network as well as batchnorm and maxpool
         for i, _ in enumerate(features[:-1]):
             # Conv layers with BatchNorm and MaxPool
-            self.features.append(BiBayesianConv(features[i], features[i+1], tau=self.tau, kernel_size=self.kernel_size,
+            self.features.append(BiBayesianConv(features[i], features[i+1], tau=self.tau, kernel_size=self.kernel_size[i],
                                  padding=self.padding, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device))
             self.features.append(self._norm_init(features[i+1]))
             self.features.append(self._activation_init())
-            self.features.append(BiBayesianConv(features[i+1], features[i+1], tau=self.tau, kernel_size=self.kernel_size,
-                                 padding=self.padding, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device))
+            self.features.append(BiBayesianConv(features[i+1], features[i+1], tau=self.tau, kernel_size=self.kernel_size[i],
+                                 padding=0, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device))
             self.features.append(self._norm_init(features[i+1]))
             self.features.append(self._activation_init())
-            self.features.append(torch.nn.MaxPool2d(kernel_size=2))
+            self.features.append(torch.nn.MaxPool2d(
+                kernel_size=(2, 2)))
             if self.dropout == True:
                 self.features.append(torch.nn.Dropout2d(p=0.2))
 
@@ -91,3 +92,6 @@ class ConvBiBayesianNeuralNetwork(ConvNN):
                     x = layer(x)
                     x = x.reshape([shape[0], shape[1], *x.shape[1:]])
         return self.classifier.forward(x, backwards=backwards)
+
+    def extra_repr(self) -> str:
+        return super().extra_repr() + f", tau={self.tau}, n_samples_forward={self.n_samples_forward}, n_samples_backward={self.n_samples_backward}"

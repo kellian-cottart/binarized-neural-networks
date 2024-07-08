@@ -154,7 +154,8 @@ class GPUTrainer:
                 batch = []
                 for inputs, targets in dataloader:
                     # Compute the accuracy and predictions for export of visuals
-                    accuracy, predictions = self.test(inputs, targets)
+                    accuracy, predictions = self.test(
+                        inputs.to(self.device), targets.to(self.device))
                     if len(predictions.shape) < 3:
                         predictions = predictions.unsqueeze(0)
                     batch.append(accuracy)

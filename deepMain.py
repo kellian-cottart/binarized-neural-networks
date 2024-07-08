@@ -10,10 +10,10 @@ import tqdm
 
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
-DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cuda:0")
 NUM_WORKERS = 0  # Number of workers for data loading when using CPU
 PADDING = 2
-GRAPHS = True
+GRAPHS = False
 MODULO = 10
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
@@ -24,6 +24,7 @@ if __name__ == "__main__":
     ### SEED ###
     torch.manual_seed(SEED)
     torch.cuda.manual_seed(SEED)
+
     torch.set_default_device(DEVICE)
     torch.set_default_dtype(torch.float32)
 
@@ -39,8 +40,8 @@ if __name__ == "__main__":
             "nn_parameters": {
                 # NETWORK ###
                 "layers": [512],
-                # "features": [8],
-                # "kernel_size": 3,
+                # "features": [32, 64],
+                # "kernel_size": [3, 3],
                 # "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
@@ -53,6 +54,7 @@ if __name__ == "__main__":
                 "activation_function": "gate",
                 "activation_parameters": {
                     "width": 1,
+                    # "power": 4,
                 },
                 "normalization": "instancenorm",
                 "eps": 1e-5,
@@ -64,13 +66,13 @@ if __name__ == "__main__":
             "training_parameters": {
                 'n_epochs': 20,
                 'batch_size': 128,
-                'resize': True,
+                'resize': False,
                 'data_aug_it': 1,
                 "continual": True,
                 "task_boundaries": False,
                 "test_mcmc_samples": 10,
             },
-            "label_trick": False,
+            "label_trick": True,
             "output_function": "log_softmax",
             "criterion": torch.functional.F.nll_loss,
             "reduction": "sum",
@@ -80,7 +82,7 @@ if __name__ == "__main__":
                 "metaplasticity": 1,
                 "ratio_coeff": 0.1,
                 "mesuified": False,
-                "N": 15_000,
+                "N": 20_000,
             },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
@@ -94,9 +96,9 @@ if __name__ == "__main__":
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             # "optimizer": torch.optim.Adam,
-            # "optimizer_parameters": {"lr": 0.0001,},
-            "task": "MNIST",
-            "n_tasks": 1,
+            # "optimizer_parameters": {"lr": 0.0005, },
+            "task": "PermutedMNIST",
+            "n_tasks": 10,
             "n_classes": 1,
             "n_repetition": 1,
         }
@@ -129,7 +131,7 @@ if __name__ == "__main__":
         if "CIL" in data["task"]:
             # Create the permutations for the class incremental scenario: n_classes per task with no overlap
             random_permutation = torch.randperm(target_size)
-            permutations = [random_permutation[i * data["n_classes"]:(i + 1) * data["n_classes"]] for i in range(data["n_tasks"])]
+            permutations = [random_permutation[i * data["n_classes"]                                               :(i + 1) * data["n_classes"]] for i in range(data["n_tasks"])]
             print(permutations)
 
         # add input/output size to the layer of the network parameters
@@ -224,6 +226,7 @@ if __name__ == "__main__":
                             test_dataset=test_dataset,
                             net_trainer=net_trainer,
                             permutations=permutations,
+                            batch_size=batch_size*4,
                             batch_params=batch_params if data["optimizer"] in [
                                 MetaplasticAdam] and net_trainer.model.affine else None,
                             train_dataset=train_dataset)

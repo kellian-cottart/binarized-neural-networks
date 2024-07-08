@@ -81,16 +81,18 @@ class ConvNN(torch.nn.Module):
         # Add conv layers to the network as well as batchnorm and maxpool
         for i, _ in enumerate(features[:-1]):
             # Conv layers with BatchNorm and MaxPool
-            self.features.append(torch.nn.Conv2d(features[i], features[i+1], kernel_size=self.kernel_size,
-                                 padding=self.padding, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device))
+            self.features.append(torch.nn.Conv2d(features[i], features[i+1], kernel_size=self.kernel_size[i],
+                                 padding=self.padding if i == 0 else 0, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device))
             self.features.append(self._norm_init(features[i+1]))
             self.features.append(self._activation_init())
-            self.features.append(torch.nn.Conv2d(features[i+1], features[i+1], kernel_size=self.kernel_size,
-                                 padding=self.padding, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device))
+            self.features.append(torch.nn.Conv2d(features[i+1], features[i+1], kernel_size=self.kernel_size[i],
+                                 padding=self.padding if i == 0 else 0, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device))
             self.features.append(self._norm_init(features[i+1]))
             self.features.append(self._activation_init())
-            self.features.append(torch.nn.MaxPool2d(kernel_size=2))
-            self.features.append(torch.nn.Dropout2d(p=0.2))
+            self.features.append(torch.nn.MaxPool2d(
+                kernel_size=(2, 2)))
+            if self.dropout == True:
+                self.features.append(torch.nn.Dropout2d(p=0.2))
 
     def _activation_init(self):
         """
@@ -157,3 +159,12 @@ class ConvNN(torch.nn.Module):
         for layer in self.features:
             x = layer(x)
         return self.classifier.forward(x)
+
+    # add number of parameters total
+
+    def number_parameters(self):
+        """Return the number of parameters of the network"""
+        return sum(p.numel() for p in self.parameters())
+
+    def extra_repr(self) -> str:
+        return super().extra_repr() + f"parameters={self.number_parameters()}"
