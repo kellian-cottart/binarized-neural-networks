@@ -1,15 +1,21 @@
-saved
+saved*/
+paper/*
+*.svg
+*.pdf
+magnetoionic/*
+*.pt
+*.pth
 datasets
 wandb
 utils/test
-
+gridsearch
+nohup.*
 __pycache__/
 *.py[cod]
 *$py.class
-
 # C extensions
 *.so
-
+*.txt
 # Distribution / packaging
 .Python
 build/
@@ -112,7 +118,7 @@ ipython_config.py
 #   in version control.
 #   https://pdm.fming.dev/#use-with-ide
 .pdm.toml
-
+.*
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
 __pypackages__/
 

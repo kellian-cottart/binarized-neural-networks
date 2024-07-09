@@ -1,23 +1,5 @@
 import torch
-
-
-class Sign(torch.autograd.Function):
-    """ Sign Activation Function
-
-    Allows for backpropagation of the sign function because it is not differentiable
-    """
-
-    @staticmethod
-    def forward(ctx, tensor_input):
-        ctx.save_for_backward(tensor_input)
-        return tensor_input.sign()
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        i, = ctx.saved_tensors
-        grad_i = grad_output.clone()
-        grad_i[i.abs() > 1.0] = 0
-        return grad_i
+from .activation.sign import Sign, SignWeights
 
 
 class BinarizedLinear(torch.nn.Linear):
@@ -31,21 +13,11 @@ class BinarizedLinear(torch.nn.Linear):
                  in_features: int,
                  out_features: int,
                  bias=False,
-                 latent_weights=True,
-                 device='cuda'
+                 device='cuda:0'
                  ):
         super(BinarizedLinear, self).__init__(
             in_features, out_features, bias=bias, device=device)
-        self.latent_weights = latent_weights
 
     def forward(self, input):
         """Forward propagation of the binarized linear layer"""
-        if not self.latent_weights:
-            self.weight.data.sign_()
-            self.bias.data.sign_() if self.bias is not None else None
-            return torch.nn.functional.linear(input, self.weight, self.bias)
-        else:
-            if self.bias:
-                return torch.nn.functional.linear(input, Sign.apply(self.weight), Sign.apply(self.bias))
-            else:
-                return torch.nn.functional.linear(input, Sign.apply(self.weight))
+        return torch.nn.functional.linear(input, SignWeights.apply(self.weight), None if not self.bias else SignWeights.apply(self.bias))

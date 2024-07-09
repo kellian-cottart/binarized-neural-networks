@@ -2,4 +2,5 @@ from .metaplasticadam import *
 from .binaryoptimizer import *
 from .bayesbinn import *
 from .mesu import *
-from .bsu import *
+from .bhuparallel import *
+from .bayesbinnparallel import *

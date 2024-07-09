@@ -1,5 +1,5 @@
 import torch
-from torch.optim.optimizer import params_t, _get_value, _dispatch_sqrt
+from torch.optim.optimizer import _get_value, _dispatch_sqrt
 from typing import List, Optional, Union, Tuple
 
 
@@ -14,7 +14,6 @@ class BinaryOptimizer(torch.optim.Optimizer):
             parameter groups
         gamma (float): momentum factor (analogue to the learning rate)
         threshold (float): threshold for flipping the sign of the weights
-        metaplasticity (float): metaplasticity value
         eps (float): term added to the denominator to improve
             numerical stability
         weight_decay (float): weight decay (L2 penalty)
@@ -24,16 +23,13 @@ class BinaryOptimizer(torch.optim.Optimizer):
     """
 
     def __init__(self,
-                 params: params_t,
+                 params: Union[torch.Tensor, List[torch.Tensor]],
                  gamma: float = 1e-2,
                  threshold: float = 1e-7,
-                 metaplasticity: float = 0.1,
                  eps: float = 1e-8,
                  weight_decay: float = 0,
                  amsgrad: bool = False,
                  maximize: bool = False,):
-        if not 0.0 <= metaplasticity:
-            raise ValueError(f"Invalid metaplasticity value: {metaplasticity}")
         if not 0.0 <= eps:
             raise ValueError(f"Invalid epsilon value: {eps}")
         if not 0.0 <= threshold:
@@ -43,7 +39,7 @@ class BinaryOptimizer(torch.optim.Optimizer):
         if not 0.0 <= weight_decay:
             raise ValueError(f"Invalid weight_decay value: {weight_decay}")
 
-        defaults = dict(gamma=gamma, threshold=threshold, metaplasticity=metaplasticity, eps=eps,
+        defaults = dict(gamma=gamma, threshold=threshold, eps=eps,
                         weight_decay=weight_decay, amsgrad=amsgrad, maximize=maximize)
         super().__init__(params, defaults)
 
@@ -141,7 +137,6 @@ class BinaryOptimizer(torch.optim.Optimizer):
             state_steps = []
             gamma = group['gamma']
             threshold = group['threshold']
-            metaplasticity = group['metaplasticity']
 
             self._init_group(
                 group,
@@ -164,7 +159,6 @@ class BinaryOptimizer(torch.optim.Optimizer):
                 amsgrad=group['amsgrad'],
                 gamma=gamma,
                 threshold=threshold,
-                metaplasticity=metaplasticity,
                 weight_decay=group['weight_decay'],
                 eps=group['eps'],
                 maximize=group['maximize'],
@@ -185,12 +179,11 @@ def binary_optimizer(params: List[torch.Tensor],
                      amsgrad: bool,
                      gamma: float,
                      threshold: float,
-                     metaplasticity: float,
                      weight_decay: float,
                      eps: float,
                      maximize: bool):
     """ Perform a single optimization step
-    Taken from _single_tensor_adam() in PyTorch, updated to support metaplasticity
+    Taken from _single_tensor_adam() in PyTorch
     """
     for i, param in enumerate(params):
         grad = grads[i] if not maximize else -grads[i]
