@@ -64,7 +64,7 @@ if __name__ == "__main__":
             "training_parameters": {
                 'n_epochs': 20,
                 'batch_size': 128,
-                'resize': False,
+                'feature_extraction': True,
                 'data_aug_it': 1,
                 "continual": True,
                 "task_boundaries": False,
@@ -95,7 +95,7 @@ if __name__ == "__main__":
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             # "optimizer": torch.optim.Adam,
             # "optimizer_parameters": {"lr": 0.0005, },
-            "task": "MNIST",
+            "task": "CIFAR10",
             "n_tasks": 1,
             "n_classes": 1,
         }
@@ -107,7 +107,7 @@ if __name__ == "__main__":
         ### ACCURACY INITIALIZATION ###
         accuracies, training_accuracies = [], []
         batch_size = data['training_parameters']['batch_size']
-        resize = data['training_parameters']['resize'] if "resize" in data["training_parameters"] else False
+        feature_extraction = data['training_parameters']['feature_extraction'] if "feature_extraction" in data["training_parameters"] else False
         data_aug_it = data['training_parameters']['data_aug_it'] if "data_aug_it" in data["training_parameters"] else None
 
         ### LOADING DATASET ###
@@ -115,7 +115,7 @@ if __name__ == "__main__":
             task=data["task"],
             n_tasks=data["n_tasks"],
             batch_size=batch_size,
-            resize=resize,
+            feature_extraction=feature_extraction,
             iterations=data_aug_it
         )
 

@@ -40,6 +40,104 @@ class GPULoading:
         self.padding = padding
         self.device = device
 
+    def task_selection(self, task, *args, **kwargs):
+        """ Select the task to load
+
+        Args:
+            task (str): Name of the task
+        """
+        dataset_mapping = {
+            "Fashion": self.fashion_mnist,
+            "MNIST": self.mnist,
+            "CIFAR100": self.cifar100,
+            "CIFAR10": self.cifar10,
+        }
+        train, test = dataset_mapping[task](*args, **kwargs)
+        shape = train.data[0].shape
+        target_size = len(train.targets.unique())
+        return train, test, shape, target_size
+
+    def feature_extraction(self, folder, train_x, train_y, test_x, test_y, task="cifar100", iterations=10):
+        """ Extract features using a resnet18 model
+
+        Args:
+            folder (str): Folder to save the features
+            train_x (torch.tensor): Training data
+            train_y (torch.tensor): Training labels
+            test_x (torch.tensor): Testing data
+            test_y (torch.tensor): Testing labels
+            task (str, optional): Name of the task. Defaults to "cifar100".
+            iterations (int, optional): Number of passes to make. Defaults to 10.
+        """
+        print(f"Extracting features from {task}...")
+        resnet18 = models.resnet18(
+            weights=models.ResNet18_Weights.DEFAULT
+        )
+        # Remove the classification layer
+        resnet18 = torch.nn.Sequential(
+            *list(resnet18.children())[:-1])
+        # Freeze the weights of the feature extractor
+        for param in resnet18.parameters():
+            param.requires_grad = False
+        # Transforms to apply to augment the data
+        transform_train = v2.Compose([
+            v2.feature_extraction(220, antialias=True),
+            v2.RandomHorizontalFlip(),
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Normalize(mean=(0.0,), std=(1.0,))
+        ])
+        transform_test = v2.Compose([
+            v2.feature_extraction(220, antialias=True),
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Normalize(mean=(0.0,), std=(1.0,))
+        ])
+        # Extract the features
+        features_train = []
+        target_train = []
+        features_test = []
+        target_test = []
+        # Normalize
+        train_x = torch.from_numpy(train_x).float() / 255
+        test_x = torch.from_numpy(test_x).float() / 255
+        if len(train_x.size()) == 3:
+            train_x = train_x.unsqueeze(1)
+            test_x = test_x.unsqueeze(1)
+        # Converting the data to a GPU TensorDataset (allows to load everything in the GPU memory at once)
+        train_dataset = GPUTensorDataset(
+            train_x, torch.Tensor(train_y).type(
+                torch.LongTensor), device=self.device)
+        test_dataset = GPUTensorDataset(test_x, torch.Tensor(test_y).type(
+            torch.LongTensor), device=self.device)
+        train_dataset = GPUDataLoader(
+            train_dataset, batch_size=1024, shuffle=True, drop_last=False, transform=transform_train, device=self.device)
+        test_dataset = GPUDataLoader(
+            test_dataset, batch_size=1024, shuffle=True, device=self.device, transform=transform_test)
+        # Make n passes to extract the features
+        for _ in range(iterations):
+            for data, target in train_dataset:
+                features_train.append(resnet18(data))
+                target_train.append(target)
+        for data, target in test_dataset:
+            features_test.append(resnet18(data))
+            target_test.append(target)
+
+        # Concatenate the features
+        features_train = torch.cat(features_train)
+        target_train = torch.cat(target_train)
+        features_test = torch.cat(features_test)
+        target_test = torch.cat(target_test)
+        # Save the features
+        torch.save(features_train,
+                   f"{folder}/{task}_{iterations}_features_train.pt")
+        torch.save(
+            target_train, f"{folder}/{task}_{iterations}_target_train.pt")
+        torch.save(features_test,
+                   f"{folder}/{task}_{iterations}_features_test.pt")
+        torch.save(
+            target_test, f"{folder}/{task}_{iterations}_target_test.pt")
+
     def to_dataset(self, train_x, train_y, test_x, test_y):
         """ Create a DataLoader to load the data in batches
 
@@ -71,7 +169,6 @@ class GPULoading:
         Returns:
             torch.tensor, torch.tensor: Normalized training and testing data
         """
-
         # Completely convert train_x and test_x to float torch tensors
         # division by 255 is only scaling from uint to float
         train_x = torch.from_numpy(train_x).float() / 255
@@ -133,27 +230,27 @@ class GPULoading:
             datasets.CIFAR10("datasets", download=True)
         path_databatch = PATH_CIFAR10_DATABATCH
         path_testbatch = PATH_CIFAR10_TESTBATCH
-        train_x = []
-        train_y = []
-        for path in path_databatch:
-            with open(path, 'rb') as f:
-                dict = pickle.load(f, encoding='bytes')
-            train_x.append(dict[b'data'])
-            train_y.append(dict[b'labels'])
-        train_x = np.concatenate(train_x)
-        train_y = np.concatenate(train_y)
-        # Deal with the test data
-        with open(path_testbatch, 'rb') as f:
-            dict = pickle.load(f, encoding='bytes')
-        test_x = dict[b'data']
-        test_y = dict[b'labels']
-        # Deflatten the data
-        train_x = train_x.reshape(-1, 3, 32, 32)
-        test_x = test_x.reshape(-1, 3, 32, 32)
-        if "resize" in kwargs and kwargs["resize"] == True:
+        if "feature_extraction" in kwargs and kwargs["feature_extraction"] == True:
             folder = "datasets/cifar10_resnet18"
             os.makedirs(folder, exist_ok=True)
             if not os.listdir(folder) or not os.path.exists(f"{folder}/cifar10_{iterations}_features_train.pt"):
+                train_x = []
+                train_y = []
+                for path in path_databatch:
+                    with open(path, 'rb') as f:
+                        dict = pickle.load(f, encoding='bytes')
+                    train_x.append(dict[b'data'])
+                    train_y.append(dict[b'labels'])
+                train_x = np.concatenate(train_x)
+                train_y = np.concatenate(train_y)
+                # Deal with the test data
+                with open(path_testbatch, 'rb') as f:
+                    dict = pickle.load(f, encoding='bytes')
+                test_x = dict[b'data']
+                test_y = dict[b'labels']
+                # Deflatten the data
+                train_x = train_x.reshape(-1, 3, 32, 32)
+                test_x = test_x.reshape(-1, 3, 32, 32)
                 self.feature_extraction(
                     folder, train_x, train_y, test_x, test_y, task="cifar10", iterations=iterations)
             train_x = torch.load(
@@ -164,32 +261,48 @@ class GPULoading:
                 f"{folder}/cifar10_{iterations}_features_test.pt")
             test_y = torch.load(
                 f"{folder}/cifar10_{iterations}_target_test.pt")
+        else:
+            train_x = []
+            train_y = []
+            for path in path_databatch:
+                with open(path, 'rb') as f:
+                    dict = pickle.load(f, encoding='bytes')
+                train_x.append(dict[b'data'])
+                train_y.append(dict[b'labels'])
+            train_x = np.concatenate(train_x)
+            train_y = np.concatenate(train_y)
+            # Deal with the test data
+            with open(path_testbatch, 'rb') as f:
+                dict = pickle.load(f, encoding='bytes')
+            test_x = dict[b'data']
+            test_y = dict[b'labels']
+            # Deflatten the data
+            train_x = train_x.reshape(-1, 3, 32, 32)
+            test_x = test_x.reshape(-1, 3, 32, 32)
             # Normalize and pad the data
-            return self.to_dataset(train_x, train_y, test_x, test_y)
-        # Normalize and pad the data
-        train_x, test_x = self.normalization(train_x, test_x)
+            train_x, test_x = self.normalization(train_x, test_x)
         return self.to_dataset(train_x, train_y, test_x, test_y)
 
-    def cifar100(self, path_databatch, path_testbatch, iterations=10, *args, **kwargs):
+    def cifar100(self, iterations=10, *args, **kwargs):
         """ Load a local dataset on GPU corresponding to CIFAR100 """
         if not os.path.exists("datasets/CIFAR100/raw"):
             datasets.CIFAR10("datasets", download=True)
-        path_databatch = PATH_CIFAR100_DATABATCH
-        path_testbatch = PATH_CIFAR100_TESTBATCH
-        with open(path_databatch[0], "rb") as f:
-            data = pickle.load(f, encoding="bytes")
-            train_x = data[b"data"]
-            train_y = data[b"fine_labels"]
-        with open(path_testbatch, "rb") as f:
-            data = pickle.load(f, encoding="bytes")
-            test_x = data[b"data"]
-            test_y = data[b"fine_labels"]
-        train_x = train_x.reshape(-1, 3, 32, 32)
-        test_x = test_x.reshape(-1, 3, 32, 32)
-        if "resize" in kwargs and kwargs["resize"] == True:
+        if "feature_extraction" in kwargs and kwargs["feature_extraction"] == True:
             folder = "datasets/cifar100_resnet18"
             os.makedirs(folder, exist_ok=True)
             if not os.listdir(folder) or not os.path.exists(f"{folder}/cifar100_{iterations}_features_train.pt"):
+                path_databatch = PATH_CIFAR100_DATABATCH
+                path_testbatch = PATH_CIFAR100_TESTBATCH
+                with open(path_databatch[0], "rb") as f:
+                    data = pickle.load(f, encoding="bytes")
+                    train_x = data[b"data"]
+                    train_y = data[b"fine_labels"]
+                with open(path_testbatch, "rb") as f:
+                    data = pickle.load(f, encoding="bytes")
+                    test_x = data[b"data"]
+                    test_y = data[b"fine_labels"]
+                train_x = train_x.reshape(-1, 3, 32, 32)
+                test_x = test_x.reshape(-1, 3, 32, 32)
                 self.feature_extraction(
                     folder, train_x, train_y, test_x, test_y, task="cifar100", iterations=iterations)
             train_x = torch.load(
@@ -200,98 +313,19 @@ class GPULoading:
                 f"{folder}/cifar100_{iterations}_features_test.pt")
             test_y = torch.load(
                 f"{folder}/cifar100_{iterations}_target_test.pt")
-            # Normalize and pad the data
-            return self.to_dataset(train_x, train_y, test_x, test_y)
         else:
+            path_databatch = PATH_CIFAR100_DATABATCH
+            path_testbatch = PATH_CIFAR100_TESTBATCH
+            with open(path_databatch[0], "rb") as f:
+                data = pickle.load(f, encoding="bytes")
+                train_x = data[b"data"]
+                train_y = data[b"fine_labels"]
+            with open(path_testbatch, "rb") as f:
+                data = pickle.load(f, encoding="bytes")
+                test_x = data[b"data"]
+                test_y = data[b"fine_labels"]
+            train_x = train_x.reshape(-1, 3, 32, 32)
+            test_x = test_x.reshape(-1, 3, 32, 32)
             # Normalize and pad the data
             train_x, test_x = self.normalization(train_x, test_x)
-            return self.to_dataset(train_x, train_y, test_x, test_y)
-
-    def feature_extraction(self, folder, train_x, train_y, test_x, test_y, task="cifar100", iterations=10):
-        # The idea here is to use the resnet18 as feature extractor
-        # Then create a new dataset with the extracted features from CIFAR100
-        print(f"Extracting features from {task}...")
-        resnet18 = models.resnet18(
-            weights=models.ResNet18_Weights.DEFAULT
-        )
-        # Remove the classification layer
-        resnet18 = torch.nn.Sequential(
-            *list(resnet18.children())[:-1])
-        # Freeze the weights of the feature extractor
-        for param in resnet18.parameters():
-            param.requires_grad = False
-        # Transforms to apply to augment the data
-        transform_train = v2.Compose([
-            v2.Resize(220, antialias=True),
-            v2.RandomHorizontalFlip(),
-            v2.ToImage(),
-            v2.ToDtype(torch.float32, scale=True),
-            v2.Normalize(mean=(0.0,), std=(1.0,))
-        ])
-        transform_test = v2.Compose([
-            v2.Resize(220, antialias=True),
-            v2.ToImage(),
-            v2.ToDtype(torch.float32, scale=True),
-            v2.Normalize(mean=(0.0,), std=(1.0,))
-        ])
-        # Extract the features
-        features_train = []
-        target_train = []
-        features_test = []
-        target_test = []
-        # Normalize
-        train_x = torch.from_numpy(train_x).float() / 255
-        test_x = torch.from_numpy(test_x).float() / 255
-        if len(train_x.size()) == 3:
-            train_x = train_x.unsqueeze(1)
-            test_x = test_x.unsqueeze(1)
-        # Converting the data to a GPU TensorDataset (allows to load everything in the GPU memory at once)
-        train_dataset = GPUTensorDataset(
-            train_x, torch.Tensor(train_y).type(
-                torch.LongTensor), device=self.device)
-        test_dataset = GPUTensorDataset(test_x, torch.Tensor(test_y).type(
-            torch.LongTensor), device=self.device)
-        train_dataset = GPUDataLoader(
-            train_dataset, batch_size=1024, shuffle=True, drop_last=False, transform=transform_train, device=self.device)
-        test_dataset = GPUDataLoader(
-            test_dataset, batch_size=1024, shuffle=True, device=self.device, transform=transform_test)
-        # Make n passes to extract the features
-        for _ in range(iterations):
-            for data, target in train_dataset:
-                features_train.append(resnet18(data))
-                target_train.append(target)
-        for data, target in test_dataset:
-            features_test.append(resnet18(data))
-            target_test.append(target)
-
-        # Concatenate the features
-        features_train = torch.cat(features_train)
-        target_train = torch.cat(target_train)
-        features_test = torch.cat(features_test)
-        target_test = torch.cat(target_test)
-        # Save the features
-        torch.save(features_train,
-                   f"{folder}/{task}_{iterations}_features_train.pt")
-        torch.save(
-            target_train, f"{folder}/{task}_{iterations}_target_train.pt")
-        torch.save(features_test,
-                   f"{folder}/{task}_{iterations}_features_test.pt")
-        torch.save(
-            target_test, f"{folder}/{task}_{iterations}_target_test.pt")
-
-    def task_selection(self, task, *args, **kwargs):
-        """ Select the task to load
-
-        Args:
-            task (str): Name of the task
-        """
-        dataset_mapping = {
-            "Fashion": self.fashion_mnist,
-            "MNIST": self.mnist,
-            "CIFAR100": self.cifar100,
-            "CIFAR10": self.cifar10,
-        }
-        train, test = dataset_mapping[task](*args, **kwargs)
-        shape = train.data[0].shape
-        target_size = len(train.targets.unique())
-        return train, test, shape, target_size
+        return self.to_dataset(train_x, train_y, test_x, test_y)
