@@ -24,10 +24,8 @@ if __name__ == "__main__":
     ### SEED ###
     torch.manual_seed(SEED)
     torch.cuda.manual_seed(SEED)
-
     torch.set_default_device(DEVICE)
     torch.set_default_dtype(torch.float32)
-
     ### INIT DATALOADER ###
     loader = GPULoading(padding=PADDING,
                         device=DEVICE,
@@ -97,10 +95,9 @@ if __name__ == "__main__":
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             # "optimizer": torch.optim.Adam,
             # "optimizer_parameters": {"lr": 0.0005, },
-            "task": "PermutedMNIST",
-            "n_tasks": 10,
+            "task": "MNIST",
+            "n_tasks": 1,
             "n_classes": 1,
-            "n_repetition": 1,
         }
     ]
 
@@ -114,8 +111,7 @@ if __name__ == "__main__":
         data_aug_it = data['training_parameters']['data_aug_it'] if "data_aug_it" in data["training_parameters"] else None
 
         ### LOADING DATASET ###
-        train_dataset, test_dataset, shape, target_size = task_selection(
-            loader=loader,
+        train_dataset, test_dataset, shape, target_size = loader.task_selection(
             task=data["task"],
             n_tasks=data["n_tasks"],
             batch_size=batch_size,
@@ -131,7 +127,8 @@ if __name__ == "__main__":
         if "CIL" in data["task"]:
             # Create the permutations for the class incremental scenario: n_classes per task with no overlap
             random_permutation = torch.randperm(target_size)
-            permutations = [random_permutation[i * data["n_classes"]                                               :(i + 1) * data["n_classes"]] for i in range(data["n_tasks"])]
+            permutations = [random_permutation[i * data["n_classes"]
+                :(i + 1) * data["n_classes"]] for i in range(data["n_tasks"])]
             print(permutations)
 
         # add input/output size to the layer of the network parameters
@@ -170,84 +167,83 @@ if __name__ == "__main__":
                 batch_params = []
                 for i in range(data["n_tasks"]):
                     batch_params.append(net_trainer.model.save_bn_states())
-            for k in range(data["n_repetition"]):
-                ### TASK SELECTION ###
-                # Setting the task iterator: The idea is that we yield datasets corresponding to the framework we want to use
-                # For example, if we want to use the permuted framework, we will yield datasets with permuted images, not dependant on the dataset
-                for i in range(data["n_tasks"]):
-                    epochs = data["training_parameters"]["n_epochs"][i + k * data["n_tasks"]] if isinstance(
-                        data["training_parameters"]["n_epochs"], list) else data["training_parameters"]["n_epochs"]
-                    pbar = tqdm.trange(epochs)
-                    for epoch in pbar:
-                        num_batches = len(train_dataset) // (
-                            batch_size * data["n_tasks"]) - 1 if "CIL" in data["task"] or "Stream" in data["task"] else len(train_dataset) // batch_size - 1
-                        train_dataset.shuffle()
-                        for n_batch in range(num_batches):
-                            # if HESSIAN_COMP == True:
-                            #     batch_hessians = []
-                            #     batch_gradients = []
-                            #     batch_hessians.append(
-                            #         net_trainer.compute_hessian())
-                            #     batch_gradients.append(
-                            #         net_trainer.model.layers[-2].lambda_.grad)
-                            ### TRAINING ###
-                            batch, labels = special_task_selector(
-                                data,
-                                train_dataset,
-                                batch_size=batch_size,
-                                task_id=i,
-                                iteration=n_batch,
-                                max_iterations=epochs*num_batches,
-                                permutations=permutations,
-                                epoch=epoch,
-                                continual=data["training_parameters"]["continual"] if "continual" in data["training_parameters"] else None
-                            )
-                            net_trainer.batch_step(batch, labels)
+            ### TASK SELECTION ###
+            # Setting the task iterator: The idea is that we yield datasets corresponding to the framework we want to use
+            # For example, if we want to use the permuted framework, we will yield datasets with permuted images, not dependant on the dataset
+            for i in range(data["n_tasks"]):
+                epochs = data["training_parameters"]["n_epochs"][i + k * data["n_tasks"]] if isinstance(
+                    data["training_parameters"]["n_epochs"], list) else data["training_parameters"]["n_epochs"]
+                pbar = tqdm.trange(epochs)
+                for epoch in pbar:
+                    num_batches = len(train_dataset) // (
+                        batch_size * data["n_tasks"]) if "CIL" in data["task"] or "Stream" in data["task"] else len(train_dataset) // batch_size
+                    train_dataset.shuffle()
+                    for n_batch in range(num_batches):
                         # if HESSIAN_COMP == True:
-                        #     # Compute the mean hessian of the batch
-                        #     net_trainer.hessian.append(
-                        #         torch.sum(torch.stack(batch_hessians), dim=0))
-                        #     net_trainer.gradient.append(
-                        #         torch.sum(torch.stack(batch_gradients), dim=0))
-                        #     # save hessian
-                        #     os.makedirs('hessian', exist_ok=True)
-                        #     torch.save(net_trainer.gradient,
-                        #                versionning('hessian', 'grad', ".pt"))
-                        #     torch.save(net_trainer.hessian,
-                        #                versionning('hessian', 'hessian', ".pt"))
-                        #     torch.save(net_trainer.model.layers[-2].lambda_,
-                        #                versionning('hessian', 'lambda', ".pt"))
-                        if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
-                            batch_params[i] = net_trainer.model.save_bn_states()
-                        ### TESTING ###
-                        # Depending on the task, we also need to use the framework on the test set and show training or not
-                        name_loader, predictions, labels = iterable_evaluation_selector(
-                            data=data,
-                            test_dataset=test_dataset,
-                            net_trainer=net_trainer,
+                        #     batch_hessians = []
+                        #     batch_gradients = []
+                        #     batch_hessians.append(
+                        #         net_trainer.compute_hessian())
+                        #     batch_gradients.append(
+                        #         net_trainer.model.layers[-2].lambda_.grad)
+                        ### TRAINING ###
+                        batch, labels = special_task_selector(
+                            data,
+                            train_dataset,
+                            batch_size=batch_size,
+                            task_id=i,
+                            iteration=n_batch,
+                            max_iterations=epochs*num_batches,
                             permutations=permutations,
-                            batch_size=batch_size*4,
-                            batch_params=batch_params if data["optimizer"] in [
-                                MetaplasticAdam] and net_trainer.model.affine else None,
-                            train_dataset=train_dataset)
-                        net_trainer.pbar_update(
-                            pbar, epoch, n_epochs=epochs, name_loader=name_loader)
-                        if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
-                            net_trainer.model.load_bn_states(batch_params[i])
-                        ### EXPORT VISUALIZATION OF PARAMETERS ###
-                        if GRAPHS:
-                            graphs(main_folder=main_folder,
-                                   net_trainer=net_trainer,
-                                   task=i,
-                                   n_tasks=data["n_tasks"],
-                                   epoch=epoch,
-                                   predictions=predictions,
-                                   labels=labels,
-                                   modulo=MODULO)
+                            epoch=epoch,
+                            continual=data["training_parameters"]["continual"] if "continual" in data["training_parameters"] else None
+                        )
+                        net_trainer.batch_step(batch, labels)
+                    # if HESSIAN_COMP == True:
+                    #     # Compute the mean hessian of the batch
+                    #     net_trainer.hessian.append(
+                    #         torch.sum(torch.stack(batch_hessians), dim=0))
+                    #     net_trainer.gradient.append(
+                    #         torch.sum(torch.stack(batch_gradients), dim=0))
+                    #     # save hessian
+                    #     os.makedirs('hessian', exist_ok=True)
+                    #     torch.save(net_trainer.gradient,
+                    #                versionning('hessian', 'grad', ".pt"))
+                    #     torch.save(net_trainer.hessian,
+                    #                versionning('hessian', 'hessian', ".pt"))
+                    #     torch.save(net_trainer.model.layers[-2].lambda_,
+                    #                versionning('hessian', 'lambda', ".pt"))
+                    if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
+                        batch_params[i] = net_trainer.model.save_bn_states()
+                    ### TESTING ###
+                    # Depending on the task, we also need to use the framework on the test set and show training or not
+                    name_loader, predictions, labels = iterable_evaluation_selector(
+                        data=data,
+                        test_dataset=test_dataset,
+                        net_trainer=net_trainer,
+                        permutations=permutations,
+                        batch_size=batch_size*4,
+                        batch_params=batch_params if data["optimizer"] in [
+                            MetaplasticAdam] and net_trainer.model.affine else None,
+                        train_dataset=train_dataset)
+                    net_trainer.pbar_update(
+                        pbar, epoch, n_epochs=epochs, name_loader=name_loader)
+                    if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
+                        net_trainer.model.load_bn_states(batch_params[i])
+                    ### EXPORT VISUALIZATION OF PARAMETERS ###
+                    if GRAPHS:
+                        graphs(main_folder=main_folder,
+                               net_trainer=net_trainer,
+                               task=i,
+                               n_tasks=data["n_tasks"],
+                               epoch=epoch,
+                               predictions=predictions,
+                               labels=labels,
+                               modulo=MODULO)
 
-                    ### TASK BOUNDARIES ###
-                    if data["training_parameters"]["task_boundaries"] == True:
-                        net_trainer.optimizer.update_prior_lambda()
+                ### TASK BOUNDARIES ###
+                if data["training_parameters"]["task_boundaries"] == True:
+                    net_trainer.optimizer.update_prior_lambda()
             ### SAVING DATA ###
             os.makedirs(main_folder, exist_ok=True)
             sub_folder = os.path.join(

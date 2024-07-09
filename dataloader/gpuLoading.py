@@ -6,101 +6,39 @@ from torchvision import models, datasets
 import pickle
 import os
 import time
+from .structures import *
 
+PATH_MNIST_X_TRAIN = "datasets/MNIST/raw/train-images-idx3-ubyte"
+PATH_MNIST_Y_TRAIN = "datasets/MNIST/raw/train-labels-idx1-ubyte"
+PATH_MNIST_X_TEST = "datasets/MNIST/raw/t10k-images-idx3-ubyte"
+PATH_MNIST_Y_TEST = "datasets/MNIST/raw/t10k-labels-idx1-ubyte"
 
-class GPUTensorDataset(torch.utils.data.Dataset):
-    """ TensorDataset which has a data and a targets tensor and allows to_dataset
+PATH_FASHION_MNIST_X_TRAIN = "datasets/FashionMNIST/raw/train-images-idx3-ubyte"
+PATH_FASHION_MNIST_Y_TRAIN = "datasets/FashionMNIST/raw/train-labels-idx1-ubyte"
+PATH_FASHION_MNIST_X_TEST = "datasets/FashionMNIST/raw/t10k-images-idx3-ubyte"
+PATH_FASHION_MNIST_Y_TEST = "datasets/FashionMNIST/raw/t10k-labels-idx1-ubyte"
 
-    Args:
-        data (torch.tensor): Data tensor
-        targets (torch.tensor): Targets tensor
-        device (str, optional): Device to use. Defaults to "cuda:0".
-        transform (torchvision.transforms.Compose, optional): Data augmentation transform. Defaults to None.
-    """
+PATH_CIFAR10 = "datasets/cifar-10-batches-py"
+PATH_CIFAR10_DATABATCH = [
+    f"{PATH_CIFAR10}/data_batch_{i}" for i in range(1, 6)]
+PATH_CIFAR10_TESTBATCH = f"{PATH_CIFAR10}/test_batch"
 
-    def __init__(self, data, targets, device="cuda:0"):
-        self.data = data.to("cpu")
-        self.targets = targets.to("cpu")
-        self.device = device
-
-    def __getitem__(self, index):
-        """ Return a (data, target) pair """
-        return self.data[index].to(self.device), self.targets[index].to(self.device)
-
-    def __len__(self):
-        """ Return the number of samples """
-        return len(self.data)
-
-    def shuffle(self):
-        """ Shuffle the data and targets tensors """
-        perm = torch.randperm(len(self.data), device="cpu")
-        self.data = self.data[perm]
-        self.targets = self.targets[perm]
-
-
-class GPUDataLoader():
-    """ DataLoader which has a data and a targets tensor and allows to_dataset
-
-    Args:
-        dataset (GPUTensorDataset): Dataset to load
-        batch_size (int): Batch size
-        shuffle (bool, optional): Whether to shuffle the data. Defaults to True.
-        drop_last (bool, optional): Whether to drop the last batch if it is not full. Defaults to True.
-        transform (torchvision.transforms.Compose, optional): Data augmentation transform. Defaults to None.
-    """
-
-    def __init__(self, dataset, batch_size, shuffle=True, drop_last=True, transform=None, device="cuda:0", test=False):
-        self.dataset = dataset
-        self.batch_size = batch_size
-        self.shuffle = shuffle
-        self.drop_last = drop_last
-        self.transform = transform
-        self.device = device
-        self.test = test
-
-    def __iter__(self):
-        """ Return an iterator over the dataset """
-        self.index = 0
-        if self.shuffle:
-            self.perm = torch.randperm(len(self.dataset))
-        else:
-            self.perm = torch.arange(len(self.dataset))
-        return self
-
-    def __next__(self):
-        """ Return the next batch """
-        if self.index >= len(self.dataset):
-            raise StopIteration
-        if self.index + self.batch_size > len(self.dataset):
-            if self.drop_last == False:
-                indexes = self.perm[self.index:]
-            raise StopIteration
-        else:
-            indexes = self.perm[self.index:self.index+self.batch_size]
-        self.index += self.batch_size
-        data, targets = self.dataset.data[indexes], self.dataset.targets[indexes]
-        if self.transform is not None:
-            data = self.transform(data)
-        return data.to(self.device), targets.to(self.device)
-
-    def __len__(self):
-        """ Return the number of batches """
-        return len(self.dataset)//self.batch_size
+PATH_CIFAR100 = "datasets/cifar-100-python"
+PATH_CIFAR100_DATABATCH = [f"{PATH_CIFAR100}/train"]
+PATH_CIFAR100_TESTBATCH = f"{PATH_CIFAR100}/test"
 
 
 class GPULoading:
-    """ Load local datasets on GPU
+    """ Load local datasets on GPU using the GPUTensorDataset
 
     Args:
         batch_size (int): Batch size
         padding (int, optional): Padding to add to the images. Defaults to 0.
-        as_dataset (bool, optional): If True, returns a TensorDataset, else returns a DataLoader. Defaults to False.
     """
 
-    def __init__(self, padding=0, device="cuda:0", as_dataset=False, *args, **kwargs):
+    def __init__(self, padding=0, device="cuda:0", *args, **kwargs):
         self.padding = padding
         self.device = device
-        self.as_dataset = as_dataset
 
     def to_dataset(self, train_x, train_y, test_x, test_y):
         """ Create a DataLoader to load the data in batches
@@ -153,7 +91,19 @@ class GPULoading:
 
         return transform(train_x), transform(test_x)
 
-    def mnist(self, path_train_x, path_train_y, path_test_x, path_test_y, *args, **kwargs):
+    def fashion_mnist(self, *args, **kwargs):
+        if not os.path.exists(PATH_FASHION_MNIST_X_TRAIN):
+            datasets.FashionMNIST("datasets", download=True)
+        return self.mnist_like(PATH_FASHION_MNIST_X_TRAIN, PATH_FASHION_MNIST_Y_TRAIN,
+                               PATH_FASHION_MNIST_X_TEST, PATH_FASHION_MNIST_Y_TEST, *args, **kwargs)
+
+    def mnist(self, *args, **kwargs):
+        if not os.path.exists(PATH_MNIST_X_TRAIN):
+            datasets.MNIST("datasets", download=True)
+        return self.mnist_like(PATH_MNIST_X_TRAIN, PATH_MNIST_Y_TRAIN,
+                               PATH_MNIST_X_TEST, PATH_MNIST_Y_TEST, *args, **kwargs)
+
+    def mnist_like(self, path_train_x, path_train_y, path_test_x, path_test_y, *args, **kwargs):
         """ Load a local dataset on GPU corresponding either to MNIST or FashionMNIST
 
         Args:
@@ -176,9 +126,13 @@ class GPULoading:
         train_x, test_x = self.normalization(train_x, test_x)
         return self.to_dataset(train_x, train_y, test_x, test_y)
 
-    def cifar10(self, path_databatch, path_testbatch, iterations=10, *args, **kwargs):
+    def cifar10(self, iterations=10, *args, **kwargs):
         """ Load a local dataset on GPU corresponding to CIFAR10 """
         # Deal with the training data
+        if not os.path.exists("datasets/CIFAR10/raw"):
+            datasets.CIFAR10("datasets", download=True)
+        path_databatch = PATH_CIFAR10_DATABATCH
+        path_testbatch = PATH_CIFAR10_TESTBATCH
         train_x = []
         train_y = []
         for path in path_databatch:
@@ -216,8 +170,12 @@ class GPULoading:
         train_x, test_x = self.normalization(train_x, test_x)
         return self.to_dataset(train_x, train_y, test_x, test_y)
 
-    def cifar100(self, batch_size, path_databatch, path_testbatch, iterations=10, *args, **kwargs):
+    def cifar100(self, path_databatch, path_testbatch, iterations=10, *args, **kwargs):
         """ Load a local dataset on GPU corresponding to CIFAR100 """
+        if not os.path.exists("datasets/CIFAR100/raw"):
+            datasets.CIFAR10("datasets", download=True)
+        path_databatch = PATH_CIFAR100_DATABATCH
+        path_testbatch = PATH_CIFAR100_TESTBATCH
         with open(path_databatch[0], "rb") as f:
             data = pickle.load(f, encoding="bytes")
             train_x = data[b"data"]
@@ -320,3 +278,20 @@ class GPULoading:
                    f"{folder}/{task}_{iterations}_features_test.pt")
         torch.save(
             target_test, f"{folder}/{task}_{iterations}_target_test.pt")
+
+    def task_selection(self, task, *args, **kwargs):
+        """ Select the task to load
+
+        Args:
+            task (str): Name of the task
+        """
+        dataset_mapping = {
+            "Fashion": self.fashion_mnist,
+            "MNIST": self.mnist,
+            "CIFAR100": self.cifar100,
+            "CIFAR10": self.cifar10,
+        }
+        train, test = dataset_mapping[task](*args, **kwargs)
+        shape = train.data[0].shape
+        target_size = len(train.targets.unique())
+        return train, test, shape, target_size
