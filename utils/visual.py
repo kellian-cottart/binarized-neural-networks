@@ -151,8 +151,11 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accu
     plt.xlabel('Epochs [-]')
     plt.ylabel('Accuracies [%]')
     plt.ylim(0, 100)
-    plt.xticks(torch.arange(0, len(mean_accuracies)).detach().cpu(),
-               [str(i) for i in range(1, len(mean_accuracies)+1, len(mean_accuracies)//len(l_accuracies[0][0]))])
+    new_ticks = [str(i) for i in range(
+        1, len(mean_accuracies)+1, (len(mean_accuracies)+1) % 20)] if len(mean_accuracies) > 19 else [str(i) for i in range(1, len(mean_accuracies)+1)]
+    range_ticks = torch.arange(0, len(mean_accuracies), (len(mean_accuracies)+1) % 20) if len(
+        mean_accuracies) > 19 else torch.arange(0, len(mean_accuracies))
+    plt.xticks(range_ticks.cpu(), new_ticks)
     plt.xlim(0, len(mean_accuracies)-1)
     ### LEGEND ###
     plt.legend(

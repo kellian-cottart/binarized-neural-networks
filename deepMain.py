@@ -12,8 +12,7 @@ import datetime
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0")
-PADDING = 2
-GRAPHS = True
+GRAPHS = False
 MODULO = 10
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
@@ -27,31 +26,29 @@ if __name__ == "__main__":
     torch.set_default_device(DEVICE)
     torch.set_default_dtype(torch.float32)
     ### INIT DATALOADER ###
-    loader = GPULoading(padding=PADDING,
-                        device=DEVICE,
-                        as_dataset=False)
-
+    loader = GPULoading(device=DEVICE)
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "nn_type": models.BiBayesianNN,
+            "image_padding": 0,
+            "nn_type": models.ConvBiBayesianNeuralNetwork,
             "nn_parameters": {
                 # NETWORK ###
                 "layers": [512],
-                # "features": [32, 64],
-                # "kernel_size": [3, 3],
-                # "padding": "same",
+                "features": [64, 32, 16, 8],
+                "kernel_size": [3, 3, 3, 3],
+                "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
                 "bias": False,
                 "init": "gaussian",
-                "std": 0.01,
-                "n_samples_forward": 10,
-                "n_samples_backward": 10,
+                "std": 0.05,
+                "n_samples_forward": 1,
+                "n_samples_backward": 1,
                 "tau": 1,
                 "activation_function": "gate",
                 "activation_parameters": {
-                    "width": 1,
+                    "width": 0.4,
                     # "power": 4,
                 },
                 "normalization": "instancenorm",
@@ -62,7 +59,7 @@ if __name__ == "__main__":
                 "bias": False,
             },
             "training_parameters": {
-                'n_epochs': 20,
+                'n_epochs': 10,
                 'batch_size': 128,
                 'feature_extraction': True,
                 'data_aug_it': 1,
@@ -95,8 +92,8 @@ if __name__ == "__main__":
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             # "optimizer": torch.optim.Adam,
             # "optimizer_parameters": {"lr": 0.0005, },
-            "task": "PermutedMNIST",
-            "n_tasks": 1,
+            "task": "core50-ni",
+            "n_tasks": 8,
             "n_classes": 1,
         }
     ]
@@ -111,7 +108,7 @@ if __name__ == "__main__":
         data_aug_it = data['training_parameters']['data_aug_it'] if "data_aug_it" in data["training_parameters"] else None
         ### LOADING DATASET ###
         train_dataset, test_dataset, shape, target_size = loader.task_selection(
-            task=data["task"], n_tasks=data["n_tasks"], batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it)
+            task=data["task"], n_tasks=data["n_tasks"], batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"])
         # add input/output size to the layer of the network parameters
         if "Conv" in data["nn_type"].__name__:  # Convolutional network
             name += "-conv-" + \
@@ -165,7 +162,8 @@ if __name__ == "__main__":
                                      for permutation in permutations]
                     test_dataset = [test_dataset.__getclasses__(permutation)
                                     for permutation in permutations]
-
+            test_dataset = test_dataset if isinstance(
+                test_dataset, list) else [test_dataset]
             ### TASK SELECTION ###
             for i in range(data["n_tasks"]):
                 epochs = data["training_parameters"]["n_epochs"][i] if isinstance(
@@ -204,7 +202,8 @@ if __name__ == "__main__":
                         batch_params=batch_params if data["optimizer"] in [
                             MetaplasticAdam] and net_trainer.model.affine else None
                     )
-                    net_trainer.pbar_update(pbar, epoch, n_epochs=epochs)
+                    net_trainer.pbar_update(
+                        pbar, epoch, n_epochs=epochs, n_tasks=data["n_tasks"], task=i)
                     if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
                         net_trainer.model.load_bn_states(batch_params[i])
                     ### EXPORT VISUALIZATION OF PARAMETERS ###

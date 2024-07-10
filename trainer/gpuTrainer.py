@@ -223,25 +223,21 @@ class GPUTrainer:
             predicted = torch.argmax(predictions, dim=1)
         return torch.mean((predicted == labels.to(self.device)).float()), full_predictions
 
-    def pbar_update(self, pbar, epoch, n_epochs, name_loader=None, task=None):
+    def pbar_update(self, pbar, epoch, n_epochs, task, n_tasks):
         """Update the progress bar with the current loss and accuracy"""
-        pbar.set_description(f"Epoch {epoch+1}/{n_epochs}")
+        pbar.set_description(
+            f"Epoch {epoch+1}/{n_epochs} - Task {task+1}/{n_tasks}")
         # creation of a dictionnary with the name of the test set and the accuracy
         kwargs = {}
         if len(self.testing_accuracy) > 0:
-            if name_loader is not None and len(self.testing_accuracy[-1]) != len(name_loader):
-                raise ValueError(
-                    "Not enough names for the test sets provided"
-                )
-            if name_loader is None:
-                if "training_accuracy" in dir(self) and len(self.training_accuracy) > 0:
-                    kwargs = {
-                        f"task {i+1}": f"Test: {test_acc:.2%} - Train: {train_acc:.2%}" for i, test_acc, train_acc in zip(range(len(self.testing_accuracy[-1])), self.testing_accuracy[-1], self.training_accuracy[-1])
-                    }
-                else:
-                    kwargs = {
-                        f"task {i+1}": f"Test: {accuracy:.2%}" for i, accuracy in enumerate(self.testing_accuracy[-1])
-                    }
+            if "training_accuracy" in dir(self) and len(self.training_accuracy) > 0:
+                kwargs = {
+                    f"task {i+1}": f"Test: {test_acc:.2%} - Train: {train_acc:.2%}" for i, test_acc, train_acc in zip(range(len(self.testing_accuracy[-1])), self.testing_accuracy[-1], self.training_accuracy[-1])
+                }
+            else:
+                kwargs = {
+                    f"task {i+1}": f"Test: {accuracy:.2%}" for i, accuracy in enumerate(self.testing_accuracy[-1])
+                }
             pbar.set_postfix(loss=self.loss.item())
             # Do a pretty print of our results
             pbar.write("==================================")

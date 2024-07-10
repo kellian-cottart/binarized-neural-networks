@@ -3,9 +3,13 @@ import numpy as np
 import idx2numpy
 from torchvision.transforms import v2
 from torchvision import models, datasets
-import pickle
 import os
-import time
+import requests
+import pickle
+import numpy as np
+import sys
+from tqdm import tqdm
+import hashlib
 from .structures import *
 
 PATH_MNIST_X_TRAIN = "datasets/MNIST/raw/train-images-idx3-ubyte"
@@ -29,36 +33,45 @@ PATH_CIFAR100_TESTBATCH = f"{PATH_CIFAR100}/test"
 
 REPOSITORY_CORE50_NPZ_128 = "http://bias.csr.unibo.it/maltoni/download/core50/core50_imgs.npz"
 REPOSITORY_CORE50_PATHS = "https://vlomonaco.github.io/core50/data/paths.pkl"
+REPOSITORY_CORE50_LABELS = "https://vlomonaco.github.io/core50/data/labels.pkl"
+REPOSITORY_CORE50_LUP = "https://vlomonaco.github.io/core50/data/LUP.pkl"
 
 
 class GPULoading:
     """ Load local datasets on GPU using the GPUTensorDataset
 
     Args:
-        batch_size (int): Batch size
-        padding (int, optional): Padding to add to the images. Defaults to 0.
+        device (str, optional): Device to use. Defaults to "cuda:0".
     """
 
-    def __init__(self, padding=0, device="cuda:0", *args, **kwargs):
-        self.padding = padding
+    def __init__(self, device="cuda:0", *args, **kwargs):
         self.device = device
 
-    def task_selection(self, task, *args, **kwargs):
+    def task_selection(self, task, padding=0, *args, **kwargs):
         """ Select the task to load
 
         Args:
             task (str): Name of the task
         """
-        if "MNIST" in task:
+        self.padding = padding
+        if "mnist" in task.lower():
             train, test = self.mnist(*args, **kwargs)
-        elif "FashionMNIST" in task:
+        elif "fashion" in task.lower():
             train, test = self.fashion_mnist(*args, **kwargs)
-        elif "CIFAR100" in task:
+        elif "cifar100" in task.lower():
             train, test = self.cifar100(*args, **kwargs)
-        elif "CIFAR10" in task:
+        elif "cifar10" in task.lower():
             train, test = self.cifar10(*args, **kwargs)
-        shape = train.data[0].shape
-        target_size = len(train.targets.unique())
+        elif "core50" in task.lower():
+            scenario = task.split("-")[1]
+            train, test = self.core50(
+                scenario=scenario, run=0, *args, **kwargs)
+        if isinstance(train, GPUTensorDataset):
+            shape = train.data[0].shape
+            target_size = len(train.targets.unique())
+        else:
+            shape = train[0].data[0].shape
+            target_size = len(train[0].targets.unique())
         return train, test, shape, target_size
 
     def feature_extraction(self, folder, train_x, train_y, test_x, test_y, task="cifar100", iterations=10):
@@ -333,3 +346,116 @@ class GPULoading:
             # Normalize and pad the data
             train_x, test_x = self.normalization(train_x, test_x)
         return self.to_dataset(train_x, train_y, test_x, test_y)
+
+    def core50(self, scenario="ni", run=0, download=True, *args, **kwargs):
+        train, test = CORe50(scenario=scenario, run=run, download=download,
+                             device=self.device).get_dataset()
+        return train, test
+
+### INSPIRED BY Vincenzo Lomonaco ###
+
+
+class CORe50:
+    """ Load the CORe50 dataset
+
+    Args:
+        root (str, optional): Root folder for the dataset. Defaults to "datasets".
+        scenario (str, optional): Scenario to load. Defaults to "ni".
+        run (int, optional): Run to load. Defaults to 0.
+        start_batch (int, optional): Starting batch. Defaults to 0.
+        download (bool, optional): Download the dataset. Defaults to True.
+        device (str, optional): Device to use. Defaults to "cuda:0".
+    """
+
+    def __init__(self, root="datasets", scenario="ni", run=0, download=True, device="cuda:0"):
+        self.root = os.path.join(root, "core50")
+        self.scenario = scenario
+        self.run = run
+        self.device = device
+        self.batch_scenario = {
+            "ni": 8,
+            'nc': 9,
+            'nic': 79,
+            'nicv2_79': 79,
+            'nicv2_196': 196,
+            'nicv2_391': 391
+        }
+        self.md5 = {
+            "core50_imgs.npz": "3689d65d0a1c760b87821b114c8c4c6c",
+            "labels.pkl": "281c95774306a2196f4505f22fd60ab1",
+            "paths.pkl": "b568f86998849184df3ec3465290f1b0",
+            "LUP.pkl": "33afc26faa460aca98739137fdfa606e"
+        }
+        bin_path = os.path.join(self.root, "core50_imgs.bin")
+        if download:
+            self.download_dataset()
+
+        if not os.path.exists(bin_path):
+            data = np.load(os.path.join(self.root, "core50_imgs.npz"))['x']
+            data.tofile(bin_path)
+
+        self.data = np.fromfile(bin_path, dtype=np.uint8).reshape(
+            164866, 128, 128, 3)
+        self.labels = pickle.load(
+            open(os.path.join(self.root, "labels.pkl"), "rb"))
+        self.paths = pickle.load(
+            open(os.path.join(self.root, "paths.pkl"), "rb"))
+        self.lup = pickle.load(open(os.path.join(self.root, "LUP.pkl"), "rb"))
+
+    def download_dataset(self):
+        """ Download the dataset """
+        files_to_download = [
+            ("core50_imgs.npz", REPOSITORY_CORE50_NPZ_128),
+            ("paths.pkl", REPOSITORY_CORE50_PATHS),
+            ("labels.pkl", REPOSITORY_CORE50_LABELS),
+            ("LUP.pkl", REPOSITORY_CORE50_LUP)
+        ]
+        for file_name, url in files_to_download:
+            file_path = os.path.join(self.root, file_name)
+            if not os.path.exists(file_path):
+                print(f"Downloading {file_name}...")
+                self.download_file(url, file_path)
+
+    def checksum(self, file_path):
+        with open(file_path, "rb") as f:
+            file_hash = hashlib.md5()
+            while chunk := f.read(4096):
+                file_hash.update(chunk)
+        return file_hash.hexdigest() == self.md5
+
+    def download_file(self, url, file_path):
+        response = requests.get(url, stream=True)
+        total_size_in_bytes = int(response.headers.get('content-length', 0))
+        progress_bar = tqdm(total=total_size_in_bytes,
+                            unit='iB', unit_scale=True)
+        with open(file_path, 'wb') as file:
+            for data in response.iter_content(1024):
+                progress_bar.update(len(data))
+                file.write(data)
+        progress_bar.close()
+        if not self.checksum(file_path):
+            print("Checksum failed. Deleting file.")
+            os.remove(file_path)
+            sys.exit(1)
+        else:
+            print("Checksum validated for " + file_path)
+
+    def get_dataset(self):
+        """ Returns the train and test sequential datasets"""
+
+        test_indexes = self.lup[self.scenario][self.run][-1]
+        test_x = torch.tensor(self.data[test_indexes]).float().to("cpu")
+        test_x = test_x.permute(0, 3, 1, 2)
+        test_y = torch.tensor(
+            self.labels[self.scenario][self.run][-1]).to("cpu")
+        test_dataset = GPUTensorDataset(test_x, test_y, device=self.device)
+        train_loader = []
+        for i in range(self.batch_scenario[self.scenario]):
+            train_indexes = self.lup[self.scenario][self.run][i]
+            train_x = torch.tensor(self.data[train_indexes]).float().to("cpu")
+            train_x = train_x.permute(0, 3, 1, 2)
+            train_y = torch.tensor(
+                self.labels[self.scenario][self.run][i]).to("cpu")
+            train_loader.append(
+                GPUTensorDataset(train_x, train_y, device=self.device))
+        return train_loader, test_dataset

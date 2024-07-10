@@ -66,7 +66,7 @@ class ConvBiBayesianNeuralNetwork(ConvNN):
             self.features.append(self._norm_init(features[i+1]))
             self.features.append(self._activation_init())
             self.features.append(BiBayesianConv(features[i+1], features[i+1], tau=self.tau, kernel_size=self.kernel_size[i],
-                                 padding=0, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device))
+                                 padding=self.padding, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device))
             self.features.append(self._norm_init(features[i+1]))
             self.features.append(self._activation_init())
             self.features.append(torch.nn.MaxPool2d(
