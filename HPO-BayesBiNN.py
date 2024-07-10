@@ -7,7 +7,7 @@ import os
 import optuna
 import json
 import argparse
-from utils.iterable import *
+from dataloader.iterable import *
 
 ### ARGUMENTS ###
 parser = argparse.ArgumentParser(description="Gridsearch for the BiNN")

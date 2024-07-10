@@ -49,16 +49,14 @@ class GPULoading:
         Args:
             task (str): Name of the task
         """
-        dataset_mapping = {
-            "Fashion": self.fashion_mnist,
-            "MNIST": self.mnist,
-            "CIFAR100": self.cifar100,
-            "CIFAR10": self.cifar10,
-        }
-        # if a key is contained in task, return the corresponding dataset
-        for key in dataset_mapping.keys():
-            if key in task:
-                train, test = dataset_mapping[key](*args, **kwargs)
+        if "MNIST" in task:
+            train, test = self.mnist(*args, **kwargs)
+        elif "FashionMNIST" in task:
+            train, test = self.fashion_mnist(*args, **kwargs)
+        elif "CIFAR100" in task:
+            train, test = self.cifar100(*args, **kwargs)
+        elif "CIFAR10" in task:
+            train, test = self.cifar10(*args, **kwargs)
         shape = train.data[0].shape
         target_size = len(train.targets.unique())
         return train, test, shape, target_size

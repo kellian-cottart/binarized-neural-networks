@@ -13,7 +13,7 @@ SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0")
 PADDING = 2
-GRAPHS = False
+GRAPHS = True
 MODULO = 10
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
@@ -62,7 +62,7 @@ if __name__ == "__main__":
                 "bias": False,
             },
             "training_parameters": {
-                'n_epochs': 5,
+                'n_epochs': 20,
                 'batch_size': 128,
                 'feature_extraction': True,
                 'data_aug_it': 1,
@@ -70,13 +70,13 @@ if __name__ == "__main__":
                 "task_boundaries": False,
                 "test_mcmc_samples": 10,
             },
-            "label_trick": True,
+            "label_trick": False,
             "output_function": "log_softmax",
             "criterion": torch.functional.F.nll_loss,
             "reduction": "sum",
             "optimizer": BHUparallel,
             "optimizer_parameters": {
-                "lr_max": 15,
+                "lr_max": 10,
                 "metaplasticity": 1,
                 "ratio_coeff": 0.1,
                 "mesuified": False,
@@ -96,7 +96,7 @@ if __name__ == "__main__":
             # "optimizer": torch.optim.Adam,
             # "optimizer_parameters": {"lr": 0.0005, },
             "task": "PermutedMNIST",
-            "n_tasks": 10,
+            "n_tasks": 1,
             "n_classes": 1,
         }
     ]
@@ -152,14 +152,20 @@ if __name__ == "__main__":
             if "CIL" in data["task"]:
                 # Create the permutations for the class incremental scenario: n_classes per task with no overlap
                 random_permutation = torch.randperm(target_size)
-                permutations = [random_permutation[i * data["n_classes"]:(i + 1) * data["n_classes"]]
-                                for i in range(data["n_tasks"])]
+                if isinstance(data["n_classes"], int):
+                    permutations = [random_permutation[i * data["n_classes"]:(i + 1) * data["n_classes"]]
+                                    for i in range(data["n_tasks"])]
+                else:
+                    # n_classes in a list of number of class to take per permutation, we want them to not overlap
+                    permutations = [random_permutation[sum(data["n_classes"][:i]):sum(data["n_classes"][:i+1])]
+                                    for i in range(data["n_tasks"])]
                 # Create GPUTensordataset with only the class in each permutation
                 if not isinstance(train_dataset, list):
                     train_dataset = [train_dataset.__getclasses__(permutation)
                                      for permutation in permutations]
                     test_dataset = [test_dataset.__getclasses__(permutation)
                                     for permutation in permutations]
+
             ### TASK SELECTION ###
             for i in range(data["n_tasks"]):
                 epochs = data["training_parameters"]["n_epochs"][i] if isinstance(
@@ -168,7 +174,7 @@ if __name__ == "__main__":
                     train_dataset, list) else train_dataset
                 pbar = tqdm.trange(epochs)
                 for epoch in pbar:
-                    num_batches = len(task_train_dataset) // batch_size
+                    num_batches = len(task_train_dataset) // batch_size + 1
                     task_train_dataset.shuffle()
                     for n_batch in range(num_batches):
                         ### TRAINING ###

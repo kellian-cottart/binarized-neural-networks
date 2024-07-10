@@ -151,7 +151,8 @@ class GPUTrainer:
             if batch_params is not None:
                 self.model.load_bn_states(batch_params[i])
             batch = []
-            n_batches = len(dataset) // batch_size
+            target_batch = []
+            n_batches = len(dataset) // batch_size + 1
             for i in range(n_batches):
                 inputs, targets = dataset.__getbatch__(
                     i*batch_size, batch_size)
@@ -159,7 +160,8 @@ class GPUTrainer:
                     inputs.to(self.device), targets.to(self.device))
                 batch.append(accuracy)
                 test_predictions.append(predictions)
-                labels.append(dataset)
+                target_batch.append(targets)
+            labels.append(torch.cat(target_batch))
             test.append(torch.mean(torch.tensor(batch)))
         test = torch.tensor(test)
         self.testing_accuracy.append(test)

@@ -152,7 +152,7 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accu
     plt.ylabel('Accuracies [%]')
     plt.ylim(0, 100)
     plt.xticks(torch.arange(0, len(mean_accuracies)).detach().cpu(),
-               [str(i) for i in range(1, len(mean_accuracies)+1)])
+               [str(i) for i in range(1, len(mean_accuracies)+1, len(mean_accuracies)//len(l_accuracies[0][0]))])
     plt.xlim(0, len(mean_accuracies)-1)
     ### LEGEND ###
     plt.legend(
@@ -457,9 +457,9 @@ def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoc
 
     # in the seen indexes, get the right predictions and the wrong predictions
     correct_predictions = torch.argmax(
-        mean_predictions[:seen_indexes, :], dim=1) == concat_labels[:seen_indexes]
+        mean_predictions[:seen_indexes, :], dim=1) == concat_labels[:seen_indexes].to(mean_predictions.device)
     false_predictions = torch.argmax(
-        mean_predictions[:seen_indexes, :], dim=1) != concat_labels[:seen_indexes]
+        mean_predictions[:seen_indexes, :], dim=1) != concat_labels[:seen_indexes].to(mean_predictions.device)
 
     # We want to plot the histogram of aleatoric uncertainty for correct and incorrect predictions
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
