@@ -30,3 +30,18 @@ class GPUTensorDataset(torch.utils.data.Dataset):
         perm = torch.randperm(len(self.data), device="cpu")
         self.data = self.data[perm]
         self.targets = self.targets[perm]
+
+    def __getbatch__(self, start, batch_size):
+        """ Return a batch of data and targets """
+        if start+batch_size > len(self.data):
+            return self.data[start:], self.targets[start:]
+        return self.data[start:start+batch_size], self.targets[start:start+batch_size]
+
+    def __getclasses__(self, class_indexes):
+        """ Return a GPUTensorDataset with only the specified classes """
+        class_indexes = torch.tensor(class_indexes, device="cpu")
+        indexes = torch.isin(self.targets, class_indexes)
+        return GPUTensorDataset(self.data[indexes], self.targets[indexes], device=self.device)
+
+    def __repr__(self):
+        return f"GPUTensorDataset(data={self.data.shape},targets={self.targets.shape}, classes={torch.unique(self.targets)} ,device_idle={self.data.device}, device_train={self.device})"

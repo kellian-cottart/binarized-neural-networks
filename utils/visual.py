@@ -53,7 +53,7 @@ def graphs(main_folder, net_trainer, task, n_tasks, epoch, predictions=None, lab
 def versionning(folder, title, format=".pdf"):
     os.makedirs(folder, exist_ok=True)
     # YYYY-MM-DD-hh-mm-ss-title-version.format
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d-%Hh%M:%S")
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     version = 1
     # while there exists a file with the same name
     while os.path.exists(os.path.join(folder, f"{timestamp}-{title}-v{version}"+format)):
@@ -74,27 +74,19 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accu
     """
     ### CREATE FIGURE ###
     plt.figure()
-    plt.xlim(0, len(l_accuracies[0])-1)
-    plt.xlabel('Epochs [-]')
-    plt.ylabel('Accuracies [%]')
-    plt.ylim(0, 100)
-
     # Set minor ticks
     ax = plt.gca()
     ax.yaxis.set_minor_locator(AutoMinorLocator(5))
     ax.yaxis.set_major_locator(plt.MultipleLocator(10))
     ax.tick_params(which='both', width=1)
     ax.tick_params(which='major', length=6)
-
     ### COMPUTE MEAN AND STD ###
     # Transform the list of list of accuracies into a tensor of tensor of accuracies
-    l_accuracies = torch.tensor(l_accuracies).detach().cpu()
+    l_accuracies = l_accuracies.detach().cpu()
     mean_accuracies = l_accuracies.mean(dim=0)*100
     std_accuracies = l_accuracies.std(dim=0)*100
-
     ### PLOT ###
     # Create a gradient of len(l_accuracies[0]) colors corresponding to each task.
-
     if len(mean_accuracies[0]) > 2:
         colors = plt.get_cmap('viridis', len(mean_accuracies[0]))
     else:
@@ -107,7 +99,6 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accu
     for i in range(len(mean_accuracies[0])):
         plt.plot(range(len(mean_accuracies)),
                  mean_accuracies[:, i], color=colors(i), alpha=0.8, label=f"Task {i+1}")
-
     # Fill between only accepts 1D arrays for error, we need to extract each std individually
     upper_bound_tasks, lower_bound_tasks = [], []
     for task in range(len(std_accuracies[0])):
@@ -119,7 +110,6 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accu
     for i in range(len(upper_bound_tasks)):
         plt.fill_between(range(len(mean_accuracies)),
                          upper_bound_tasks[i], lower_bound_tasks[i], alpha=0.2, color=colors(i))
-
     # Plot the average accuracy with end total accuracy
     average_accuracies = mean_accuracies.mean(dim=1)
     # plot text
@@ -135,7 +125,6 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accu
                                          0] - mean_accuracies[epochs[-1]-1, -1]
         plt.text(0.8, 0.10, f"Vanishing Plasticity: {difference:.2f}%",
                  fontsize=9, ha='center', va='center', transform=ax.transAxes, fontweight='bold')
-
     ### PLOT TRAINING ACCURACIES ###
     if training_accuracies is not None:
         training_accuracies = torch.tensor(training_accuracies).detach().cpu()
@@ -158,6 +147,13 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accu
         for i in range(len(upper_bound_training_tasks)):
             plt.fill_between(range(len(mean_training_accuracies)),
                              upper_bound_training_tasks[i], lower_bound_training_tasks[i], alpha=0.2, color=colors(i))
+    ### LABELS ###
+    plt.xlabel('Epochs [-]')
+    plt.ylabel('Accuracies [%]')
+    plt.ylim(0, 100)
+    plt.xticks(torch.arange(0, len(mean_accuracies)).detach().cpu(),
+               [str(i) for i in range(1, len(mean_accuracies)+1)])
+    plt.xlim(0, len(mean_accuracies)-1)
     ### LEGEND ###
     plt.legend(
         loc="center right",
@@ -166,7 +162,6 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accu
         fancybox=True,
         framealpha=0.8,
     )
-    plt.ylim(0, 100)
     ### SAVE ###
     plt.savefig(versionning(folder, title, ".pdf"), bbox_inches='tight')
     plt.savefig(versionning(folder, title, ".svg"), bbox_inches='tight')
@@ -178,7 +173,7 @@ def get_mean_std_accuracies(l_accuracies, t_start, t_end):
     n_epochs = len(l_accuracies[0]) // len(l_accuracies[0][0])
     # l_accuracies is a vector of n network accuracies
     # l_accuracies[0] is the accuracy of the first network for each task
-    l_accuracies = torch.tensor(l_accuracies).detach().cpu()
+    l_accuracies = l_accuracies.detach().cpu()
     mean_acc = torch.mean(l_accuracies, dim=0)
     std_acc = l_accuracies.std(dim=0)
     # Get the last epochs at t_end
@@ -232,8 +227,9 @@ def visualize_task_frame(title, l_accuracies, folder, t_start, t_end):
     ax.yaxis.set_major_locator(plt.MultipleLocator(10))
     ax.tick_params(axis='y', which='minor', length=2)
     ### SAVE ###
-    plt.savefig(versionning(folder, title, ".pdf"), bbox_inches='tight')
-    plt.savefig(versionning(folder, title, ".svg"), bbox_inches='tight')
+    output = versionning(folder, title, ".pdf")
+    plt.savefig(output, bbox_inches='tight')
+    plt.savefig(output, bbox_inches='tight')
     plt.close()
 
 

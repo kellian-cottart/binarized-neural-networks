@@ -27,6 +27,9 @@ PATH_CIFAR100 = "datasets/cifar-100-python"
 PATH_CIFAR100_DATABATCH = [f"{PATH_CIFAR100}/train"]
 PATH_CIFAR100_TESTBATCH = f"{PATH_CIFAR100}/test"
 
+REPOSITORY_CORE50_NPZ_128 = "http://bias.csr.unibo.it/maltoni/download/core50/core50_imgs.npz"
+REPOSITORY_CORE50_PATHS = "https://vlomonaco.github.io/core50/data/paths.pkl"
+
 
 class GPULoading:
     """ Load local datasets on GPU using the GPUTensorDataset
@@ -52,7 +55,10 @@ class GPULoading:
             "CIFAR100": self.cifar100,
             "CIFAR10": self.cifar10,
         }
-        train, test = dataset_mapping[task](*args, **kwargs)
+        # if a key is contained in task, return the corresponding dataset
+        for key in dataset_mapping.keys():
+            if key in task:
+                train, test = dataset_mapping[key](*args, **kwargs)
         shape = train.data[0].shape
         target_size = len(train.targets.unique())
         return train, test, shape, target_size
