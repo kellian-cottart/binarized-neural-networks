@@ -12,7 +12,7 @@ import datetime
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0")
-GRAPHS = False
+GRAPHS = True
 MODULO = 10
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
@@ -26,32 +26,30 @@ if __name__ == "__main__":
     torch.set_default_device(DEVICE)
     torch.set_default_dtype(torch.float32)
     ### INIT DATALOADER ###
-    loader = GPULoading(device=DEVICE)
+    loader = GPULoading(device=DEVICE, root=DATASETS_PATH)
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
             "image_padding": 0,
-            "nn_type": models.ConvBiBayesianNeuralNetwork,
+            "nn_type": models.MidVGG,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [512],
-                "features": [64, 32, 16, 8],
-                "kernel_size": [3, 3, 3, 3],
+                "layers": [8192, 2048, 2048],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
                 "bias": False,
                 "init": "gaussian",
-                "std": 0.05,
-                "n_samples_forward": 1,
-                "n_samples_backward": 1,
+                "std": 0.01,
+                "n_samples_forward": 10,
+                "n_samples_backward": 10,
                 "tau": 1,
-                "activation_function": "gate",
+                "activation_function": "relu",
                 "activation_parameters": {
-                    "width": 0.4,
+                    "width": 1,
                     # "power": 4,
                 },
-                "normalization": "instancenorm",
+                "normalization": "batchnorm",
                 "eps": 1e-5,
                 "momentum": 0,
                 "running_stats": False,
@@ -59,26 +57,27 @@ if __name__ == "__main__":
                 "bias": False,
             },
             "training_parameters": {
-                'n_epochs': 10,
+                'n_epochs': 20,
                 'batch_size': 128,
+                'test_batch_size': 128,
                 'feature_extraction': True,
                 'data_aug_it': 1,
                 "continual": True,
                 "task_boundaries": False,
                 "test_mcmc_samples": 10,
             },
-            "label_trick": False,
+            "label_trick": True,
             "output_function": "log_softmax",
             "criterion": torch.functional.F.nll_loss,
             "reduction": "sum",
-            "optimizer": BHUparallel,
-            "optimizer_parameters": {
-                "lr_max": 10,
-                "metaplasticity": 1,
-                "ratio_coeff": 0.1,
-                "mesuified": False,
-                "N": 20_000,
-            },
+            # "optimizer": BHUparallel,
+            # "optimizer_parameters": {
+            #     "lr_max": 6.5,
+            #     "metaplasticity": 1,
+            #     "ratio_coeff": 0.1,
+            #     "mesuified": False,
+            #     "N": 20_000,
+            # },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
             #     "lr": 5e-5,
@@ -90,8 +89,8 @@ if __name__ == "__main__":
             # },
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
-            # "optimizer": torch.optim.Adam,
-            # "optimizer_parameters": {"lr": 0.0005, },
+            "optimizer": torch.optim.SGD,
+            "optimizer_parameters": {"lr": 0.005, "momentum": 0.1},
             "task": "core50-ni",
             "n_tasks": 8,
             "n_classes": 1,
@@ -110,13 +109,13 @@ if __name__ == "__main__":
         train_dataset, test_dataset, shape, target_size = loader.task_selection(
             task=data["task"], n_tasks=data["n_tasks"], batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"])
         # add input/output size to the layer of the network parameters
-        if "Conv" in data["nn_type"].__name__:  # Convolutional network
+        if "Conv" in data["nn_type"].__name__:
             name += "-conv-" + \
                 "-".join([str(feature)
                          for feature in data['nn_parameters']['features']])
             data['nn_parameters']['features'].insert(
                 0, shape[0])
-        else:
+        elif not "VGG" in data["nn_type"].__name__:
             data['nn_parameters']['layers'].insert(
                 0, torch.prod(torch.tensor(shape)))
         data['nn_parameters']['layers'].append(target_size)
@@ -197,7 +196,7 @@ if __name__ == "__main__":
                         task=data["task"],
                         net_trainer=net_trainer,
                         permutations=permutations,
-                        batch_size=batch_size*8,
+                        batch_size=data["training_parameters"]["test_batch_size"],
                         train_dataset=task_train_dataset,
                         batch_params=batch_params if data["optimizer"] in [
                             MetaplasticAdam] and net_trainer.model.affine else None

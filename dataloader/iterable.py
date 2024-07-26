@@ -41,6 +41,7 @@ def test_permuted_dataset(test_dataset, permutations):
 
 def evaluate_tasks(dataset, task, net_trainer, permutations, batch_size=1024, train_dataset=None, batch_params=None):
     if "Permuted" in task:
+        dataset = dataset[0]
         predictions, labels = net_trainer.evaluate(
             test_permuted_dataset(
                 test_dataset=dataset,

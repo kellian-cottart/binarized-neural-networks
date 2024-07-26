@@ -44,8 +44,11 @@ class GPULoading:
         device (str, optional): Device to use. Defaults to "cuda:0".
     """
 
-    def __init__(self, device="cuda:0", *args, **kwargs):
+    def __init__(self, device="cuda:0", root="datasets", *args, **kwargs):
         self.device = device
+        self.root = root
+        if not os.path.exists(root):
+            os.makedirs(root, exist_ok=True)
 
     def task_selection(self, task, padding=0, *args, **kwargs):
         """ Select the task to load
@@ -348,9 +351,8 @@ class GPULoading:
         return self.to_dataset(train_x, train_y, test_x, test_y)
 
     def core50(self, scenario="ni", run=0, download=True, *args, **kwargs):
-        train, test = CORe50(scenario=scenario, run=run, download=download,
-                             device=self.device).get_dataset()
-        return train, test
+        return CORe50(scenario=scenario, run=run, download=download,
+                      device=self.device).get_dataset()
 
 ### INSPIRED BY Vincenzo Lomonaco ###
 
@@ -386,10 +388,11 @@ class CORe50:
             "paths.pkl": "b568f86998849184df3ec3465290f1b0",
             "LUP.pkl": "33afc26faa460aca98739137fdfa606e"
         }
-        bin_path = os.path.join(self.root, "core50_imgs.bin")
-        if download:
+        if not os.path.exists(self.root):
+            os.makedirs(self.root, exist_ok=True)
             self.download_dataset()
 
+        bin_path = os.path.join(self.root, "core50_imgs.bin")
         if not os.path.exists(bin_path):
             data = np.load(os.path.join(self.root, "core50_imgs.npz"))['x']
             data.tofile(bin_path)
@@ -445,7 +448,8 @@ class CORe50:
 
         test_indexes = self.lup[self.scenario][self.run][-1]
         test_x = torch.tensor(self.data[test_indexes]).float().to("cpu")
-        test_x = test_x.permute(0, 3, 1, 2)
+        test_x = test_x.permute(0, 3, 1, 2) / 255
+        v2.Normalize((0,), (1,), inplace=True)(test_x, test_x)
         test_y = torch.tensor(
             self.labels[self.scenario][self.run][-1]).to("cpu")
         test_dataset = GPUTensorDataset(test_x, test_y, device=self.device)
@@ -453,9 +457,14 @@ class CORe50:
         for i in range(self.batch_scenario[self.scenario]):
             train_indexes = self.lup[self.scenario][self.run][i]
             train_x = torch.tensor(self.data[train_indexes]).float().to("cpu")
-            train_x = train_x.permute(0, 3, 1, 2)
+            train_x = train_x.permute(0, 3, 1, 2) / 255
             train_y = torch.tensor(
                 self.labels[self.scenario][self.run][i]).to("cpu")
+            # normalize the data between 0 and 1
+            v2.Normalize((0,), (1,), inplace=True)(
+                train_x, train_x)
+
             train_loader.append(
                 GPUTensorDataset(train_x, train_y, device=self.device))
+
         return train_loader, test_dataset

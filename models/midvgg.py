@@ -1,16 +1,16 @@
 import torch
+from torch.nn import *
 from typing import Union
 from .deepNeuralNetwork import DNN
 from .layers.activation import *
 
 
-class ConvNN(torch.nn.Module):
+class MidVGG(Module):
     """ Convolutional Neural Network Base Class
     """
 
     def __init__(self,
                  layers: list = [1024, 1024, 10],
-                 features: list = [64, 128, 256],
                  init: str = "uniform",
                  std: float = 0.01,
                  device: str = "cuda:0",
@@ -22,10 +22,6 @@ class ConvNN(torch.nn.Module):
                  eps: float = 1e-5,
                  momentum: float = 0.15,
                  activation_function: str = "relu",
-                 kernel_size: int = 3,
-                 padding: Union[int, tuple] = "same",
-                 stride: int = 1,
-                 dilation: int = 1,
                  gnnum_groups: int = 32,
                  *args,
                  **kwargs):
@@ -48,12 +44,7 @@ class ConvNN(torch.nn.Module):
             output_function (str): Output function
         """
         super().__init__()
-        self.kernel_size = kernel_size
-        self.padding = padding
-        self.stride = stride
-        self.dilation = dilation
         self.device = device
-        self.features = torch.nn.ModuleList().to(self.device)
         self.dropout = dropout
         self.normalization = normalization
         self.eps = eps
@@ -63,34 +54,48 @@ class ConvNN(torch.nn.Module):
         self.activation_function = activation_function
         self.gnnum_groups = gnnum_groups
         ### LAYER INITIALIZATION ###
-        self._features_init(features, bias)
+        self.features = self._features_init()
         ### WEIGHT INITIALIZATION ###
         self._weight_init(init, std)
+        ## CLASSIFIER INITIALIZATION ##
         self.classifier = DNN(layers, init, std, device, dropout, normalization, bias, running_stats,
                               affine, eps, momentum, gnnum_groups, activation_function)
 
-    def _features_init(self, features, bias=False):
-        """ Initialize layers of the network for convolutional layers
+    def block(self, in_channels, out_channels, num_conv_layers, kernel_size, padding, stride):
+        """ Create a block of convolutional layers
 
-            Args:
-                features (list): List of layer sizes for the feature extractor
-                bias (bool): Whether to use bias or not
+        Args:
+            in_channels (int): Number of input channels
+            out_channels (int): Number of output channels
+            num_conv_layers (int): Number of convolutional layers
+            kernel_size (int): Kernel size for convolutional layers
+            padding (int): Padding for convolutional layers
+            stride (int): Stride for convolutional layers
+
+        Returns:
+            torch.nn.Module: Block of convolutional layers
         """
-        # Add conv layers to the network as well as batchnorm and maxpool
-        for i, _ in enumerate(features[:-1]):
-            # Conv layers with BatchNorm and MaxPool
-            self.features.append(torch.nn.Conv2d(features[i], features[i+1], kernel_size=self.kernel_size[i],
-                                 padding=self.padding if i == 0 else 0, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device))
-            self.features.append(self._norm_init(features[i+1]))
-            self.features.append(self._activation_init())
-            self.features.append(torch.nn.Conv2d(features[i+1], features[i+1], kernel_size=self.kernel_size[i],
-                                 padding=self.padding if i == 0 else 0, stride=self.stride, dilation=self.dilation, bias=bias, device=self.device))
-            self.features.append(self._norm_init(features[i+1]))
-            self.features.append(self._activation_init())
-            self.features.append(torch.nn.MaxPool2d(
-                kernel_size=(2, 2)))
-            if self.dropout == True:
-                self.features.append(torch.nn.Dropout2d(p=0.2))
+        layers = []
+        for _ in range(num_conv_layers):
+            layers.append(Conv2d(in_channels, out_channels,
+                          kernel_size=kernel_size, padding=padding, stride=stride))
+            layers.append(self._norm_init(out_channels))
+            layers.append(self._activation_init())
+            in_channels = out_channels
+        layers.append(MaxPool2d(kernel_size=2, stride=2))
+        return torch.nn.ModuleList(layers).to(self.device)
+
+    def _features_init(self):
+        """ Initialize layers of the network for mid-VGG architecture
+        """
+        return torch.nn.ModuleList(
+            # input size is 3x128x128
+            self.block(3, 64, 2, 3, 1, 1) +  # 64x64x64
+            self.block(64, 128, 2, 3, 1, 1) +  # 128x32x32
+            self.block(128, 256, 3, 3, 1, 1) +  # 256x16x16
+            self.block(256, 512, 3, 3, 1, 1) +  # 512x8x8
+            self.block(512, 512, 3, 3, 1, 1)  # 512x4x4
+        ).to(self.device)
 
     def _activation_init(self):
         """

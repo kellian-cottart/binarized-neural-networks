@@ -152,7 +152,8 @@ class GPUTrainer:
                 self.model.load_bn_states(batch_params[i])
             batch = []
             target_batch = []
-            n_batches = len(dataset) // batch_size + 1
+            n_batches = len(dataset) // batch_size + \
+                (len(dataset) % batch_size != 0)
             for i in range(n_batches):
                 inputs, targets = dataset.__getbatch__(
                     i*batch_size, batch_size)
