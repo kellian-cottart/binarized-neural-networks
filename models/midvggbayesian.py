@@ -1,12 +1,11 @@
 import torch
 from torch.nn import *
 from typing import Union
-from .deepNeuralNetwork import DNN
 from .biBayesianNeuralNetwork import BiBayesianNN
 from .layers.activation import *
 
 
-class MidVGG(Module):
+class MidVGGBayesian(Module):
     """ Convolutional Neural Network Base Class
     """
 
@@ -24,6 +23,9 @@ class MidVGG(Module):
                  momentum: float = 0.15,
                  activation_function: str = "relu",
                  gnnum_groups: int = 32,
+                 n_samples_backward: int = 1,
+                 n_samples_forward: int = 1,
+                 tau: float = 1.0,
                  *args,
                  **kwargs):
         """ NN initialization
@@ -61,13 +63,29 @@ class MidVGG(Module):
         # remove classifier layers
         self.features = torch.nn.ModuleList(
             list(vgg16.features.children())).to(self.device)
-        # freeze feature extractor
+
+        # freeze weights
         for param in self.features.parameters():
             param.requires_grad = False
             param.grad = None
         ## CLASSIFIER INITIALIZATION ##
-        self.classifier = DNN(layers, init, std, device, dropout, normalization, bias,
-                              running_stats, affine, eps, momentum, gnnum_groups, activation_function)
+        self.classifier = BiBayesianNN(layers=layers,
+                                       n_samples_backward=n_samples_backward,
+                                       n_samples_forward=n_samples_forward,
+                                       tau=tau,
+                                       device=device,
+                                       dropout=dropout,
+                                       init=init,
+                                       std=std,
+                                       normalization=normalization,
+                                       bias=bias,
+                                       running_stats=running_stats,
+                                       affine=affine,
+                                       eps=eps,
+                                       momentum=momentum,
+                                       gnnum_groups=gnnum_groups,
+                                       activation_function=activation_function
+                                       )
 
     def _activation_init(self):
         """

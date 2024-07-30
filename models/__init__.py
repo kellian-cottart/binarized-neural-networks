@@ -6,3 +6,4 @@ from .convBiNN import *
 from .convNeuralNetwork import *
 from .convBiBayesianNeuralNetwork import *
 from .midvgg import *
+from .midvggbayesian import *

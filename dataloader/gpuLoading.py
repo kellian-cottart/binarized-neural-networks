@@ -388,7 +388,7 @@ class CORe50:
             "paths.pkl": "b568f86998849184df3ec3465290f1b0",
             "LUP.pkl": "33afc26faa460aca98739137fdfa606e"
         }
-        if not os.path.exists(self.root):
+        if not os.path.exists(self.root) or not os.listdir(self.root):
             os.makedirs(self.root, exist_ok=True)
             self.download_dataset()
 
@@ -424,7 +424,7 @@ class CORe50:
             file_hash = hashlib.md5()
             while chunk := f.read(4096):
                 file_hash.update(chunk)
-        return file_hash.hexdigest() == self.md5
+        return file_hash.hexdigest()
 
     def download_file(self, url, file_path):
         response = requests.get(url, stream=True)
@@ -436,7 +436,7 @@ class CORe50:
                 progress_bar.update(len(data))
                 file.write(data)
         progress_bar.close()
-        if not self.checksum(file_path):
+        if not self.checksum(file_path) == self.md5[os.path.basename(file_path)]:
             print("Checksum failed. Deleting file.")
             os.remove(file_path)
             sys.exit(1)
@@ -463,8 +463,6 @@ class CORe50:
             # normalize the data between 0 and 1
             v2.Normalize((0,), (1,), inplace=True)(
                 train_x, train_x)
-
             train_loader.append(
                 GPUTensorDataset(train_x, train_y, device=self.device))
-
         return train_loader, test_dataset
