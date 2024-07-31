@@ -20,10 +20,11 @@ class GPUTrainer:
 
     def __init__(self, model, optimizer, optimizer_parameters, criterion, reduction, device, output_function, *args, **kwargs):
         self.model = model
-        self.optimizer = optimizer(
-            self.model.parameters(),
-            **optimizer_parameters
-        )
+        if self.optimizer is None:
+            self.optimizer = optimizer(
+                self.model.parameters(),
+                **optimizer_parameters
+            )
         self.criterion = criterion
         self.device = device
         self.training_accuracy = []

@@ -10,18 +10,21 @@ class Sign(torch.autograd.Function):
     """
 
     @staticmethod
-    def forward(ctx, tensor_input, width = 1.0):
+    def forward(ctx, tensor_input, width=1, offset_x=0.0):
         """ Forward pass: sign(input) function"""
         ctx.save_for_backward(tensor_input)
+        ctx.offset_x = offset_x
         ctx.width = width
-        return tensor_input.sign()
+        return torch.sign(tensor_input - offset_x)
 
     @staticmethod
     def backward(ctx, grad_output):
         """ Backward pass: hardtanh(input) function"""
         i, = ctx.saved_tensors
+        offset_x = ctx.offset_x
         width = ctx.width
-        return grad_output * (torch.abs(i) < width).float(), None
+        # condition = ((i >= offset_x - width) & (i <= offset_x + width)).float()
+        return grad_output * (torch.abs(i) < width).float(), None, None
 
 
 class SignWeights(torch.autograd.Function):
@@ -51,13 +54,20 @@ class SignActivation(torch.nn.Module):
     Applies the sign activation function to the input tensor.
     """
 
-    def __init__(self, width=1):
+    def __init__(self, width=1, offset_x=0.0):
+        """ Initializes the Sign Activation Layer
+
+        Parameters:
+            width: width of the hardtanh function used in the backward pass
+            offset_x: offset of the sign function
+        """
         self.width = width
+        self.offset_x = offset_x
         super().__init__()
 
     def forward(self, tensor_input):
         """ Forward pass: sign(input) function"""
-        return Sign.apply(tensor_input, self.width)
-    
+        return Sign.apply(tensor_input, self.width, self.offset_x)
+
     def extra_repr(self):
-        return f"width={self.width}"
+        return f"width={self.width}, offset_x={self.offset_x}"

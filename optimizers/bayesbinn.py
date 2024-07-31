@@ -1,150 +1,232 @@
 import torch
-from typing import Optional, Union
+from torch.optim.optimizer import Optimizer
 from torch.nn.utils import parameters_to_vector, vector_to_parameters
 
+import numpy as np
 
-class BayesBiNN(torch.optim.Optimizer):
-    """ BayesBiNN Optimizer for PyTorch
+################################
+# BayesBiNN optimizer
+################################
 
-    Training Binary Neural Networks using the Bayesian Learning Rule, (Meng et al)
 
-    Args: 
-        params (iterable): iterable of parameters to optimize or dicts defining parameter groups
-        lr (float): learning rate
-        beta (float): beta parameter to compute the running average of gradients
-        temperature (float): temperature value of the Gumbel soft-max trick (Maddison et al., 2017)
-        num_mcmc_samples (int): number of MCMC samples to compute the gradient (default: 1, if 0: computes the point estimate)
-        prior_lambda (FloatTensor): lambda of the prior distribution (for continual learning, input the previously found distribution) (default: None)
-        scale (float): scale of the prior distribution (default: 1)
+class BayesBiNN(Optimizer):
+    """BayesBiNN. It uses the mean-field Bernoulli approximation. Note that currently this
+        optimizer does **not** support multiple model parameter groups. All model
+        parameters must use the same optimizer parameters.
+
+        model (nn.Module): network model
+        train_set_size (int): number of data samples in the full training set
+        lr (float, optional): learning rate
+        betas (float, optional): coefficient used for computing
+            running average of gradients
+        prior_lambda (FloatTensor, optional): lamda of prior distribution (posterior of previous task)
+            (default: None)
+        num_samples (float, optional): number of MC samples
+            (default: 1), if num_samples=0, we just use the point estimate mu instead of sampling
+        temperature (float): temperature value of the Gumbel soft-max trick
+        reweight: reweighting scaling factor of the KL term
+
     """
 
-    def __init__(self,
-                 params: Union[torch.Tensor],
-                 lr: Union[float, torch.Tensor] = 1e-4,
-                 beta: float = 0,
-                 temperature: float = 1,
-                 num_mcmc_samples: int = 1,
-                 prior_lambda: Optional[torch.Tensor] = None,
-                 init_lambda: int = 10,
-                 scale: float = 1.0
-                 ):
-        if not 0.0 <= lr:
-            raise ValueError(f"Invalid learning rate: {lr}")
-        if not 0.0 <= beta <= 1.0:
-            raise ValueError(f"Invalid beta parameter: {beta}")
-        if not 0.0 <= temperature:
-            raise ValueError(f"Invalid temperature: {temperature}")
-        if prior_lambda is not None and not isinstance(prior_lambda, torch.Tensor):
+    def __init__(self, model, train_set_size, lr=1e-9, betas=0.0, prior_lambda=None, num_samples=5, lamda_init=10, lamda_std=0, temperature=1, reweight=1):
+        if lr <= 0.0:
+            raise ValueError("Invalid learning rate: {}".format(lr))
+        if prior_lambda is not None and not torch.is_tensor(prior_lambda):
             raise ValueError(
-                f"Invalid prior lambda: {prior_lambda}, must be a tensor")
-        if not 0 <= num_mcmc_samples:
+                "Invalid prior mu value (from previous task): {}".format(prior_lambda))
+
+        if not 0.0 <= betas < 1.0:
             raise ValueError(
-                f"Invalid number of MCMC samples: {num_mcmc_samples}")
+                "Invalid beta parameter at index 0: {}".format(betas))
+        if train_set_size < 1:
+            raise ValueError(
+                "Invalid number of training data points: {}".format(train_set_size))
 
-        defaults = dict(lr=lr, beta=beta, temperature=temperature,
-                        prior_lambda=prior_lambda, num_mcmc_samples=num_mcmc_samples, scale=scale)
-        super().__init__(params, defaults)
+        defaults = dict(lr=lr, beta=betas, prior_lambda=prior_lambda,
+                        num_samples=num_samples, train_set_size=train_set_size, temperature=temperature, reweight=reweight)
 
-        ### LAMBDA INIT ###
-        # We actually need the parameters of the first layer
-        # to generate the bernouilli variable between 0 and 1
-        param = parameters_to_vector(self.param_groups[0]['params'])
-        bernouilli = torch.randint_like(param, 2)
-        # Initialize lambda between -init_lambda and init_lambda
-        self.state['lambda'] = bernouilli * init_lambda * torch.randn_like(
-            param) - (1-bernouilli) * init_lambda * torch.randn_like(param)
-        # Set all other parameters
-        self.state['mu'] = torch.tanh(self.state['lambda'])
+        # only support a single parameter group.
+        super(BayesBiNN, self).__init__(model.parameters(), defaults)
+
+        self.train_modules = []
+        # to obtain the trained modules in the model
+        self.set_train_modules(model)
+
+        defaults = self.defaults
+
+        # We only support a single parameter group
+        parameters = self.param_groups[0][
+            'params']  # self.param_groups is a self-contained parameter group inside optimizer
+
+        self.param_groups[0]['lr'] = lr
+
+        device = parameters[0].device
+
+        p = parameters_to_vector(self.param_groups[0]['params'])
+
+        # natural parameter of Bernoulli distribution.
+        mixtures_coeff = torch.randint_like(p, 2)
+        # torch.log(1+p_value) - torch.log(1-p_value)  #torch.randn_like(p) # 100*torch.randn_like(p) # math.sqrt(train_set_size)*torch.randn_like(p)  #such initialization is empirically good, others are OK of course
+        self.state['lambda'] = mixtures_coeff * (lamda_init + np.sqrt(lamda_std) * torch.randn_like(
+            p)) + (1-mixtures_coeff) * (-lamda_init + np.sqrt(lamda_std) * torch.randn_like(p))
+
+        # expecttion parameter of Bernoulli distribution.
+        if defaults['num_samples'] <= 0:  # BCVI-D optimizer
+            self.state['mu'] = torch.tanh(self.state['lambda'])
+        else:
+            self.state['mu'] = torch.tanh(self.state['lambda'])
+
+        # momentum term
+
+        self.state['momentum'] = torch.zeros_like(p, device=device)  # momentum
+
+        # expectation parameter of prior distribution.
+        if torch.is_tensor(defaults['prior_lambda']):
+            self.state['prior_lambda'] = defaults['prior_lambda'].to(device)
+        else:
+            self.state['prior_lambda'] = torch.zeros_like(p, device=device)
+
+        # step initilization
         self.state['step'] = 0
-        self.state['momentum'] = torch.zeros_like(param)
-        if prior_lambda is None:
-            self.state['prior_lambda'] = torch.zeros_like(param)
+        self.state['temperature'] = temperature
+        self.state['reweight'] = reweight
 
-    def update_prior_lambda(self):
-        """ Update the prior lambda for continual learning
+    def set_train_modules(self, module):
+        if len(list(module.children())) == 0:
+            if len(list(module.parameters())) != 0:
+                self.train_modules.append(module)
+        else:
+            for child in list(module.children()):
+                self.set_train_modules(child)
+
+    def step(self, closure):
+        """Performs a single optimization step.
+        Arguments:
+            closure (callable): A closure that reevaluates the model
+                and returns the loss without doing the backward pass
         """
-        self.state['prior_lambda'] = self.state['lambda']
-
-    def step(self, input_size=60_000, closure=None):
-        """ Perform a single optimization step 
-        Taken from _single_tensor_adam in PyTorch
-
-        Args: 
-            closure (function): Function to evaluate loss
-            input_size (int): Size of the input data (default: 60_000)
-        """
-        self._cuda_graph_capture_health_check()
-
-        # Necessity for the closure function to evaluate the loss
         if closure is None:
             raise RuntimeError(
-                'BayesBiNN optimization step requires a closure function')
-        loss = closure()
-        running_loss = []
+                'For now, BayesBiNN only supports that the model/loss can be reevaluated inside the step function')
 
         self.state['step'] += 1
 
-        ### INITIALIZE GROUPS ###
-        # Groups are the iterable of parameters to optimize or dicts defining parameter groups
-        for i, group in enumerate(self.param_groups):
-            if i != 0:
-                continue
-            # Parameters to optimize
-            parameters = group['params']
-            # Parameters of the optimizer
-            eps = 1e-10
-            beta = group['beta']
-            lr = group['lr']
-            temperature = group['temperature']
-            num_mcmc_samples = group['num_mcmc_samples']
-            scale = group['scale']
+        defaults = self.defaults
+        # We only support a single parameter group.
+        parameters = self.param_groups[0]['params']
+        lr = self.param_groups[0]['lr']
+        momentum_beta = defaults['beta']
+        momentum = self.state['momentum']
 
-            # State of the optimizer
-            step = self.state['step']
-            lambda_ = self.state['lambda']
-            mu = self.state['mu']
-            momentum = self.state['momentum']
-            prior_lambda = self.state['prior_lambda']
+        mu = self.state['mu']
+        lamda = self.state['lambda']
 
-            gradient_estimate = torch.zeros_like(lambda_)
+        temperature = defaults['temperature']
+        reweight = self.state['reweight']
 
-            ### OPTIMIZATION STEP ###
-            if num_mcmc_samples <= 0:
-                ### POINT ESTIMATE ###
-                relaxed_w = torch.tanh(lambda_)
-                vector_to_parameters(relaxed_w, parameters)
-                loss = closure()
-                running_loss.append(loss.item())
-                g = parameters_to_vector(
-                    torch.autograd.grad(loss, parameters)).detach()
-                gradient_estimate = input_size * g
-            else:
-                ### MCMC SAMPLES ###
-                for _ in range(num_mcmc_samples):
-                    # Gumbel soft-max trick
-                    epsilon = torch.rand_like(mu)
-                    delta = torch.log(epsilon / (1 - epsilon)) / 2
-                    relaxed_w = torch.tanh(
-                        (lambda_ + delta) / temperature)
-                    vector_to_parameters(relaxed_w, parameters)
-                    # Compute the loss
-                    loss = closure()
-                    running_loss.append(loss.item())
-                    # Compute the gradient
-                    g = parameters_to_vector(
-                        torch.autograd.grad(loss, parameters)).detach()
-                    s = ((1 - torch.pow(relaxed_w, 2) + eps) /
-                         (temperature * (1 - torch.pow(mu, 2) + eps)))
-                    gradient_estimate.add_(s * g)
-                gradient_estimate.mul_(input_size).div_(
-                    num_mcmc_samples if num_mcmc_samples > 0 else 1)
+        grad_hat = torch.zeros_like(lamda)
 
-            ### PARAMETER UPDATE ###
-            momentum = momentum*beta + (1-beta)*gradient_estimate
-            bias_correction = 1 - beta ** step
+        loss_list = []
+        pred_list = []
 
-            self.state['lambda'] = self.state['lambda'] - lr * momentum / \
-                bias_correction + lr * scale * (prior_lambda - lambda_)
-            self.state['momentum'] = momentum
-            self.state['mu'] = torch.tanh(lambda_)
-        return torch.mean(torch.tensor(running_loss))
+        if defaults['num_samples'] <= 0:
+            # Simply using the point estimate mu instead of sampling
+            w_vector = torch.tanh(self.state['lambda'])
+            vector_to_parameters(w_vector, parameters)
+            # Get loss and predictions
+            loss, preds = closure()
+            pred_list.append(preds)
+            # compute the gradients over the
+            linear_grad = torch.autograd.grad(loss, parameters)
+            loss_list.append(loss.detach())
+            grad = parameters_to_vector(linear_grad).detach()
+            grad_hat = defaults['train_set_size'] * grad
+
+        else:
+            # Using Monte Carlo samples
+            # sampling samples to estimate the gradients
+            for _ in range(defaults['num_samples']):
+                # Sample a parameter vector:
+                raw_noise = torch.rand_like(mu)
+                rou_vector = torch.log(
+                    raw_noise/(1 - raw_noise))/2 + self.state['lambda']
+                w_vector = torch.tanh(rou_vector/temperature)
+                vector_to_parameters(w_vector, parameters)
+                # Get loss and predictions
+                loss, preds = closure()
+                pred_list.append(preds)
+                # compute the gradients over the
+                linear_grad = torch.autograd.grad(loss, parameters)
+                loss_list.append(loss.detach())
+                # Convert the parameter gradient to a single vector.
+                grad = parameters_to_vector(linear_grad).detach()
+                scale = (1 - w_vector*w_vector+1e-10)/temperature / \
+                    (1-self.state['mu']*self.state['mu']+1e-10)
+                grad_hat.add_(scale * grad)
+
+            grad_hat = grad_hat.mul(
+                defaults['train_set_size'] / defaults['num_samples'])
+
+        # Add momentum
+        self.state['momentum'] = momentum_beta * self.state['momentum'] + (1-momentum_beta)*(
+            grad_hat + reweight*(self.state['lambda'] - self.state['prior_lambda']))
+
+        # Get the mean loss over the number of samples
+        loss = torch.mean(torch.stack(loss_list))
+
+        # Bias correction of momentum as adam
+        bias_correction1 = 1 - momentum_beta ** self.state['step']
+
+        # Update lamda vector
+        self.state['lambda'] = self.state['lambda'] - \
+            self.param_groups[0]['lr'] * \
+            self.state['momentum']/bias_correction1
+        self.state['mu'] = torch.tanh(lamda)
+        return loss
+
+    def get_distribution_params(self):
+        """Returns current mean and precision of variational distribution
+           (usually used to save parameters from current task as prior for next task).
+        """
+        mu = self.state['mu'].clone().detach()
+        precision = mu*(1-mu)  # variance term
+
+        return mu, precision
+
+    def get_mc_predictions(self, forward_function, inputs, ret_numpy=False, raw_noises=None, *args, **kwargs):
+        """Returns Monte Carlo predictions.
+        Arguments:
+            forward_function (callable): The forward function of the model
+                that takes inputs and returns the outputs.
+            inputs (FloatTensor): The inputs to the model.
+            ret_numpy (bool): If true, the returned list contains numpy arrays,
+                otherwise it contains torch tensors.
+        """
+
+        # We only support a single parameter group.
+        parameters = self.param_groups[0]['params']
+        predictions = []
+        noise = []
+        n_samples = self.param_groups[0]['num_samples']
+
+        if n_samples > 0:
+            for _ in range(n_samples):
+                network_sample = torch.bernoulli(
+                    torch.sigmoid(2*self.state["lambda"]))
+                noise.append(2*network_sample-1)
+        elif n_samples == 0:
+            # If we do not want to sample, we do a bernouilli
+            noise.append(2*torch.where(
+                self.optimizer.state["lamda"] <= 0,
+                torch.zeros_like(self.state["lambda"]),
+                torch.ones_like(self.state["lambda"])
+            )-1)
+        else:
+            # If we only take lambda as the weights
+            noise.append(self.state["lambda"])
+
+        for n in noise:
+            vector_to_parameters(n, parameters)
+            prediction = forward_function(inputs)
+            predictions.append(prediction)
+        return predictions

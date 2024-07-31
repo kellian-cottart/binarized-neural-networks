@@ -1,8 +1,6 @@
 import torch
 from torch.nn import *
-from typing import Union
 from .deepNeuralNetwork import DNN
-from .biBayesianNeuralNetwork import BiBayesianNN
 from .layers.activation import *
 
 

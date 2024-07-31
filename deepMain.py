@@ -1,4 +1,4 @@
-import models.midvggbayesian
+import models.midvggbibayesian
 from utils import *
 from dataloader import *
 import models
@@ -31,35 +31,35 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "image_padding": 0,
-            "nn_type": models.MidVGG,
+            "image_padding": 2,
+            "nn_type": models.DNN,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [8192, 2048, 2048],
+                "layers": [512],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
                 "bias": False,
-                "init": "uniform",
+                "init": "gaussian",
                 "std": 0.01,
                 "n_samples_forward": 10,
                 "n_samples_backward": 10,
-                "tau": 1,
+                "tau": 1e-2,
                 "activation_function": "gate",
                 "activation_parameters": {
                     "width": 1,
                 },
                 "normalization": "instancenorm",
                 "eps": 1e-5,
-                "momentum": 0.1,
+                "momentum": 0,
                 "running_stats": False,
                 "affine": False,
                 "bias": False,
             },
             "training_parameters": {
-                'n_epochs': 5,
-                'batch_size': 512,
-                'test_batch_size': 512,
+                'n_epochs': 20,
+                'batch_size': 128,
+                'test_batch_size': 128,
                 'feature_extraction': True,
                 'data_aug_it': 1,
                 "continual": True,
@@ -70,31 +70,33 @@ if __name__ == "__main__":
             "output_function": "log_softmax",
             "criterion": torch.functional.F.nll_loss,
             "reduction": "sum",
-            "optimizer": BHUparallel,
-            "optimizer_parameters": {
-                "lr_max": 100,
-                "metaplasticity": 1,
-                "ratio_coeff": 0,
-                "mesuified": False,
-                "N": 20_000,
-            },
-            # "optimizer": BayesBiNN,
+            # "optimizer": BHUparallel,
             # "optimizer_parameters": {
-            #     "lr": 5e-5,
-            #     "beta": 0,
-            #     "temperature": 0.1,
-            #     "num_mcmc_samples": 1,
-            #     "scale": 1.1e-6,
-            #     "init_lambda": 0.3,
+            #     "lr_max": 6.5,
+            #     "metaplasticity": 1,
+            #     "ratio_coeff": 0.1,
+            #     "mesuified": False,
+            #     "N": 20_000,
+            #     "normalize_gradients": False,
             # },
+            "optimizer": BayesBiNN,
+            "optimizer_parameters": {
+                "train_set_size": 10000,
+                "betas": 0.0,
+                "lr": 1e-5,
+                "prior_lambda": None,
+                "num_samples": 10,
+                "temperature": 1e-5,
+                "reweight": 0,
+            },
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             # "optimizer": torch.optim.SGD,
             # "optimizer_parameters": {"lr": 0.01, "momentum": 0.1},
-            "task": "core50-ni",
-            "n_tasks": 8,
+            "task": "PermutedMNIST",
+            "n_tasks": 10,
             "n_classes": 1,
-        }
+        },
     ]
 
     for index, data in enumerate(networks_data):

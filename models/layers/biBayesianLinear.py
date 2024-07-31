@@ -22,7 +22,7 @@ class BiBayesianLinear(torch.nn.Module):
                  tau: float = 1.0,
                  binarized: bool = False,
                  device: None = None,
-                 dtype: None = None,
+                 dtype: None = None
                  ):
         factory_kwargs = {'device': device, 'dtype': dtype}
         super(BiBayesianLinear, self).__init__()

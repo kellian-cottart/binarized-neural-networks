@@ -1,11 +1,10 @@
 import torch
 from torch.nn import *
-from typing import Union
 from .biBayesianNeuralNetwork import BiBayesianNN
 from .layers.activation import *
 
 
-class MidVGGBayesian(Module):
+class MidVGGBiBayesian(Module):
     """ Convolutional Neural Network Base Class
     """
 
