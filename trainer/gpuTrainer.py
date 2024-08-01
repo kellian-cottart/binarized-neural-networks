@@ -20,7 +20,7 @@ class GPUTrainer:
 
     def __init__(self, model, optimizer, optimizer_parameters, criterion, reduction, device, output_function, *args, **kwargs):
         self.model = model
-        if self.optimizer is None:
+        if not hasattr(self, "optimizer"):
             self.optimizer = optimizer(
                 self.model.parameters(),
                 **optimizer_parameters
