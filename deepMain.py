@@ -31,11 +31,13 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "image_padding": 0,
-            "nn_type": models.MidVGGBayesian,
+            "image_padding": 2,
+            "nn_type": models.ConvBayesianNeuralNetwork,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [8192, 512],
+                "layers": [4096],
+                "features": [64, 128, 256],
+                "kernel_size": [3, 3, 3],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
@@ -44,7 +46,7 @@ if __name__ == "__main__":
                 "n_samples_forward": 10,
                 "n_samples_backward": 10,
                 "tau": 1,
-                "activation_function": "gate",
+                "activation_function": "re",
                 "activation_parameters": {
                     "width": 1,
                     "power": 4
@@ -81,7 +83,7 @@ if __name__ == "__main__":
             # },
             "optimizer": MESU,
             "optimizer_parameters": {
-                "sigma_prior": 0.5,
+                "sigma_prior": 0.01,
                 "N": 1e5,
                 "clamp_grad": 0,
             },
@@ -99,8 +101,8 @@ if __name__ == "__main__":
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             # "optimizer": torch.optim.SGD,
             # "optimizer_parameters": {"lr": 0.01, "momentum": 0.1},
-            "task": "core50-ni",
-            "n_tasks": 8,
+            "task": "MNIST",
+            "n_tasks": 1,
             "n_classes": 1,
         }
     ]

@@ -8,27 +8,30 @@ from torch.nn.parameter import Parameter
 from torch.nn.modules.utils import _pair, _reverse_repeat_tuple
 from torch.nn.common_types import _size_2_t
 from typing import Optional, List, Tuple, Union
+import numpy as np
 
 
 class GaussianParameters(object):
-    """Object used to perform the reparametrization tricks in gaussian sampling and reshape the tensor of samples in the right shape to prevents a for loop over the number of sample"""
+    """Object that : 
+        - use the reparametrisation tricks to sample the weights of a convolution layer. 
+        - reshape the weight samples so that each sample can be treated as a group in F.conv2d"""
 
     def __init__(self, mu, sigma):
         super().__init__()
         self.mu = mu  # Mean of the distribution
         self.sigma = sigma  # Standard deviation of the distribution
+        self.normal = torch.distributions.Normal(
+            0, 1)  # Standard normal distribution
 
     def sample(self, samples=1):
-        """Sample from the Gaussian distribution using the reparameterization trick."""
-        # Sample from the standard normal and adjust with sigma and mu
+        # option to act as a determinist convolution layer
         if samples == 0:
-            return self.mu.unsqueeze(0)
-        buffer_epsilon = self.sigma.unsqueeze(0).repeat(
-            samples, *([1]*len(self.sigma.shape)))
-        epsilon = torch.empty_like(buffer_epsilon).normal_()
-        mu = self.mu.unsqueeze(0).repeat(
-            samples, *([1]*len(self.mu.shape)))
-        return mu + buffer_epsilon * epsilon
+            return self.mu
+        else:
+            mu = torch.cat((self.mu,)*samples, dim=0)
+            sigma = torch.cat((self.sigma,)*samples, dim=0)
+            epsilon = self.normal.sample(sigma.size()).to(self.mu.device)
+            return mu + sigma * epsilon
 
 
 class MetaBayesConvNd(Module):
@@ -69,7 +72,7 @@ class MetaBayesConvNd(Module):
                  output_padding: Tuple[int, ...],
                  sigma_init: float,
                  bias: bool,
-                 padding_mode: str,
+                 padding_mode: str = 'zeros',
                  device=None,
                  dtype=None) -> None:
         factory_kwargs = {'device': device, 'dtype': dtype}
@@ -214,7 +217,7 @@ class MetaBayesConv2d(MetaBayesConvNd):
             - feature map are made of monte carlo samples 
             - the input of the neural network is not a monte carlo sample"""
         W = self.weight.sample(samples)
-        samples_dim = torch.max(torch.tensor(samples), torch.tensor(1))
+        samples_dim = np.maximum(samples, 1)
         if x.dim() == 4:
             x = x.unsqueeze(0)
         if x.size(0) == 1:

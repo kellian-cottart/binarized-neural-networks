@@ -6,7 +6,7 @@ from .bayesianNeuralNetwork import *
 from typing import Union
 
 
-class ConvBiBayesianNeuralNetwork(ConvNN):
+class ConvBayesianNeuralNetwork(ConvNN):
     """ Convolutional Binarized Neural Network(ConvBiNN)
     """
 
@@ -45,9 +45,8 @@ class ConvBiBayesianNeuralNetwork(ConvNN):
                          activation_function=activation_function, output_function=output_function,
                          kernel_size=kernel_size, padding=padding, stride=stride, dilation=dilation,
                          gnnum_groups=gnnum_groups, *args, **kwargs)
-        self.classifier = BayesianNN(layers=layers, zeroMean=zeroMean, sigma_init=sigma_init, n_samples_forward=n_samples_forward, device=device,
-                                     init=init, std=std, dropout=dropout, normalization=normalization, bias=bias, running_stats=running_stats, affine=affine,
-                                     eps=eps, momentum=momentum, activation_function=activation_function, output_function=output_function, *args, **kwargs)
+        self.classifier = BayesianNN(layers=layers, zeroMean=zeroMean, sigma_init=sigma_init, n_samples_forward=n_samples_forward, device=device, init=init, std=std, dropout=dropout, normalization=normalization,
+                                     bias=bias, running_stats=running_stats, affine=affine, eps=eps, momentum=momentum, activation_function=activation_function, output_function=output_function, *args, **kwargs)
 
     def _features_init(self, features, bias=False):
         """ Initialize layers of the network for convolutional layers
@@ -60,17 +59,20 @@ class ConvBiBayesianNeuralNetwork(ConvNN):
         for i, _ in enumerate(features[:-1]):
             # Conv layers with BatchNorm and MaxPool
             self.features.append(MetaBayesConv2d(
-                features[i+1], features[i+1], bias=bias, zeroMean=self.zeroMean, sigma_init=self.sigma_init, device=self.device))
+                features[i+1], features[i+1], kernel_size=self.kernel_size[i], stride=self.stride, padding=self.padding, dilation=self.dilation, bias=bias, sigma_init=self.sigma_init, device=self.device))
             self.features.append(self._norm_init(features[i+1]))
             self.features.append(self._activation_init())
             self.features.append(MetaBayesConv2d(
-                features[i+1], features[i+1], bias=bias, zeroMean=self.zeroMean, sigma_init=self.sigma_init, device=self.device))
+                features[i+1], features[i+1], kernel_size=self.kernel_size[i], stride=self.stride, padding=self.padding, dilation=self.dilation, bias=bias, sigma_init=self.sigma_init, device=self.device))
             self.features.append(self._norm_init(features[i+1]))
             self.features.append(self._activation_init())
             self.features.append(torch.nn.MaxPool2d(
                 kernel_size=(2, 2)))
             if self.dropout == True:
                 self.features.append(torch.nn.Dropout2d(p=0.2))
+
+    def _weight_init(self, init='normal', std=0.1):
+        pass
 
     def forward(self, x, backwards=True, *args, **kwargs):
         """Forward propagation of the binarized neural network"""
@@ -89,4 +91,4 @@ class ConvBiBayesianNeuralNetwork(ConvNN):
         return self.classifier.forward(x, backwards=backwards)
 
     def extra_repr(self) -> str:
-        return super().extra_repr() + f", tau={self.tau}, n_samples_forward={self.n_samples_forward}, n_samples_backward={self.n_samples_backward}"
+        return super().extra_repr() + f", n_samples_forward={self.n_samples_forward}, zeroMean={self.zeroMean}, sigma_init={self.sigma_init}"
