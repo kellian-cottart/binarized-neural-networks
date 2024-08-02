@@ -42,9 +42,9 @@ if __name__ == "__main__":
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
-                "std": 0.01,
-                "n_samples_forward": 2,
-                "n_samples_backward": 1,
+                "std": 0.1,
+                "n_samples_forward": 5,
+                "n_samples_backward": 5,
                 "tau": 1,
                 "activation_function": "relu",
                 "activation_parameters": {
@@ -61,7 +61,7 @@ if __name__ == "__main__":
             },
             "training_parameters": {
                 'n_epochs': 5,
-                'batch_size': 128,
+                'batch_size': 32,
                 'test_batch_size': 128,
                 'feature_extraction': False,
                 'data_aug_it': 1,
@@ -86,7 +86,7 @@ if __name__ == "__main__":
             "optimizer_parameters": {
                 "sigma_prior": 0.1,
                 "N": 1e5,
-                "clamp_grad": 0.5,
+                "clamp_grad": 0.1,
             },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {

@@ -106,11 +106,11 @@ class MidVGGBayesian(Module):
         features.extend(self.make_block(512, 512, 3))
         for feat, vgg_feat in zip(features, vgg16_features):
             if isinstance(feat, MetaBayesConv2d):
-                feat.weight_mu = vgg_feat.weight
+                feat.weight_mu = torch.nn.Parameter(vgg_feat.weight.data)
                 feat.weight_sigma = torch.nn.Parameter(torch.empty_like(
                     vgg_feat.weight).normal_(0, self.sigma_init))
                 if self.bias == True:
-                    feat.bias_mu = vgg_feat.bias
+                    feat.bias_mu = torch.nn.Parameter(vgg_feat.bias.data)
                     feat.bias_sigma = torch.nn.Parameter(torch.empty_like(
                         vgg_feat.bias).normal_(0, self.sigma_init))
         return features
