@@ -6,7 +6,7 @@ from torch.nn.modules import Module
 from torch.nn.parameter import Parameter
 
 
-class GaussianParameters(object):
+class GaussianParameter:
     """Object used to perform the reparametrization tricks in gaussian sampling and reshape the tensor of samples in the right shape to prevents a for loop over the number of sample"""
 
     def __init__(self, mu, sigma):
@@ -47,7 +47,7 @@ class MetaBayesLinearParallel(Module):
         self.bound = math.sqrt(2/in_features)
         self.sigma_init = sigma_init
 
-        self.weight = GaussianParameters(self.weight_mu, self.weight_sigma)
+        self.weight = GaussianParameter(self.weight_mu, self.weight_sigma)
 
         # Control for zero mean initialization
         self.zeroMean = zeroMean
@@ -58,7 +58,7 @@ class MetaBayesLinearParallel(Module):
                 torch.empty(out_features, **factory_kwargs))
             self.bias_mu = Parameter(torch.empty(
                 out_features, **factory_kwargs))
-            self.bias = GaussianParameters(self.bias_mu, self.bias_sigma)
+            self.bias = GaussianParameter(self.bias_mu, self.bias_sigma)
         else:
             self.register_parameter('bias', None)
 

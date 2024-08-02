@@ -12,7 +12,7 @@ class BayesianNN(DNN):
     def __init__(self,
                  layers,
                  zeroMean=False,
-                 sigma_init=0.1,
+                 std=0.1,
                  n_samples_forward=1,
                  *args,
                  **kwargs):
@@ -23,7 +23,7 @@ class BayesianNN(DNN):
             n_samples_backward (int): Number of backward samples
         """
         self.zeroMean = zeroMean
-        self.sigma_init = sigma_init
+        self.sigma_init = std
         self.n_samples_forward = n_samples_forward
         super().__init__(layers, *args, **kwargs)
 

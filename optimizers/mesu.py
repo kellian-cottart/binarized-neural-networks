@@ -59,10 +59,11 @@ class MESU(Optimizer):
             params_with_grad = []
             d_p_list = []
 
-            for i, p in enumerate(group['params']):
-                if p.grad is not None:
-                    d_p_list.append(p.grad)
-                    params_with_grad.append(p)
+            for p in group['params']:
+                if p.grad is None:
+                    continue
+                d_p_list.append(p.grad)
+                params_with_grad.append(p)
 
             mesu(
                 params_with_grad,

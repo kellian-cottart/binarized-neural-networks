@@ -13,7 +13,7 @@ import datetime
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0")
-GRAPHS = True
+GRAPHS = False
 MODULO = 10
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
@@ -31,38 +31,39 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "image_padding": 2,
-            "nn_type": models.ConvBayesianNeuralNetwork,
+            "image_padding": 0,
+            "nn_type": models.MidVGGBayesian,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [4096],
-                "features": [64, 128, 256],
+                "layers": [8192, 512],
+                "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
                 "std": 0.01,
-                "n_samples_forward": 10,
-                "n_samples_backward": 10,
+                "n_samples_forward": 2,
+                "n_samples_backward": 1,
                 "tau": 1,
-                "activation_function": "re",
+                "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
                     "power": 4
                 },
-                "normalization": "instancenorm",
+                "normalization": "",
                 "eps": 1e-5,
                 "momentum": 0,
                 "running_stats": False,
                 "affine": False,
-                "bias": False,
+                "bias": True,
+                "bayesian_convolution": True,
             },
             "training_parameters": {
                 'n_epochs': 5,
-                'batch_size': 512,
-                'test_batch_size': 512,
-                'feature_extraction': True,
+                'batch_size': 128,
+                'test_batch_size': 128,
+                'feature_extraction': False,
                 'data_aug_it': 1,
                 "continual": True,
                 "task_boundaries": False,
@@ -74,8 +75,8 @@ if __name__ == "__main__":
             "reduction": "sum",
             # "optimizer": BHUparallel,
             # "optimizer_parameters": {
-            #     "lr_max": 1000,
-            #     "metaplasticity": 3,
+            #     "lr_max": 6,
+            #     "metaplasticity": 1,
             #     "ratio_coeff": 0.1,
             #     "mesuified": False,
             #     "N": 20_000,
@@ -83,9 +84,9 @@ if __name__ == "__main__":
             # },
             "optimizer": MESU,
             "optimizer_parameters": {
-                "sigma_prior": 0.01,
+                "sigma_prior": 0.1,
                 "N": 1e5,
-                "clamp_grad": 0,
+                "clamp_grad": 0.5,
             },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
@@ -101,8 +102,8 @@ if __name__ == "__main__":
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             # "optimizer": torch.optim.SGD,
             # "optimizer_parameters": {"lr": 0.01, "momentum": 0.1},
-            "task": "MNIST",
-            "n_tasks": 1,
+            "task": "core50-ni",
+            "n_tasks": 8,
             "n_classes": 1,
         }
     ]

@@ -8,30 +8,27 @@ from torch.nn.parameter import Parameter
 from torch.nn.modules.utils import _pair, _reverse_repeat_tuple
 from torch.nn.common_types import _size_2_t
 from typing import Optional, List, Tuple, Union
-import numpy as np
 
 
-class GaussianParameters(object):
-    """Object that : 
-        - use the reparametrisation tricks to sample the weights of a convolution layer. 
-        - reshape the weight samples so that each sample can be treated as a group in F.conv2d"""
+class GaussianParameter:
+    """Object used to perform the reparametrization tricks in gaussian sampling and reshape the tensor of samples in the right shape to prevents a for loop over the number of sample"""
 
     def __init__(self, mu, sigma):
         super().__init__()
         self.mu = mu  # Mean of the distribution
         self.sigma = sigma  # Standard deviation of the distribution
-        self.normal = torch.distributions.Normal(
-            0, 1)  # Standard normal distribution
 
     def sample(self, samples=1):
-        # option to act as a determinist convolution layer
+        """Sample from the Gaussian distribution using the reparameterization trick."""
+        # Sample from the standard normal and adjust with sigma and mu
         if samples == 0:
-            return self.mu
-        else:
-            mu = torch.cat((self.mu,)*samples, dim=0)
-            sigma = torch.cat((self.sigma,)*samples, dim=0)
-            epsilon = self.normal.sample(sigma.size()).to(self.mu.device)
-            return mu + sigma * epsilon
+            return self.mu.unsqueeze(0)
+        buffer_epsilon = self.sigma.unsqueeze(0).repeat(
+            samples, *([1]*len(self.sigma.shape)))
+        epsilon = torch.empty_like(buffer_epsilon).normal_()
+        mu = self.mu.unsqueeze(0).repeat(
+            samples, *([1]*len(self.mu.shape)))
+        return mu + buffer_epsilon * epsilon
 
 
 class MetaBayesConvNd(Module):
@@ -121,7 +118,7 @@ class MetaBayesConvNd(Module):
             self._reversed_padding_repeated_twice = _reverse_repeat_tuple(
                 self.padding, 2)
 
-        if transposed:
+        if transposed == True:
             self.weight_sigma = Parameter(torch.empty(
                 (in_channels, out_channels, *kernel_size), **factory_kwargs))
             self.weight_mu = Parameter(torch.empty(
@@ -133,13 +130,13 @@ class MetaBayesConvNd(Module):
             self.weight_mu = Parameter(torch.empty(
                 (out_channels, in_channels, *kernel_size), **factory_kwargs))
 
-        self.weight = GaussianParameters(self.weight_mu, self.weight_sigma)
-        if bias:
+        self.weight = GaussianParameter(self.weight_mu, self.weight_sigma)
+        if bias == True:
             self.bias_sigma = Parameter(
                 torch.empty(out_channels, **factory_kwargs))
             self.bias_mu = Parameter(torch.empty(
                 out_channels, **factory_kwargs))
-            self.bias = GaussianParameters(self.bias_mu, self.bias_sigma)
+            self.bias = GaussianParameter(self.bias_mu, self.bias_sigma)
         else:
             self.register_parameter('bias', None)
 
@@ -169,6 +166,8 @@ class MetaBayesConvNd(Module):
             s += ', output_padding={output_padding}'
         if self.bias is None:
             s += ', bias=False'
+        else:
+            s += ', bias=True'
         if self.padding_mode != 'zeros':
             s += ', padding_mode={padding_mode}'
         return s.format(**self.__dict__)
@@ -217,17 +216,13 @@ class MetaBayesConv2d(MetaBayesConvNd):
             - feature map are made of monte carlo samples 
             - the input of the neural network is not a monte carlo sample"""
         W = self.weight.sample(samples)
-        samples_dim = np.maximum(samples, 1)
+        W = W.view(W.size(0)*W.size(1), W.size(2), W.size(3), W.size(4))
         if x.dim() == 4:
             x = x.unsqueeze(0)
         if x.size(0) == 1:
-            x = x.repeat(samples_dim, 1, 1, 1, 1)
+            x = x.repeat(samples, 1, 1, 1, 1)
         x = x.view(x.size(1), x.size(0)*x.size(2), x.size(3), x.size(4))
-        if self.bias:
-            B = self.bias.sample(samples)
-        else:
-            B = None
-        out = self._conv_forward(x, W, B, samples=samples_dim)
-        out = out.view(samples_dim, out.size(0), out.size(1) //
-                       samples_dim, out.size(2), out.size(3))
-        return out
+        B = self.bias.sample(samples).flatten(
+        ) if self.bias is not None else None
+        out = self._conv_forward(x, W, B, samples)
+        return out.view(samples, out.size(0), out.size(1) // samples, out.size(2), out.size(3))
