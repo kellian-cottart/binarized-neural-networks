@@ -96,17 +96,17 @@ class MidVGGBayesian(Module):
         vgg16 = torch.hub.load('pytorch/vision:v0.9.0',
                                'vgg16', pretrained=True)
         features = torch.nn.ModuleList(vgg16.features.children())
-        # iterate on every feature and replace with bayesian layer
-        for layer in features:
+        # iterate on every feature and replace conv2d with bayesian conv2d
+        for i, layer in enumerate(features):
             if isinstance(layer, torch.nn.Conv2d):
-                weights = layer.weight.data
-                bias = layer.bias.data if layer.bias is not None else None
-                layer = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size[0], stride=layer.stride[0],
-                                        padding=layer.padding[0], bias=self.bias, sigma_init=self.sigma_init*1e-3, device=self.device)
-                layer.weight_mu.data = weights
-                if bias is not None:
-                    layer.bias_mu.data = bias
-        return features
+                bayesian_conv = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size[0], stride=layer.stride[0],
+                                                padding=layer.padding[0], bias=self.bias, sigma_init=self.sigma_init*1e-3, device=self.device)
+                # replace the mean value of the weights of the bayesian conv2d with the weights of the vgg16
+                bayesian_conv.weight_mu.data = layer.weight.data.clone()
+                if self.bias:
+                    bayesian_conv.bias_mu.data = layer.bias.data.clone()
+                features[i] = bayesian_conv
+        return features.to(self.device)
 
     def _activation_init(self):
         """

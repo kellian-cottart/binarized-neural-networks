@@ -144,7 +144,6 @@ if __name__ == "__main__":
             else:
                 net_trainer = trainer.GPUTrainer(batch_size=batch_size,
                                                  model=model, **data, device=DEVICE)
-            print(net_trainer.model)
             if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
                 batch_params = []
                 for i in range(data["n_tasks"]):
