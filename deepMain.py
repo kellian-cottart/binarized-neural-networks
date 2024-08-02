@@ -43,8 +43,8 @@ if __name__ == "__main__":
                 "dropout": False,
                 "init": "gaussian",
                 "std": 0.1,
-                "n_samples_forward": 5,
-                "n_samples_backward": 5,
+                "n_samples_forward": 3,
+                "n_samples_backward": 3,
                 "tau": 1,
                 "activation_function": "relu",
                 "activation_parameters": {
@@ -61,13 +61,12 @@ if __name__ == "__main__":
             },
             "training_parameters": {
                 'n_epochs': 5,
-                'batch_size': 32,
+                'batch_size': 128,
                 'test_batch_size': 128,
                 'feature_extraction': False,
                 'data_aug_it': 1,
                 "continual": True,
                 "task_boundaries": False,
-                "test_mcmc_samples": 10,
             },
             "label_trick": True,
             "output_function": "log_softmax",
@@ -86,7 +85,7 @@ if __name__ == "__main__":
             "optimizer_parameters": {
                 "sigma_prior": 0.1,
                 "N": 1e5,
-                "clamp_grad": 0.1,
+                "clamp_grad": 1,
             },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
@@ -101,7 +100,7 @@ if __name__ == "__main__":
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             # "optimizer": torch.optim.SGD,
-            # "optimizer_parameters": {"lr": 0.01, "momentum": 0.1},
+            # "optimizer_parameters": {"lr": 0.0001, "momentum": 0},
             "task": "core50-ni",
             "n_tasks": 8,
             "n_classes": 1,

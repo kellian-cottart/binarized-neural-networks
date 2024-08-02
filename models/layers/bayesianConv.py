@@ -224,5 +224,6 @@ class MetaBayesConv2d(MetaBayesConvNd):
         x = x.view(x.size(1), x.size(0)*x.size(2), x.size(3), x.size(4))
         B = self.bias.sample(samples).flatten(
         ) if self.bias is not None else None
+        samples = samples if samples > 0 else 1
         out = self._conv_forward(x, W, B, samples)
         return out.view(samples, out.size(0), out.size(1) // samples, out.size(2), out.size(3))

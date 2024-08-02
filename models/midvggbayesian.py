@@ -95,35 +95,18 @@ class MidVGGBayesian(Module):
         # save vgg16 features
         vgg16 = torch.hub.load('pytorch/vision:v0.9.0',
                                'vgg16', pretrained=True)
-        vgg16_features = torch.nn.ModuleList(vgg16.features.children())
-
-        # create bayesian vgg using make_block
-        features = torch.nn.ModuleList()
-        features.extend(self.make_block(3, 64, 2))
-        features.extend(self.make_block(64, 128, 2))
-        features.extend(self.make_block(128, 256, 3))
-        features.extend(self.make_block(256, 512, 3))
-        features.extend(self.make_block(512, 512, 3))
-        for feat, vgg_feat in zip(features, vgg16_features):
-            if isinstance(feat, MetaBayesConv2d):
-                feat.weight_mu = torch.nn.Parameter(vgg_feat.weight.data)
-                feat.weight_sigma = torch.nn.Parameter(torch.empty_like(
-                    vgg_feat.weight).normal_(0, self.sigma_init))
-                if self.bias == True:
-                    feat.bias_mu = torch.nn.Parameter(vgg_feat.bias.data)
-                    feat.bias_sigma = torch.nn.Parameter(torch.empty_like(
-                        vgg_feat.bias).normal_(0, self.sigma_init))
+        features = torch.nn.ModuleList(vgg16.features.children())
+        # iterate on every feature and replace with bayesian layer
+        for layer in features:
+            if isinstance(layer, torch.nn.Conv2d):
+                weights = layer.weight.data
+                bias = layer.bias.data if layer.bias is not None else None
+                layer = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size[0], stride=layer.stride[0],
+                                        padding=layer.padding[0], bias=self.bias, sigma_init=self.sigma_init*1e-3, device=self.device)
+                layer.weight_mu.data = weights
+                if bias is not None:
+                    layer.bias_mu.data = bias
         return features
-
-    def make_block(self, in_channels, out_channels, num_conv_layers):
-        block = []
-        for _ in range(num_conv_layers):
-            block.append(MetaBayesConv2d(in_channels, out_channels, kernel_size=3, stride=1,
-                         padding=1, bias=self.bias, sigma_init=self.sigma_init, device=self.device))
-            block.append(self._activation_init())
-            in_channels = out_channels
-        block.append(torch.nn.MaxPool2d(kernel_size=2))
-        return block
 
     def _activation_init(self):
         """
@@ -170,7 +153,8 @@ class MidVGGBayesian(Module):
         """
         for layer in self.features:
             if isinstance(layer, MetaBayesConv2d):
-                x = layer(x, self.n_samples_forward)
+                x = layer(
+                    x, self.n_samples_forward if self.n_samples_forward > 1 else 1)
             else:
                 try:
                     x = layer(x)
