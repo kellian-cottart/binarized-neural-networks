@@ -9,3 +9,4 @@ from .convBiBayesianNeuralNetwork import *
 from .midvgg import *
 from .midvggbibayesian import *
 from .midvggbayesian import *
+from .efficientnet import *

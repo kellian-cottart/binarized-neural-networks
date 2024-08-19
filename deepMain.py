@@ -35,7 +35,7 @@ if __name__ == "__main__":
             "nn_type": models.EfficientNetb0,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [8192, 512],
+                "layers": [40960, 512],
                 "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
@@ -126,7 +126,7 @@ if __name__ == "__main__":
                          for feature in data['nn_parameters']['features']])
             data['nn_parameters']['features'].insert(
                 0, shape[0])
-        elif not "VGG" in data["nn_type"].__name__:
+        elif not "EfficientNet" in data["nn_type"].__name__ or "VGG" in data["nn_type"].__name__:
             data['nn_parameters']['layers'].insert(
                 0, torch.prod(torch.tensor(shape)))
         data['nn_parameters']['layers'].append(target_size)
@@ -138,6 +138,7 @@ if __name__ == "__main__":
             torch.cuda.manual_seed(SEED + iteration)
             # Instantiate the network
             model = data['nn_type'](**data['nn_parameters'])
+            print(model)
             ### INSTANTIATE THE TRAINER ###
             if data["optimizer"] in [BayesBiNN]:
                 net_trainer = trainer.BayesTrainer(batch_size=batch_size,

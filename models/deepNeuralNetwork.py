@@ -26,7 +26,7 @@ class DNN(torch.nn.Module):
     """
 
     def __init__(self,
-                 layers: list = [1024, 1024],
+                 layers: list = [1024, 1024, 10],
                  init: str = "uniform",
                  std: float = 0.01,
                  device: str = "cuda:0",

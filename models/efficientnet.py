@@ -10,13 +10,14 @@ LOOK_UP_DICT = {}
 for i in range(8):
     LOOK_UP_DICT[str(i)] = {
         "model": getattr(torchvision.models, f"efficientnet_b{i}"),
-        "weights": getattr(torchvision.models, f"EfficientNet_B{i}_Weights").IMAGENET1K_V1
+        "weights": getattr(torchvision.models, f"EfficientNet_B{i}_Weights")
     }
 
 for i, name in enumerate(CLASS_LIST):
     class PlaceholderName(Module):
         """ EfficientNet
         """
+        name = name
 
         def __init__(self,
                      layers: list = [1024, 1024, 10],
@@ -65,8 +66,8 @@ for i, name in enumerate(CLASS_LIST):
             self.gnnum_groups = gnnum_groups
 
             # retrieve weights from VGG16
-            effnet = LOOK_UP_DICT[str(i)]["model"](
-                weights=LOOK_UP_DICT[str(i)]["weights"])
+            current = LOOK_UP_DICT[str(i)]
+            effnet = current["model"](weights=current["weights"].DEFAULT)
             # remove classifier layers
             self.features = torch.nn.ModuleList(
                 list(effnet.features.children())).to(self.device)
