@@ -60,7 +60,7 @@ if __name__ == "__main__":
                 "bayesian_convolution": True,
             },
             "training_parameters": {
-                'n_epochs': 5,
+                'n_epochs': 2,
                 'batch_size': 128,
                 'test_batch_size': 128,
                 'feature_extraction': False,

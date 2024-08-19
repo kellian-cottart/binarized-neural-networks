@@ -94,13 +94,13 @@ class MidVGGBayesian(Module):
     def make_vgg16(self):
         # save vgg16 features
         vgg16 = torch.hub.load('pytorch/vision:v0.9.0',
-                               'vgg16', pretrained=True)
+                               'vgg16', weights="DEFAULT")
         features = torch.nn.ModuleList(vgg16.features.children())
         # iterate on every feature and replace conv2d with bayesian conv2d
         for i, layer in enumerate(features):
             if isinstance(layer, torch.nn.Conv2d):
                 bayesian_conv = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size[0], stride=layer.stride[0],
-                                                padding=layer.padding[0], bias=self.bias, sigma_init=self.sigma_init*1e-3, device=self.device)
+                                                padding=layer.padding[0], bias=self.bias, sigma_init=self.sigma_init*1e-2, device=self.device)
                 # replace the mean value of the weights of the bayesian conv2d with the weights of the vgg16
                 bayesian_conv.weight_mu.data = layer.weight.data.clone()
                 if self.bias:
