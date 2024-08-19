@@ -58,6 +58,7 @@ if __name__ == "__main__":
                 "affine": False,
                 "bias": True,
                 "bayesian_convolution": True,
+                "sigma_multiplier": 1e-2,
             },
             "training_parameters": {
                 'n_epochs': 2,
