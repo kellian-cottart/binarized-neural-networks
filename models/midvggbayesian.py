@@ -26,7 +26,7 @@ class MidVGGBayesian(Module):
                  gnnum_groups: int = 32,
                  n_samples_forward: int = 1,
                  zeroMean=False,
-                 bayesian_convolution=True,
+                 frozen=False,
                  sigma_multiplier=1,
                  *args,
                  **kwargs):
@@ -67,12 +67,13 @@ class MidVGGBayesian(Module):
         vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
         self.features = torch.nn.ModuleList(
             list(vgg.features.children())).to(self.device)
-        if bayesian_convolution == True:
-            self.features = self.make_vgg16()
-        else:
+
+        self.features = self.make_vgg16()
+        if frozen == True:
             for param in self.features.parameters():
                 param.requires_grad = False
                 param.grad = None
+
         ## CLASSIFIER INITIALIZATION ##
         self.classifier = BayesianNN(layers=layers,
                                      n_samples_forward=n_samples_forward,

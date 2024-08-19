@@ -2,6 +2,7 @@ import torch
 from torch.nn import *
 from .biBayesianNeuralNetwork import BiBayesianNN
 from .layers.activation import *
+from torchvision.models import vgg16, VGG16_Weights
 
 
 class MidVGGBiBayesian(Module):
@@ -25,6 +26,7 @@ class MidVGGBiBayesian(Module):
                  n_samples_backward: int = 1,
                  n_samples_forward: int = 1,
                  tau: float = 1.0,
+                 frozen=False,
                  *args,
                  **kwargs):
         """ NN initialization
@@ -56,17 +58,15 @@ class MidVGGBiBayesian(Module):
         self.activation_function = activation_function
         self.gnnum_groups = gnnum_groups
         # retrieve weights from VGG16
-        vgg16 = torch.hub.load('pytorch/vision:v0.9.0',
-                               'vgg16', pretrained=True)
-
+        vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
         # remove classifier layers
         self.features = torch.nn.ModuleList(
-            list(vgg16.features.children())).to(self.device)
-
+            list(vgg.features.children())).to(self.device)
         # freeze weights
-        for param in self.features.parameters():
-            param.requires_grad = False
-            param.grad = None
+        if frozen == True:
+            for param in self.features.parameters():
+                param.requires_grad = False
+                param.grad = None
         ## CLASSIFIER INITIALIZATION ##
         self.classifier = BiBayesianNN(layers=layers,
                                        n_samples_backward=n_samples_backward,

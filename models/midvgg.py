@@ -2,6 +2,7 @@ import torch
 from torch.nn import *
 from .deepNeuralNetwork import DNN
 from .layers.activation import *
+from torchvision.models import vgg16, VGG16_Weights
 
 
 class MidVGG(Module):
@@ -22,6 +23,7 @@ class MidVGG(Module):
                  momentum: float = 0.15,
                  activation_function: str = "relu",
                  gnnum_groups: int = 32,
+                 frozen=False,
                  *args,
                  **kwargs):
         """ NN initialization
@@ -53,16 +55,16 @@ class MidVGG(Module):
         self.activation_function = activation_function
         self.gnnum_groups = gnnum_groups
         # retrieve weights from VGG16
-        vgg16 = torch.hub.load('pytorch/vision:v0.9.0',
-                               'vgg16', pretrained=True)
+        vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
 
         # remove classifier layers
         self.features = torch.nn.ModuleList(
-            list(vgg16.features.children())).to(self.device)
+            list(vgg.features.children())).to(self.device)
         # freeze feature extractor
-        for param in self.features.parameters():
-            param.requires_grad = False
-            param.grad = None
+        if frozen == True:
+            for param in self.features.parameters():
+                param.requires_grad = False
+                param.grad = None
         ## CLASSIFIER INITIALIZATION ##
         self.classifier = DNN(layers, init, std, device, dropout, normalization, bias,
                               running_stats, affine, eps, momentum, gnnum_groups, activation_function)

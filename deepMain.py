@@ -32,7 +32,7 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 0,
-            "nn_type": models.MidVGGBayesian,
+            "nn_type": models.EfficientNetb0,
             "nn_parameters": {
                 # NETWORK ###
                 "layers": [8192, 512],
@@ -57,11 +57,11 @@ if __name__ == "__main__":
                 "running_stats": False,
                 "affine": False,
                 "bias": True,
-                "bayesian_convolution": True,
-                "sigma_multiplier": 1e-2,
+                "frozen": False,
+                "sigma_multiplier": 1e-1,
             },
             "training_parameters": {
-                'n_epochs': 2,
+                'n_epochs': 5,
                 'batch_size': 128,
                 'test_batch_size': 128,
                 'feature_extraction': False,
@@ -82,12 +82,12 @@ if __name__ == "__main__":
             #     "N": 20_000,
             #     "normalize_gradients": False,
             # },
-            "optimizer": MESU,
-            "optimizer_parameters": {
-                "sigma_prior": 0.1,
-                "N": 1e5,
-                "clamp_grad": 1,
-            },
+            # "optimizer": MESU,
+            # "optimizer_parameters": {
+            #     "sigma_prior": 0.05,
+            #     "N": 1e5,
+            #     "clamp_grad": 1,
+            # },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
             #     "train_set_size": 10000,
@@ -100,8 +100,8 @@ if __name__ == "__main__":
             # },
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
-            # "optimizer": torch.optim.SGD,
-            # "optimizer_parameters": {"lr": 0.0001, "momentum": 0},
+            "optimizer": torch.optim.SGD,
+            "optimizer_parameters": {"lr": 0.0001, "momentum": 0},
             "task": "core50-ni",
             "n_tasks": 8,
             "n_classes": 1,
