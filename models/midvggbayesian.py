@@ -68,7 +68,7 @@ class MidVGGBayesian(Module):
         self.features = torch.nn.ModuleList(
             list(vgg.features.children())).to(self.device)
 
-        self.features = self.make_vgg16()
+        self.features = self.replace_conv()
         if frozen == True:
             for param in self.features.parameters():
                 param.requires_grad = False
@@ -93,7 +93,7 @@ class MidVGGBayesian(Module):
                                      activation_function=activation_function
                                      )
 
-    def make_vgg16(self):
+    def replace_conv(self):
         # iterate on every feature and replace conv2d with bayesian conv2d
         features = self.features
         for i, layer in enumerate(features):

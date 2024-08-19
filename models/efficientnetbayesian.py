@@ -1,10 +1,12 @@
 import torch
 from torch.nn import *
-from .deepNeuralNetwork import DNN
+from .bayesianNeuralNetwork import BayesianNN
+from .layers import *
 from .layers.activation import *
+from torchvision.models import vgg16, VGG16_Weights
 import torchvision
 
-CLASS_LIST = [f"EfficientNetb{i}" for i in range(8)]
+CLASS_LIST = [f"EfficientNetBayesianb{i}" for i in range(8)]
 LOOK_UP_DICT = {}
 for i in range(8):
     LOOK_UP_DICT[str(i)] = {
@@ -14,9 +16,8 @@ for i in range(8):
 
 for i, name in enumerate(CLASS_LIST):
     class PlaceholderName(Module):
-        """ EfficientNet
+        """ Convolutional Neural Network Base Class
         """
-        name = name
 
         def __init__(self,
                      layers: list = [1024, 1024, 10],
@@ -32,7 +33,10 @@ for i, name in enumerate(CLASS_LIST):
                      momentum: float = 0.15,
                      activation_function: str = "relu",
                      gnnum_groups: int = 32,
+                     n_samples_forward: int = 1,
+                     zeroMean=False,
                      frozen=False,
+                     sigma_multiplier=1,
                      *args,
                      **kwargs):
             """ NN initialization
@@ -63,21 +67,53 @@ for i, name in enumerate(CLASS_LIST):
             self.affine = affine
             self.activation_function = activation_function
             self.gnnum_groups = gnnum_groups
-
+            self.bias = bias
+            self.sigma_init = std
+            self.activation_function = activation_function
+            self.n_samples_forward = n_samples_forward
+            self.sigma_multiplier = sigma_multiplier
             # retrieve weights from EfficientNet
             current = LOOK_UP_DICT[str(i)]
             effnet = current["model"](weights=current["weights"].DEFAULT)
-            # remove classifier layers
             self.features = torch.nn.ModuleList(
                 list(effnet.features.children())).to(self.device)
-            # freeze feature extractor
+            self.features = self.replace_conv()
             if frozen == True:
                 for param in self.features.parameters():
                     param.requires_grad = False
                     param.grad = None
+
             ## CLASSIFIER INITIALIZATION ##
-            self.classifier = DNN(layers, init, std, device, dropout, normalization, bias,
-                                  running_stats, affine, eps, momentum, gnnum_groups, activation_function)
+            self.classifier = BayesianNN(layers=layers,
+                                         n_samples_forward=n_samples_forward,
+                                         zeroMean=zeroMean,
+                                         sigma_init=std,
+                                         device=device,
+                                         dropout=dropout,
+                                         init=init,
+                                         std=std,
+                                         normalization=normalization,
+                                         bias=bias,
+                                         running_stats=running_stats,
+                                         affine=affine,
+                                         eps=eps,
+                                         momentum=momentum,
+                                         gnnum_groups=gnnum_groups,
+                                         activation_function=activation_function
+                                         )
+
+        def replace_conv(self):
+            # iterate on every feature and replace conv2d with bayesian conv2d
+            features = self.features
+            for i, layer in enumerate(features):
+                if isinstance(layer, torch.nn.Conv2d):
+                    bayesian_conv = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size[0], stride=layer.stride[0],
+                                                    padding=layer.padding[0], bias=self.bias, sigma_init=self.sigma_init*self.sigma_multiplier, device=self.device)
+                    bayesian_conv.weight_mu.data = layer.weight.data.clone()
+                    if self.bias:
+                        bayesian_conv.bias_mu.data = layer.bias.data.clone()
+                    features[i] = bayesian_conv
+            return features.to(self.device)
 
         def _activation_init(self):
             """
@@ -123,7 +159,18 @@ for i, name in enumerate(CLASS_LIST):
 
             """
             for layer in self.features:
-                x = layer(x)
+                if isinstance(layer, MetaBayesConv2d):
+                    x = layer(
+                        x, self.n_samples_forward if self.n_samples_forward > 1 else 1)
+                else:
+                    try:
+                        x = layer(x)
+                    except:
+                        # Normalization layers, but input is (n_samples, batch, features)
+                        shape = x.shape
+                        x = x.reshape([shape[0]*shape[1], *x.shape[2:]])
+                        x = layer(x)
+                        x = x.reshape([shape[0], shape[1], *x.shape[1:]])
             return self.classifier.forward(x)
 
         # add number of parameters total
