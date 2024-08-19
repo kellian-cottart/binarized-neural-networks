@@ -3,6 +3,7 @@ from torch.nn import *
 from .bayesianNeuralNetwork import BayesianNN
 from .layers import *
 from .layers.activation import *
+from torchvision.models import vgg16, VGG16_Weights
 
 
 class MidVGGBayesian(Module):
@@ -63,14 +64,12 @@ class MidVGGBayesian(Module):
         self.n_samples_forward = n_samples_forward
         self.sigma_multiplier = sigma_multiplier
         # retrieve weights from VGG16
-        vgg16 = torch.hub.load('pytorch/vision:v0.9.0',
-                               'vgg16', pretrained=True)
-        # freeze weights
+        vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
+        self.features = torch.nn.ModuleList(
+            list(vgg.features.children())).to(self.device)
         if bayesian_convolution == True:
             self.features = self.make_vgg16()
         else:
-            self.features = torch.nn.ModuleList(
-                list(vgg16.features.children())).to(self.device)
             for param in self.features.parameters():
                 param.requires_grad = False
                 param.grad = None
@@ -94,11 +93,8 @@ class MidVGGBayesian(Module):
                                      )
 
     def make_vgg16(self):
-        # save vgg16 features
-        vgg16 = torch.hub.load('pytorch/vision:v0.9.0',
-                               'vgg16', weights="DEFAULT")
-        features = torch.nn.ModuleList(vgg16.features.children())
         # iterate on every feature and replace conv2d with bayesian conv2d
+        features = self.features
         for i, layer in enumerate(features):
             if isinstance(layer, torch.nn.Conv2d):
                 bayesian_conv = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size[0], stride=layer.stride[0],
