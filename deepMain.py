@@ -32,7 +32,7 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 0,
-            "nn_type": models.EfficientNetb0,
+            "nn_type": models.EfficientNetBayesianb0,
             "nn_parameters": {
                 # NETWORK ###
                 "layers": [40960, 512],
@@ -82,12 +82,12 @@ if __name__ == "__main__":
             #     "N": 20_000,
             #     "normalize_gradients": False,
             # },
-            # "optimizer": MESU,
-            # "optimizer_parameters": {
-            #     "sigma_prior": 0.05,
-            #     "N": 1e5,
-            #     "clamp_grad": 1,
-            # },
+            "optimizer": MESU,
+            "optimizer_parameters": {
+                "sigma_prior": 0.05,
+                "N": 1e5,
+                "clamp_grad": 1,
+            },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
             #     "train_set_size": 10000,
@@ -100,8 +100,8 @@ if __name__ == "__main__":
             # },
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
-            "optimizer": torch.optim.SGD,
-            "optimizer_parameters": {"lr": 0.0001, "momentum": 0},
+            # "optimizer": torch.optim.SGD,
+            # "optimizer_parameters": {"lr": 0.0001, "momentum": 0},
             "task": "core50-ni",
             "n_tasks": 8,
             "n_classes": 1,
@@ -110,7 +110,7 @@ if __name__ == "__main__":
 
     for index, data in enumerate(networks_data):
         ### FOLDER INITIALIZATION ###
-        name = f"{data['optimizer'].__name__}-BS{data['training_parameters']['batch_size']}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers']])}-{data['task']}-{data['nn_parameters']['activation_function']}"
+        name = f"{data['optimizer'].__name__}-" + f"{data["nn_type"].__name__}" + f"-BS{data['training_parameters']['batch_size']}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers']])}-{data['task']}-{data['nn_parameters']['activation_function']}"
         ### ACCURACY INITIALIZATION ###
         accuracies, training_accuracies = [], []
         batch_size = data['training_parameters']['batch_size']
@@ -121,9 +121,8 @@ if __name__ == "__main__":
             task=data["task"], n_tasks=data["n_tasks"], batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"])
         # add input/output size to the layer of the network parameters
         if "Conv" in data["nn_type"].__name__:
-            name += "-conv-" + \
-                "-".join([str(feature)
-                         for feature in data['nn_parameters']['features']])
+            name += "-".join([str(feature)
+                             for feature in data['nn_parameters']['features']])
             data['nn_parameters']['features'].insert(
                 0, shape[0])
         elif not "EfficientNet" in data["nn_type"].__name__ or "VGG" in data["nn_type"].__name__:
