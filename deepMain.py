@@ -32,10 +32,10 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 0,
-            "nn_type": models.EfficientNetBayesianb0,
+            "nn_type": models.EfficientNetBayesian,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [40960, 512],
+                "layers": [20480, 512],
                 "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
@@ -43,8 +43,8 @@ if __name__ == "__main__":
                 "dropout": False,
                 "init": "gaussian",
                 "std": 0.1,
-                "n_samples_forward": 3,
-                "n_samples_backward": 3,
+                "n_samples_test": 3,
+                "n_samples_train": 3,
                 "tau": 1,
                 "activation_function": "relu",
                 "activation_parameters": {
@@ -59,6 +59,7 @@ if __name__ == "__main__":
                 "bias": True,
                 "frozen": False,
                 "sigma_multiplier": 1e-1,
+                "version": 0,
             },
             "training_parameters": {
                 'n_epochs': 5,
@@ -110,15 +111,13 @@ if __name__ == "__main__":
 
     for index, data in enumerate(networks_data):
         ### FOLDER INITIALIZATION ###
-        name = f"{data['optimizer'].__name__}-" + f"{data["nn_type"].__name__}" + f"-BS{data['training_parameters']['batch_size']}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers']])}-{data['task']}-{data['nn_parameters']['activation_function']}"
+        name = f"{data['optimizer'].__name__}-" + f"{data['nn_type'].__name__}" + \
+            f"-BS{data['training_parameters']['batch_size']}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers']])}-{data['task']}-{data['nn_parameters']['activation_function']}"
         ### ACCURACY INITIALIZATION ###
         accuracies, training_accuracies = [], []
         batch_size = data['training_parameters']['batch_size']
         feature_extraction = data['training_parameters']['feature_extraction'] if "feature_extraction" in data["training_parameters"] else False
         data_aug_it = data['training_parameters']['data_aug_it'] if "data_aug_it" in data["training_parameters"] else None
-        ### LOADING DATASET ###
-        train_dataset, test_dataset, shape, target_size = loader.task_selection(
-            task=data["task"], n_tasks=data["n_tasks"], batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"])
         # add input/output size to the layer of the network parameters
         if "Conv" in data["nn_type"].__name__:
             name += "-".join([str(feature)
@@ -128,13 +127,17 @@ if __name__ == "__main__":
         elif not "EfficientNet" in data["nn_type"].__name__ or "VGG" in data["nn_type"].__name__:
             data['nn_parameters']['layers'].insert(
                 0, torch.prod(torch.tensor(shape)))
-        data['nn_parameters']['layers'].append(target_size)
         ### MAIN FOLDER ###
         main_folder = os.path.join(SAVE_FOLDER, RUN_ID+name)
         for iteration in range(N_NETWORKS):
-            ### INIT NETWORK ###
+            ### SEEDING ###
             torch.manual_seed(SEED + iteration)
             torch.cuda.manual_seed(SEED + iteration)
+            ### LOADING DATASET ###
+            train_dataset, test_dataset, shape, target_size = loader.task_selection(
+                task=data["task"], n_tasks=data["n_tasks"], batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"], run=iteration)
+            if iteration == 0:
+                data['nn_parameters']['layers'].append(target_size)
             # Instantiate the network
             model = data['nn_type'](**data['nn_parameters'])
             print(model)

@@ -13,18 +13,18 @@ class BayesianNN(DNN):
                  layers,
                  zeroMean=False,
                  std=0.1,
-                 n_samples_forward=1,
+                 n_samples_train=1,
                  *args,
                  **kwargs):
         """ NN initialization
 
         Args:
-            n_samples_forward (int): Number of forward samples
+            n_samples_train (int): Number of forward samples
             n_samples_backward (int): Number of backward samples
         """
         self.zeroMean = zeroMean
         self.sigma_init = std
-        self.n_samples_forward = n_samples_forward
+        self.n_samples_train = n_samples_train
         super().__init__(layers, *args, **kwargs)
 
     def _layer_init(self, layers, bias=False):
@@ -69,7 +69,7 @@ class BayesianNN(DNN):
         ### FORWARD PASS ###
         for layer in self.layers:
             if isinstance(layer, MetaBayesLinearParallel):
-                x = layer(x, self.n_samples_forward)
+                x = layer(x, self.n_samples_train)
             else:
                 try:
                     x = layer(x)

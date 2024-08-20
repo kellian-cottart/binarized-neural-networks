@@ -68,7 +68,7 @@ class GPULoading:
         elif "core50" in task.lower():
             scenario = task.split("-")[1]
             train, test = self.core50(
-                scenario=scenario, run=0, *args, **kwargs)
+                scenario=scenario, *args, **kwargs)
         if isinstance(train, GPUTensorDataset):
             shape = train.data[0].shape
             target_size = len(train.targets.unique())

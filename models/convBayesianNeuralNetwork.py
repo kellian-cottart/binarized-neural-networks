@@ -13,7 +13,7 @@ class ConvBayesianNeuralNetwork(ConvNN):
     def __init__(self,
                  layers: list = [1024, 1024, 10],
                  features: list = [64, 128, 256],
-                 n_samples_forward: int = 1,
+                 n_samples_train: int = 1,
                  zeroMean: bool = False,
                  init: str = "uniform",
                  std: float = 0.01,
@@ -37,14 +37,14 @@ class ConvBayesianNeuralNetwork(ConvNN):
 
         self.zeroMean = zeroMean
         self.sigma_init = std
-        self.n_samples_forward = n_samples_forward
+        self.n_samples_train = n_samples_train
         super().__init__(layers=layers, features=features, init=init, std=std, device=device,
                          dropout=dropout, normalization=normalization, bias=bias,
                          running_stats=running_stats, affine=affine, eps=eps, momentum=momentum,
                          activation_function=activation_function, output_function=output_function,
                          kernel_size=kernel_size, padding=padding, stride=stride, dilation=dilation,
                          gnnum_groups=gnnum_groups, *args, **kwargs)
-        self.classifier = BayesianNN(layers=layers, zeroMean=zeroMean, sigma_init=std, n_samples_forward=n_samples_forward, device=device, init=init, std=std, dropout=dropout, normalization=normalization,
+        self.classifier = BayesianNN(layers=layers, zeroMean=zeroMean, sigma_init=std, n_samples_train=n_samples_train, device=device, init=init, std=std, dropout=dropout, normalization=normalization,
                                      bias=bias, running_stats=running_stats, affine=affine, eps=eps, momentum=momentum, activation_function=activation_function, output_function=output_function, *args, **kwargs)
 
     def _features_init(self, features, bias=False):
@@ -77,7 +77,7 @@ class ConvBayesianNeuralNetwork(ConvNN):
         """Forward propagation of the binarized neural network"""
         for layer in self.features:
             if isinstance(layer, MetaBayesConv2d):
-                x = layer(x, self.n_samples_forward)
+                x = layer(x, self.n_samples_train)
             else:
                 try:
                     x = layer(x)
@@ -90,4 +90,4 @@ class ConvBayesianNeuralNetwork(ConvNN):
         return self.classifier.forward(x, backwards=backwards)
 
     def extra_repr(self) -> str:
-        return super().extra_repr() + f", n_samples_forward={self.n_samples_forward}, zeroMean={self.zeroMean}, sigma_init={self.sigma_init}"
+        return super().extra_repr() + f", n_samples_train={self.n_samples_train}, zeroMean={self.zeroMean}, sigma_init={self.sigma_init}"

@@ -11,8 +11,8 @@ class BiBayesianNN(DNN):
 
     def __init__(self,
                  layers,
-                 n_samples_forward: int = 1,
-                 n_samples_backward: int = 1,
+                 n_samples_test: int = 1,
+                 n_samples_train: int = 1,
                  tau: float = 1,
                  binarized: bool = False,
                  *args,
@@ -20,12 +20,12 @@ class BiBayesianNN(DNN):
         """ NN initialization
 
         Args:
-            n_samples_forward (int): Number of forward samples
-            n_samples_backward (int): Number of backward samples
+            n_samples_test (int): Number of forward samples
+            n_samples_train (int): Number of backward samples
         """
         self.tau = tau
-        self.n_samples_forward = n_samples_forward
-        self.n_samples_backward = n_samples_backward
+        self.n_samples_test = n_samples_test
+        self.n_samples_train = n_samples_train
         self.binarized = binarized
         super().__init__(layers, *args, **kwargs)
 
@@ -69,9 +69,9 @@ class BiBayesianNN(DNN):
         for layer in self.layers:
             if isinstance(layer, BiBayesianLinear):
                 if backwards:
-                    x = layer(x, self.n_samples_backward)
+                    x = layer(x, self.n_samples_train)
                 else:
-                    x = layer.sample(x, self.n_samples_forward)
+                    x = layer.sample(x, self.n_samples_test)
             else:
                 try:
                     x = layer(x)

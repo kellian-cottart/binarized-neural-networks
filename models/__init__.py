@@ -10,3 +10,4 @@ from .midvgg import *
 from .midvggbibayesian import *
 from .midvggbayesian import *
 from .efficientnet import *
+from .efficientnetbayesian import *

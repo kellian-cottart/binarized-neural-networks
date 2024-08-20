@@ -23,8 +23,8 @@ class MidVGGBiBayesian(Module):
                  momentum: float = 0.15,
                  activation_function: str = "relu",
                  gnnum_groups: int = 32,
-                 n_samples_backward: int = 1,
-                 n_samples_forward: int = 1,
+                 n_samples_train: int = 1,
+                 n_samples_test: int = 1,
                  tau: float = 1.0,
                  frozen=False,
                  *args,
@@ -69,8 +69,8 @@ class MidVGGBiBayesian(Module):
                 param.grad = None
         ## CLASSIFIER INITIALIZATION ##
         self.classifier = BiBayesianNN(layers=layers,
-                                       n_samples_backward=n_samples_backward,
-                                       n_samples_forward=n_samples_forward,
+                                       n_samples_train=n_samples_train,
+                                       n_samples_test=n_samples_test,
                                        tau=tau,
                                        device=device,
                                        dropout=dropout,

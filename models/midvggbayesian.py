@@ -24,7 +24,7 @@ class MidVGGBayesian(Module):
                  momentum: float = 0.15,
                  activation_function: str = "relu",
                  gnnum_groups: int = 32,
-                 n_samples_forward: int = 1,
+                 n_samples_train: int = 1,
                  zeroMean=False,
                  frozen=False,
                  sigma_multiplier=1,
@@ -61,7 +61,7 @@ class MidVGGBayesian(Module):
         self.bias = bias
         self.sigma_init = std
         self.activation_function = activation_function
-        self.n_samples_forward = n_samples_forward
+        self.n_samples_train = n_samples_train
         self.sigma_multiplier = sigma_multiplier
         # retrieve weights from VGG16
         vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
@@ -76,7 +76,7 @@ class MidVGGBayesian(Module):
 
         ## CLASSIFIER INITIALIZATION ##
         self.classifier = BayesianNN(layers=layers,
-                                     n_samples_forward=n_samples_forward,
+                                     n_samples_train=n_samples_train,
                                      zeroMean=zeroMean,
                                      sigma_init=std,
                                      device=device,
@@ -93,19 +93,26 @@ class MidVGGBayesian(Module):
                                      activation_function=activation_function
                                      )
 
-    def replace_conv(self):
-        # iterate on every feature and replace conv2d with bayesian conv2d
-        features = self.features
-        for i, layer in enumerate(features):
+    def replace_conv(self, module_list):
+        # our goal is to replace every Conv2d layer with a BayesianConv2d layer
+        # module_list is a torch.nn.ModuleList that can contain other ModuleLists or Sequential objects
+        # we need to iterate over all of them and replace the Conv2d layers
+        for i, layer in enumerate(module_list):
             if isinstance(layer, torch.nn.Conv2d):
-                bayesian_conv = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size[0], stride=layer.stride[0],
-                                                padding=layer.padding[0], bias=self.bias, sigma_init=self.sigma_init*self.sigma_multiplier, device=self.device)
-                # replace the mean value of the weights of the bayesian conv2d with the weights of the vgg16
-                bayesian_conv.weight_mu.data = layer.weight.data.clone()
-                if self.bias:
-                    bayesian_conv.bias_mu.data = layer.bias.data.clone()
-                features[i] = bayesian_conv
-        return features.to(self.device)
+                # replace the layer
+                new_layer = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size[0], stride=layer.stride[0],
+                                            padding=layer.padding[0], bias=self.bias, sigma_init=self.sigma_init*self.sigma_multiplier, device=self.device)
+                new_layer.weight_mu.data = layer.weight.data.clone()
+                if layer.bias is not None:
+                    new_layer.bias_mu.data = layer.bias.data.clone()
+                module_list[i] = new_layer
+            elif isinstance(layer, torch.nn.ModuleList):
+                # if the layer is a ModuleList, we need to iterate over it
+                module_list[i] = self.replace_conv(layer)
+            elif isinstance(layer, torch.nn.Sequential):
+                # if the layer is a Sequential, we need to iterate over it
+                module_list[i] = self.replace_conv(layer)
+        return module_list
 
     def _activation_init(self):
         """
@@ -153,7 +160,7 @@ class MidVGGBayesian(Module):
         for layer in self.features:
             if isinstance(layer, MetaBayesConv2d):
                 x = layer(
-                    x, self.n_samples_forward if self.n_samples_forward > 1 else 1)
+                    x, self.n_samples_train if self.n_samples_train > 1 else 1)
             else:
                 try:
                     x = layer(x)

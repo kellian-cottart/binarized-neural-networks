@@ -14,8 +14,8 @@ class ConvBiBayesianNeuralNetwork(ConvNN):
                  layers: list = [1024, 1024, 10],
                  features: list = [64, 128, 256],
                  tau=1.0,
-                 n_samples_forward: int = 1,
-                 n_samples_backward: int = 1,
+                 n_samples_test: int = 1,
+                 n_samples_train: int = 1,
                  init: str = "uniform",
                  std: float = 0.01,
                  device: str = "cuda:0",
@@ -37,8 +37,8 @@ class ConvBiBayesianNeuralNetwork(ConvNN):
                  **kwargs):
 
         self.tau = tau
-        self.n_samples_forward = n_samples_forward
-        self.n_samples_backward = n_samples_backward
+        self.n_samples_test = n_samples_test
+        self.n_samples_train = n_samples_train
         super().__init__(layers=layers, features=features, init=init, std=std, device=device,
                          dropout=dropout, normalization=normalization, bias=bias,
                          running_stats=running_stats, affine=affine, eps=eps, momentum=momentum,
@@ -49,7 +49,7 @@ class ConvBiBayesianNeuralNetwork(ConvNN):
                                        dropout=dropout, normalization=normalization, bias=bias,
                                        running_stats=running_stats, affine=affine, eps=eps, momentum=momentum,
                                        activation_function=activation_function, output_function=output_function,
-                                       tau=tau, n_samples_forward=n_samples_forward, n_samples_backward=n_samples_backward)
+                                       tau=tau, n_samples_test=n_samples_test, n_samples_train=n_samples_train)
 
     def _features_init(self, features, bias=False):
         """ Initialize layers of the network for convolutional layers
@@ -79,9 +79,9 @@ class ConvBiBayesianNeuralNetwork(ConvNN):
         for layer in self.features:
             if isinstance(layer, BiBayesianConv):
                 if backwards == True:
-                    x = layer.forward(x, self.n_samples_backward)
+                    x = layer.forward(x, self.n_samples_train)
                 else:
-                    x = layer.sample(x, self.n_samples_forward)
+                    x = layer.sample(x, self.n_samples_test)
             else:
                 try:
                     x = layer(x)
@@ -94,4 +94,4 @@ class ConvBiBayesianNeuralNetwork(ConvNN):
         return self.classifier.forward(x, backwards=backwards)
 
     def extra_repr(self) -> str:
-        return super().extra_repr() + f", tau={self.tau}, n_samples_forward={self.n_samples_forward}, n_samples_backward={self.n_samples_backward}"
+        return super().extra_repr() + f", tau={self.tau}, n_samples_test={self.n_samples_test}, n_samples_train={self.n_samples_train}"
