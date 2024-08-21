@@ -123,8 +123,8 @@ class EfficientNetBayesian(Module):
             MetaBayesianAdaptiveAvgPool2d(
                 output_size=layer.avgpool.output_size),
             self.conv_to_bayesian(layer.fc1),
-            self.conv_to_bayesian(layer.fc2),
             layer.activation,
+            self.conv_to_bayesian(layer.fc2),
             layer.scale_activation,
         )
 
@@ -137,13 +137,14 @@ class EfficientNetBayesian(Module):
                 new_layer = self.conv_to_bayesian(elem)
             # BatchNorm doesn't really work well with Bayesian, so we replace it with an Identity
             elif isinstance(elem, torch.nn.BatchNorm2d):
-                new_layer = MetaBayesBatchNorm2d(num_features=elem.num_features, eps=elem.eps,
-                                                 momentum=elem.momentum, affine=elem.affine, track_running_stats=elem.track_running_stats)
-                if elem.affine:
-                    new_layer.weight.mu.data = elem.weight.data.clone()
-                    new_layer.bias.mu.data = elem.bias.data.clone()
-                    new_layer.running_mean.data = elem.running_mean.data.clone()
-                    new_layer.running_var.data = elem.running_var.data.clone()
+                # new_layer = MetaBayesBatchNorm2d(num_features=elem.num_features, eps=elem.eps,
+                #                                  momentum=elem.momentum, affine=elem.affine, track_running_stats=elem.track_running_stats)
+                # if elem.affine:
+                #     new_layer.weight.mu.data = elem.weight.data.clone()
+                #     new_layer.bias.mu.data = elem.bias.data.clone()
+                #     new_layer.running_mean.data = elem.running_mean.data.clone()
+                #     new_layer.running_var.data = elem.running_var.data.clone()
+                new_layer = torch.nn.Identity()
             elif isinstance(elem, torch.nn.AdaptiveAvgPool2d):
                 new_layer = MetaBayesianAdaptiveAvgPool2d(
                     output_size=elem.output_size)
@@ -204,8 +205,7 @@ class EfficientNetBayesian(Module):
             torch.Tensor: Output tensor
 
         """
-        features = MetaBayesSequential(*self.features)
-        x = features(x, self.n_samples_train)
+        x = MetaBayesSequential(*self.features)(x, self.n_samples_train)
         return self.classifier.forward(x)
 
     # add number of parameters total

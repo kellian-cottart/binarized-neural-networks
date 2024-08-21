@@ -87,7 +87,7 @@ class ConvBayesianNeuralNetwork(ConvNN):
                     x = x.reshape([shape[0]*shape[1], *x.shape[2:]])
                     x = layer(x)
                     x = x.reshape([shape[0], shape[1], *x.shape[1:]])
-        return self.classifier.forward(x, backwards=backwards)
+        return self.classifier(x)
 
     def extra_repr(self) -> str:
         return super().extra_repr() + f", n_samples_train={self.n_samples_train}, zeroMean={self.zeroMean}, sigma_init={self.sigma_init}"

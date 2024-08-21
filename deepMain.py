@@ -36,6 +36,8 @@ if __name__ == "__main__":
             "nn_parameters": {
                 # NETWORK ###
                 "layers": [1280],
+                # "features": [16, 32],
+                "kernel_size": [3, 3, 3],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
@@ -56,11 +58,11 @@ if __name__ == "__main__":
                 "affine": False,
                 "bias": True,
                 "frozen": False,
-                "sigma_multiplier": 1e-2,
+                "sigma_multiplier": 1e-3,
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 1,
+                'n_epochs': 5,
                 'batch_size': 128,
                 'test_batch_size': 128,
                 'feature_extraction': False,
@@ -131,7 +133,7 @@ if __name__ == "__main__":
                 task=data["task"], n_tasks=data["n_tasks"], batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"], run=iteration)
             if iteration == 0:
                 data['nn_parameters']['layers'].append(target_size)
-                if "features" in data['nn_parameters']:
+                if "conv" in data["nn_type"].__name__.lower():
                     data['nn_parameters']['features'].insert(
                         0, shape[0])  # Add the input size
                 # Add the input size
