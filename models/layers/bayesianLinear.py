@@ -20,25 +20,19 @@ class MetaBayesLinearParallel(Module):
         self.out_features = out_features
 
         # Initialize weight parameters
-        self.weight_sigma = Parameter(torch.empty(
-            (out_features, in_features), **factory_kwargs))
-        self.weight_mu = Parameter(torch.empty(
-            (out_features, in_features), **factory_kwargs))
         self.bound = math.sqrt(2/in_features)
         self.sigma_init = sigma_init
-
-        self.weight = GaussianParameter(self.weight_mu, self.weight_sigma)
+        self.weight = GaussianParameter(out_features=out_features,
+                                        in_features=in_features,
+                                        **factory_kwargs)
 
         # Control for zero mean initialization
         self.zeroMean = zeroMean
 
         # Initialize bias if applicable
         if bias:
-            self.bias_sigma = Parameter(
-                torch.empty(out_features, **factory_kwargs))
-            self.bias_mu = Parameter(torch.empty(
-                out_features, **factory_kwargs))
-            self.bias = GaussianParameter(self.bias_mu, self.bias_sigma)
+            self.bias = GaussianParameter(out_features=out_features,
+                                          **factory_kwargs)
         else:
             self.register_parameter('bias', None)
 
@@ -48,15 +42,15 @@ class MetaBayesLinearParallel(Module):
         """Initialize the parameters."""
         if self.zeroMean:
             # put all the mean value to zero
-            init.uniform_(self.weight_mu, 0)
+            init.uniform_(self.weight.mu, 0)
         else:
             # like kaiming uniform initialisation
-            init.uniform_(self.weight_mu, -self.bound, self.bound)
-        init.constant_(self.weight_sigma, self.sigma_init)
+            init.uniform_(self.weight.mu, -self.bound, self.bound)
+        init.constant_(self.weight.sigma, self.sigma_init)
         if self.bias is not None:
             # bias mean value always intialize to zero
-            init.constant_(self.bias_mu, 0)
-            init.constant_(self.bias_sigma, self.sigma_init)
+            init.constant_(self.bias.mu, 0)
+            init.constant_(self.bias.sigma, self.sigma_init)
 
     def forward(self, x: Tensor, samples: int) -> Tensor:
         """Forward pass using sampled weights and biases."""

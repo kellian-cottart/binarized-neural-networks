@@ -35,7 +35,7 @@ if __name__ == "__main__":
             "nn_type": models.BayesianNN,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [1280, 512],
+                "layers": [200, 200],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
@@ -49,7 +49,7 @@ if __name__ == "__main__":
                     "width": 1,
                     "power": 4
                 },
-                "normalization": "batchnorm",
+                "normalization": "",
                 "eps": 1e-5,
                 "momentum": 0,
                 "running_stats": False,
@@ -83,7 +83,7 @@ if __name__ == "__main__":
             # },
             "optimizer": MESU,
             "optimizer_parameters": {
-                "sigma_prior": 0.05,
+                "sigma_prior": 0.1,
                 "N": 1e5,
                 "clamp_grad": 1,
             },

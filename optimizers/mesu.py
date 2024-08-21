@@ -3,7 +3,7 @@
 """
 Created on Wed Jul 31 16:10:54 2024
 
-@author: Dr Djo ;) 
+@author: Dr Djo ;)
 """
 
 import torch
@@ -80,17 +80,12 @@ def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: in
     if len(params) % 2 == 1:
         raise ValueError(
             'Parameters must include both Sigma and Mu in each group.')
-
-    for i, param in enumerate(params):
-        d_p = d_p_list[i]
+    for mu, sigma, grad_mu, grad_sigma in zip(params[::2], params[1::2], d_p_list[::2], d_p_list[1::2]):
         if clamp_grad > 0:
-            d_p = torch.clamp(d_p, -clamp_grad, clamp_grad)
-
-        is_sigma = (i % 2 == 0)
-        if is_sigma:
-            variance = param.data ** 2
-            param.data.add_(-0.5 * variance * d_p + param.data *
-                            (sigma_prior ** 2 - variance) / (N * sigma_prior ** 2))
-        else:
-            param.data.add_(-variance * d_p - variance *
-                            param.data / (N * sigma_prior ** 2))
+            grad_mu.data.clamp_(-clamp_grad, clamp_grad)
+            grad_sigma.data.clamp_(-clamp_grad, clamp_grad)
+        variance = sigma.data ** 2
+        mu.data.add_(-variance * grad_mu - variance *
+                     mu.data / (N * sigma_prior ** 2))
+        sigma.data.add_(-0.5 * variance * grad_sigma + sigma.data *
+                        (sigma_prior ** 2 - variance) / (N * sigma_prior ** 2))

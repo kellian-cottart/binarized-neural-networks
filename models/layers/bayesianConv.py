@@ -101,20 +101,15 @@ class MetaBayesConvNd(Module):
                 self.padding, 2)
 
         ## WEIGHTS INITIALIZATION ##
-        self.weight_sigma = Parameter(
-            torch.empty(out_channels, in_channels // groups, *kernel_size, **factory_kwargs) if not transposed else torch.empty(
-                in_channels // groups, out_channels, *kernel_size, **factory_kwargs)
-        )
-        self.weight_mu = Parameter(
-            torch.empty_like(self.weight_sigma))
-        self.weight = GaussianParameter(self.weight_mu, self.weight_sigma)
-
+        self.weight = GaussianParameter(
+            out_features=out_channels,
+            in_features=in_channels // groups,
+            kernel_size=kernel_size,
+            **factory_kwargs)
         if bias == True:
-            self.bias_sigma = Parameter(
-                torch.empty(out_channels, **factory_kwargs))
-            self.bias_mu = Parameter(
-                torch.empty_like(self.bias_sigma))
-            self.bias = GaussianParameter(self.bias_mu, self.bias_sigma)
+            self.bias = GaussianParameter(
+                out_features=out_channels,
+                **factory_kwargs)
         else:
             self.register_parameter('bias', None)
 
@@ -124,14 +119,14 @@ class MetaBayesConvNd(Module):
         # Setting a=sqrt(5) in kaiming_uniform is the same as initializing with
         # uniform(-1/sqrt(k), 1/sqrt(k)), where k = weight.size(1) * prod(*kernel_size)
         # For more details see: https://github.com/pytorch/pytorch/issues/15314#issuecomment-477448573
-        fan_in, fan_out = init._calculate_fan_in_and_fan_out(self.weight_mu)
+        fan_in, fan_out = init._calculate_fan_in_and_fan_out(self.weight.mu)
         self.bound = math.sqrt(6/(fan_in+fan_out))
-        init.uniform_(self.weight_mu, -self.bound, self.bound)
-        init.constant_(self.weight_sigma, self.sigma_init)
+        init.uniform_(self.weight.mu, -self.bound, self.bound)
+        init.constant_(self.weight.sigma, self.sigma_init)
         if self.bias is not None:
             if fan_in != 0:
-                init.constant_(self.bias_mu, 0)
-                init.constant_(self.bias_sigma, self.sigma_init)
+                init.constant_(self.bias.mu, 0)
+                init.constant_(self.bias.sigma, self.sigma_init)
 
     def extra_repr(self):
         s = ('{in_channels}, {out_channels}, kernel_size={kernel_size}'
