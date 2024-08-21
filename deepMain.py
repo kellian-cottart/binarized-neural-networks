@@ -13,7 +13,7 @@ import datetime
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0")
-GRAPHS = False
+GRAPHS = True
 MODULO = 10
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
@@ -35,24 +35,24 @@ if __name__ == "__main__":
             "nn_type": models.BayesianNN,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [200, 200],
+                "layers": [400],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
                 "std": 0.1,
-                "n_samples_test": 1,
-                "n_samples_train": 1,
+                "n_samples_test": 5,
+                "n_samples_train": 5,
                 "tau": 1,
                 "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
                     "power": 4
                 },
-                "normalization": "",
+                "normalization": "batchnorm",
                 "eps": 1e-5,
-                "momentum": 0,
-                "running_stats": False,
+                "momentum": 0.1,
+                "running_stats": True,
                 "affine": False,
                 "bias": True,
                 "frozen": False,
@@ -60,7 +60,7 @@ if __name__ == "__main__":
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 10,
+                'n_epochs': 20,
                 'batch_size': 128,
                 'test_batch_size': 128,
                 'feature_extraction': False,

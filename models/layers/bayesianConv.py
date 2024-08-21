@@ -193,10 +193,10 @@ class MetaBayesConv2d(MetaBayesConvNd):
             - the input of the neural network is not a monte carlo sample"""
         W = self.weight.sample(samples)
         W = W.view(W.size(0)*W.size(1), W.size(2), W.size(3), W.size(4))
-        if x.dim() == 4:
+        if x.dim() != W.dim():
             x = x.unsqueeze(0)
         if x.size(0) == 1:
-            x = x.repeat(samples, 1, 1, 1, 1)
+            x = x.repeat(samples, *([1]*(x.dim()-1)))
         x = x.view(x.size(1), x.size(0)*x.size(2), x.size(3), x.size(4))
         B = self.bias.sample(samples).flatten(
         ) if self.bias is not None else None
