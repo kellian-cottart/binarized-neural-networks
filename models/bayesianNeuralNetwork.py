@@ -34,7 +34,7 @@ class BayesianNN(DNN):
             dropout (bool): Whether to use dropout
             bias (bool): Whether to use bias
         """
-        self.layers.append(nn.Flatten(start_dim=2).to(self.device))
+        self.layers.append(nn.Flatten(start_dim=1).to(self.device))
         for i, _ in enumerate(layers[:-1]):
             # BiBayesian layers with BatchNorm
             if self.dropout and i != 0:
@@ -87,12 +87,8 @@ class BayesianNN(DNN):
             if "Meta" in layer.__class__.__name__:
                 x = layer(x, self.n_samples_train)
             else:
-                try:
-                    x = layer(x)
-                except:
-                    # Normalization layers, but input is (n_samples, batch, features)
-                    shape = x.shape
-                    x = x.reshape([shape[0]*shape[1], shape[2]])
-                    x = layer(x)
-                    x = x.reshape([shape[0], shape[1], shape[2]])
+                shape = x.shape
+                x = x.reshape([shape[0]*shape[1], shape[2]])
+                x = layer(x)
+                x = x.reshape([shape[0], shape[1], shape[2]])
         return x

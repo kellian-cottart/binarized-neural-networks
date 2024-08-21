@@ -102,9 +102,9 @@ class MidVGGBayesian(Module):
                 # replace the layer
                 new_layer = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size[0], stride=layer.stride[0],
                                             padding=layer.padding[0], bias=self.bias, sigma_init=self.sigma_init*self.sigma_multiplier, device=self.device)
-                new_layer.weight_mu.data = layer.weight.data.clone()
+                new_layer.weight.mu.data = layer.weight.data.clone()
                 if layer.bias is not None:
-                    new_layer.bias_mu.data = layer.bias.data.clone()
+                    new_layer.bias.mu.data = layer.bias.data.clone()
                 module_list[i] = new_layer
             elif isinstance(layer, torch.nn.ModuleList):
                 # if the layer is a ModuleList, we need to iterate over it

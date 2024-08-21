@@ -13,7 +13,7 @@ import datetime
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = torch.device("cuda:0")
-GRAPHS = True
+GRAPHS = False
 MODULO = 10
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
@@ -31,11 +31,11 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "image_padding": 2,
-            "nn_type": models.BayesianNN,
+            "image_padding": 0,
+            "nn_type": models.EfficientNetBayesian,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [400],
+                "layers": [1280],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
@@ -49,10 +49,10 @@ if __name__ == "__main__":
                     "width": 1,
                     "power": 4
                 },
-                "normalization": "batchnorm",
+                "normalization": "",
                 "eps": 1e-5,
                 "momentum": 0.1,
-                "running_stats": True,
+                "running_stats": False,
                 "affine": False,
                 "bias": True,
                 "frozen": False,
@@ -60,7 +60,7 @@ if __name__ == "__main__":
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 20,
+                'n_epochs': 1,
                 'batch_size': 128,
                 'test_batch_size': 128,
                 'feature_extraction': False,
@@ -101,8 +101,8 @@ if __name__ == "__main__":
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             # "optimizer": torch.optim.SGD,
             # "optimizer_parameters": {"lr": 0.0001, "momentum": 0},
-            "task": "PermutedMNIST",
-            "n_tasks": 10,
+            "task": "core50-ni",
+            "n_tasks": 8,
             "n_classes": 1,
         }
     ]
@@ -134,7 +134,8 @@ if __name__ == "__main__":
                 if "features" in data['nn_parameters']:
                     data['nn_parameters']['features'].insert(
                         0, shape[0])  # Add the input size
-                else:
+                # Add the input size
+                elif not "VGG" in data["nn_type"].__name__ and not "EfficientNet" in data["nn_type"].__name__:
                     data['nn_parameters']['layers'].insert(
                         0, torch.prod(torch.tensor(shape)))
 
