@@ -182,7 +182,7 @@ class MetaBayesBatchNorm1d(MetaBayesBatchNorm):
 
 
 class MetaBayesBatchNorm2d(MetaBayesBatchNorm):
-    def _check_input_dim(self, input):
+    def _check_input_dim(self, x):
         if x.dim() != 4 and x.dim() != 5:
             raise ValueError(
                 "expected 4D input or 5D input (got {}D input)".format(
