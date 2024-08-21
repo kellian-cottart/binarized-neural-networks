@@ -65,10 +65,10 @@ class EfficientNet(Module):
         self.version = version
         # retrieve weights from EfficientNet
         current = LOOK_UP_DICT[str(version)]
-        effnet = current["model"](weights=current["weights"].DEFAULT)
+        effnet = current["model"](weights=current["weights"].IMAGENET1K_V1)
         # remove classifier layers
-        self.features = torch.nn.ModuleList(
-            list(effnet.features.children())).to(self.device)
+        self.features = effnet.features
+        self.avgpool = effnet.avgpool
         # freeze feature extractor
         if frozen == True:
             for param in self.features.parameters():
@@ -121,8 +121,8 @@ class EfficientNet(Module):
             torch.Tensor: Output tensor
 
         """
-        for layer in self.features:
-            x = layer(x)
+        x = self.features(x)
+        x = self.avgpool(x)
         return self.classifier.forward(x)
 
     # add number of parameters total

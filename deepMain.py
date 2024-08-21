@@ -31,38 +31,36 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "image_padding": 0,
-            "nn_type": models.EfficientNetBayesian,
+            "image_padding": 2,
+            "nn_type": models.BayesianNN,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [20480, 512],
-                "features": [16, 32, 64],
-                "kernel_size": [3, 3, 3],
+                "layers": [1280, 512],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
                 "std": 0.1,
-                "n_samples_test": 3,
-                "n_samples_train": 3,
+                "n_samples_test": 1,
+                "n_samples_train": 1,
                 "tau": 1,
                 "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
                     "power": 4
                 },
-                "normalization": "",
+                "normalization": "batchnorm",
                 "eps": 1e-5,
                 "momentum": 0,
                 "running_stats": False,
                 "affine": False,
                 "bias": True,
                 "frozen": False,
-                "sigma_multiplier": 1e-1,
+                "sigma_multiplier": 1e-2,
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 5,
+                'n_epochs': 10,
                 'batch_size': 128,
                 'test_batch_size': 128,
                 'feature_extraction': False,
@@ -103,8 +101,8 @@ if __name__ == "__main__":
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             # "optimizer": torch.optim.SGD,
             # "optimizer_parameters": {"lr": 0.0001, "momentum": 0},
-            "task": "core50-ni",
-            "n_tasks": 8,
+            "task": "PermutedMNIST",
+            "n_tasks": 10,
             "n_classes": 1,
         }
     ]
@@ -122,11 +120,6 @@ if __name__ == "__main__":
         if "Conv" in data["nn_type"].__name__:
             name += "-".join([str(feature)
                              for feature in data['nn_parameters']['features']])
-            data['nn_parameters']['features'].insert(
-                0, shape[0])
-        elif not "EfficientNet" in data["nn_type"].__name__ or "VGG" in data["nn_type"].__name__:
-            data['nn_parameters']['layers'].insert(
-                0, torch.prod(torch.tensor(shape)))
         ### MAIN FOLDER ###
         main_folder = os.path.join(SAVE_FOLDER, RUN_ID+name)
         for iteration in range(N_NETWORKS):
@@ -138,6 +131,13 @@ if __name__ == "__main__":
                 task=data["task"], n_tasks=data["n_tasks"], batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"], run=iteration)
             if iteration == 0:
                 data['nn_parameters']['layers'].append(target_size)
+                if "features" in data['nn_parameters']:
+                    data['nn_parameters']['features'].insert(
+                        0, shape[0])  # Add the input size
+                else:
+                    data['nn_parameters']['layers'].insert(
+                        0, torch.prod(torch.tensor(shape)))
+
             # Instantiate the network
             model = data['nn_type'](**data['nn_parameters'])
             print(model)

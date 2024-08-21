@@ -61,6 +61,22 @@ class ConvBiNN(ConvNN):
                                running_stats=running_stats, affine=affine, eps=eps, momentum=momentum,
                                activation_function=activation_function, output_function=output_function)
 
+    def _norm_init(self, n_features):
+        """
+        Args:
+            n_features (int): Number of features
+
+        Returns:
+            torch.nn.Module: Normalization layer module
+        """
+        normalization_layers = {
+            "batchnorm": lambda: MetaBayesBatchNorm1d(n_features, eps=self.eps, momentum=self.momentum, affine=self.affine, track_running_stats=self.running_stats),
+            "layernorm": lambda: torch.nn.LayerNorm(n_features),
+            "instancenorm": lambda: torch.nn.InstanceNorm1d(n_features, eps=self.eps, affine=self.affine, track_running_stats=self.running_stats),
+            "groupnorm": lambda: torch.nn.GroupNorm(self.gnnum_groups, n_features),
+        }
+        return normalization_layers.get(self.normalization, torch.nn.Identity)().to(self.device)
+
     def _features_init(self, features, bias=False):
         """ Initialize layers of the network for convolutional layers
 

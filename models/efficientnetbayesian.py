@@ -76,48 +76,94 @@ class EfficientNetBayesian(Module):
         self.version = version
         # retrieve weights from EfficientNet
         current = LOOK_UP_DICT[str(version)]
-        effnet = current["model"](weights=current["weights"].DEFAULT)
+        effnet = current["model"](weights=current["weights"].IMAGENET1K_V1)
         self.features = torch.nn.ModuleList(
             list(effnet.features.children())).to(self.device)
         self.features = self.replace_conv(self.features)
+        self.avgpool = effnet.avgpool
         if frozen == True:
             for param in self.features.parameters():
                 param.requires_grad = False
                 param.grad = None
 
         ## CLASSIFIER INITIALIZATION ##
-        self.classifier = BayesianNN(layers=layers,
-                                     n_samples_train=n_samples_train,
-                                     zeroMean=zeroMean,
-                                     sigma_init=std,
-                                     device=device,
-                                     dropout=dropout,
-                                     init=init,
-                                     std=std,
-                                     normalization=normalization,
-                                     bias=bias,
-                                     running_stats=running_stats,
-                                     affine=affine,
-                                     eps=eps,
-                                     momentum=momentum,
-                                     gnnum_groups=gnnum_groups,
-                                     activation_function=activation_function
-                                     )
+        self.classifier = BayesianNN(
+            layers=layers,
+            n_samples_train=n_samples_train,
+            zeroMean=zeroMean,
+            sigma_init=std,
+            device=device,
+            dropout=dropout,
+            init=init,
+            std=std,
+            normalization=normalization,
+            bias=bias,
+            running_stats=running_stats,
+            affine=affine,
+            eps=eps,
+            momentum=momentum,
+            gnnum_groups=gnnum_groups,
+            activation_function=activation_function
+        )
+
+    def conv_to_bayesian(self, layer):
+        new_layer = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size[0], stride=layer.stride[0],
+                                    padding=layer.padding[0], bias=layer.bias is not None, sigma_init=self.sigma_init*self.sigma_multiplier, device=self.device, groups=layer.groups)
+        new_layer.weight_mu.data = layer.weight.data.clone()
+        if layer.bias is not None:
+            new_layer.bias_mu.data = layer.bias.data.clone()
+        return new_layer
+
+    def replace_excitation(self, layer):
+        """ Replace torchvision's SqueezeExcitation layer with a Bayesian one, by turning the whole layer into a ModuleList
+        https://github.com/pytorch/vision/blob/main/torchvision/ops/misc.py
+        """
+        new_layer = torch.nn.ModuleList()
+        new_layer.append(torch.nn.AdaptiveAvgPool2d(1))
+        new_layer.append(self.conv_to_bayesian(layer.fc1))
+        new_layer.append(self.conv_to_bayesian(layer.fc2))
+        new_layer.append(torch.nn.SiLU(inplace=True))
+        new_layer.append(torch.nn.Sigmoid())
+        return new_layer
+
+    def replace_convNorm(self, layer):
+        """ Replace torchvision's ConvNorm layer with a Bayesian one, by turning the whole layer into a ModuleList
+        """
+        new_module = torch.nn.ModuleList(layer.children())
+        for k, elem in enumerate(new_module):
+            if isinstance(elem, torch.nn.Conv2d):
+                new_module[k] = self.conv_to_bayesian(elem)
+        return new_module
+
+    def replace_mbconv(self, layer):
+        """ Replace torchvision's MBConv layer with a Bayesian one, by turning the whole layer into a ModuleList
+        https://github.com/pytorch/vision/blob/main/torchvision/models/efficientnet.py
+        """
+        # layer.block is a sequential that we turn into a ModuleList
+        new_layer = torch.nn.ModuleList(layer.block.children())
+        # replace the Conv2d layers
+        for i, iterable in enumerate(new_layer):
+            if "NormActivation" in iterable.__class__.__name__:
+                new_layer[i] = self.replace_convNorm(iterable)
+            elif "SqueezeExcitation" in iterable.__class__.__name__:
+                new_layer[i] = self.replace_excitation(iterable)
+        return new_layer
 
     def replace_conv(self, module_list):
         # our goal is to replace every Conv2d layer with a BayesianConv2d layer
         # module_list is a torch.nn.ModuleList that can contain other ModuleLists or Sequential objects
         # we need to iterate over all of them and replace the Conv2d layers
+        if not isinstance(module_list, torch.nn.ModuleList):
+            module_list = torch.nn.ModuleList(module_list.children())
         for i, layer in enumerate(module_list):
             if isinstance(layer, torch.nn.Conv2d):
                 # replace the layer
-                new_layer = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size[0], stride=layer.stride[0],
-                                            padding=layer.padding[0], bias=self.bias, sigma_init=self.sigma_init*self.sigma_multiplier, device=self.device)
-                new_layer.weight_mu.data = layer.weight.data.clone()
-                if layer.bias is not None:
-                    new_layer.bias_mu.data = layer.bias.data.clone()
-                module_list[i] = new_layer
+                module_list[i] = self.conv_to_bayesian(layer)
             # elif iterable
+            elif "MBConv" in layer.__class__.__name__:
+                module_list[i] = self.replace_mbconv(layer)
+            elif "NormActivation" in layer.__class__.__name__:
+                module_list[i] = self.replace_convNorm(layer)
             else:
                 try:
                     iterator = iter(layer)
@@ -125,40 +171,33 @@ class EfficientNetBayesian(Module):
                     continue
                 else:
                     module_list[i] = self.replace_conv(layer)
+
+        # Now, we will unpack all module lists into a single module list
+        while any(isinstance(layer, torch.nn.ModuleList) for layer in module_list):
+            new_module_list = torch.nn.ModuleList()
+            for layer in module_list:
+                if isinstance(layer, torch.nn.ModuleList):
+                    new_module_list.extend(layer)
+                else:
+                    new_module_list.append(layer)
+            module_list = new_module_list
+
         return module_list
 
-    def _activation_init(self):
-        """
-        Returns:
-            torch.nn.Module: Activation function module
-        """
-        activation_functions = {
-            "relu": torch.nn.ReLU,
-            "leaky_relu": torch.nn.LeakyReLU,
-            "tanh": torch.nn.Tanh,
-            "sign": SignActivation,
-            "squared": SquaredActivation,
-            "elephant": ElephantActivation,
-            "gate": GateActivation
-        }
-        # add parameters to activation function if needed
-        try:
-            return activation_functions.get(self.activation_function, torch.nn.Identity)(**self.activation_parameters).to(self.device)
-        except:
-            return activation_functions.get(self.activation_function, torch.nn.Identity)().to(self.device)
-
-    def _norm_init(self, n_features):
-        """Returns a layer of normalization"""
-        if self.normalization == "batchnorm":
-            return torch.nn.BatchNorm2d(n_features, eps=self.eps, momentum=self.momentum, affine=self.affine, track_running_stats=self.running_stats).to(self.device)
-        elif self.normalization == "layernorm":
-            return torch.nn.LayerNorm(n_features).to(self.device)
-        elif self.normalization == "instancenorm":
-            return torch.nn.InstanceNorm2d(n_features, eps=self.eps, momentum=self.momentum, affine=self.affine, track_running_stats=self.running_stats).to(self.device)
-        elif self.normalization == "groupnorm":
-            return torch.nn.GroupNorm(self.gnnum_groups, n_features).to(self.device)
+    def layer_forward(self, layer, x, *args, **kwargs):
+        if isinstance(layer, MetaBayesConv2d):
+            x = layer(
+                x, self.n_samples_train if self.n_samples_train > 1 else 1)
         else:
-            return torch.nn.Identity().to(self.device)
+            try:
+                x = layer(x)
+            except:
+                # Normalization layers, but input is (n_samples, batch, features)
+                shape = x.shape
+                x = x.reshape([shape[0]*shape[1], *x.shape[2:]])
+                x = layer(x)
+                x = x.reshape([shape[0], shape[1], *x.shape[1:]])
+        return x
 
     def forward(self, x, *args, **kwargs):
         """ Forward pass of DNN
@@ -171,18 +210,8 @@ class EfficientNetBayesian(Module):
 
         """
         for layer in self.features:
-            if isinstance(layer, MetaBayesConv2d):
-                x = layer(
-                    x, self.n_samples_train if self.n_samples_train > 1 else 1)
-            else:
-                try:
-                    x = layer(x)
-                except:
-                    # Normalization layers, but input is (n_samples, batch, features)
-                    shape = x.shape
-                    x = x.reshape([shape[0]*shape[1], *x.shape[2:]])
-                    x = layer(x)
-                    x = x.reshape([shape[0], shape[1], *x.shape[1:]])
+            x = self.layer_forward(layer, x)
+        x = self.avgpool(x)
         return self.classifier.forward(x)
 
     # add number of parameters total

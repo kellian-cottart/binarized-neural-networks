@@ -54,6 +54,22 @@ class BayesianNN(DNN):
     def _weight_init(self, init='normal', std=0.1):
         pass
 
+    def _norm_init(self, n_features):
+        """
+        Args:
+            n_features (int): Number of features
+
+        Returns:
+            torch.nn.Module: Normalization layer module
+        """
+        normalization_layers = {
+            "batchnorm": lambda: MetaBayesBatchNorm1d(n_features, eps=self.eps, momentum=self.momentum, affine=self.affine, track_running_stats=self.running_stats),
+            "layernorm": lambda: torch.nn.LayerNorm(n_features),
+            "instancenorm": lambda: torch.nn.InstanceNorm1d(n_features, eps=self.eps, affine=self.affine, track_running_stats=self.running_stats),
+            "groupnorm": lambda: torch.nn.GroupNorm(self.gnnum_groups, n_features),
+        }
+        return normalization_layers.get(self.normalization, torch.nn.Identity)().to(self.device)
+
     def forward(self, x, *args, **kwargs):
         """ Forward pass of DNN
 
@@ -68,7 +84,7 @@ class BayesianNN(DNN):
             x = x.unsqueeze(0)
         ### FORWARD PASS ###
         for layer in self.layers:
-            if isinstance(layer, MetaBayesLinearParallel):
+            if "Meta" in layer.__class__.__name__:
                 x = layer(x, self.n_samples_train)
             else:
                 try:

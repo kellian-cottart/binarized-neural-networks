@@ -8,27 +8,7 @@ from torch.nn.parameter import Parameter
 from torch.nn.modules.utils import _pair, _reverse_repeat_tuple
 from torch.nn.common_types import _size_2_t
 from typing import Optional, List, Tuple, Union
-
-
-class GaussianParameter:
-    """Object used to perform the reparametrization tricks in gaussian sampling and reshape the tensor of samples in the right shape to prevents a for loop over the number of sample"""
-
-    def __init__(self, mu, sigma):
-        super().__init__()
-        self.mu = mu  # Mean of the distribution
-        self.sigma = sigma  # Standard deviation of the distribution
-
-    def sample(self, samples=1):
-        """Sample from the Gaussian distribution using the reparameterization trick."""
-        # Sample from the standard normal and adjust with sigma and mu
-        if samples == 0:
-            return self.mu.unsqueeze(0)
-        buffer_epsilon = self.sigma.unsqueeze(0).repeat(
-            samples, *([1]*len(self.sigma.shape)))
-        epsilon = torch.empty_like(buffer_epsilon).normal_()
-        mu = self.mu.unsqueeze(0).repeat(
-            samples, *([1]*len(self.mu.shape)))
-        return mu + buffer_epsilon * epsilon
+from .gaussianParameter import *
 
 
 class MetaBayesConvNd(Module):
@@ -65,6 +45,7 @@ class MetaBayesConvNd(Module):
                  stride: Tuple[int, ...],
                  padding: Tuple[int, ...],
                  dilation: Tuple[int, ...],
+                 groups: int,
                  transposed: bool,
                  output_padding: Tuple[int, ...],
                  sigma_init: float,
@@ -99,6 +80,7 @@ class MetaBayesConvNd(Module):
         self.output_padding = output_padding
         self.padding_mode = padding_mode
         self.sigma_init = sigma_init
+        self.groups = groups
 
         # `_reversed_padding_repeated_twice` is the padding to be passed to
         # `F.pad` if needed (e.g., for non-zero padding types that are
@@ -118,24 +100,20 @@ class MetaBayesConvNd(Module):
             self._reversed_padding_repeated_twice = _reverse_repeat_tuple(
                 self.padding, 2)
 
-        if transposed == True:
-            self.weight_sigma = Parameter(torch.empty(
-                (in_channels, out_channels, *kernel_size), **factory_kwargs))
-            self.weight_mu = Parameter(torch.empty(
-                (in_channels, out_channels, *kernel_size), **factory_kwargs))
-
-        else:
-            self.weight_sigma = Parameter(torch.empty(
-                (out_channels, in_channels, *kernel_size), **factory_kwargs))
-            self.weight_mu = Parameter(torch.empty(
-                (out_channels, in_channels, *kernel_size), **factory_kwargs))
-
+        ## WEIGHTS INITIALIZATION ##
+        self.weight_sigma = Parameter(
+            torch.empty(out_channels, in_channels // groups, *kernel_size, **factory_kwargs) if not transposed else torch.empty(
+                in_channels // groups, out_channels, *kernel_size, **factory_kwargs)
+        )
+        self.weight_mu = Parameter(
+            torch.empty_like(self.weight_sigma))
         self.weight = GaussianParameter(self.weight_mu, self.weight_sigma)
+
         if bias == True:
             self.bias_sigma = Parameter(
                 torch.empty(out_channels, **factory_kwargs))
-            self.bias_mu = Parameter(torch.empty(
-                out_channels, **factory_kwargs))
+            self.bias_mu = Parameter(
+                torch.empty_like(self.bias_sigma))
             self.bias = GaussianParameter(self.bias_mu, self.bias_sigma)
         else:
             self.register_parameter('bias', None)
@@ -170,6 +148,8 @@ class MetaBayesConvNd(Module):
             s += ', bias=True'
         if self.padding_mode != 'zeros':
             s += ', padding_mode={padding_mode}'
+        if self.groups != 1:
+            s += ', groups={groups}'
         return s.format(**self.__dict__)
 
     def __setstate__(self, state):
@@ -188,6 +168,7 @@ class MetaBayesConv2d(MetaBayesConvNd):
             stride: _size_2_t = 1,
             padding: Union[str, _size_2_t] = 0,
             dilation: _size_2_t = 1,
+            groups: int = 1,
             sigma_init: float = 0.001 ** 0.5,
             bias: bool = True,
             padding_mode: str = 'zeros',  # TODO: refine this type
@@ -199,7 +180,7 @@ class MetaBayesConv2d(MetaBayesConvNd):
         padding_ = padding if isinstance(padding, str) else _pair(padding)
         dilation_ = _pair(dilation)
         super(MetaBayesConv2d, self).__init__(
-            in_channels, out_channels, kernel_size_, stride_, padding_, dilation_,
+            in_channels, out_channels, kernel_size_, stride_, padding_, dilation_, groups=groups,
             transposed=False, output_padding=_pair(0), sigma_init=sigma_init, bias=bias, padding_mode=padding_mode, **factory_kwargs)
 
     def _conv_forward(self, x: Tensor, weight: Tensor, bias: Optional[Tensor], samples=1):
@@ -207,13 +188,13 @@ class MetaBayesConv2d(MetaBayesConvNd):
         if self.padding_mode != 'zeros':
             return F.conv2d(F.pad(x, self._reversed_padding_repeated_twice, mode=self.padding_mode),
                             weight, bias, self.stride,
-                            _pair(0), self.dilation, groups=samples)
+                            _pair(0), self.dilation, groups=samples*self.groups)
         return F.conv2d(x, weight, bias, self.stride,
-                        self.padding, self.dilation, groups=samples)
+                        self.padding, self.dilation, groups=samples*self.groups)
 
     def forward(self, x: Tensor, samples=1) -> Tensor:
         """ The shapings are necessary to take into account that:
-            - feature map are made of monte carlo samples 
+            - feature map are made of monte carlo samples
             - the input of the neural network is not a monte carlo sample"""
         W = self.weight.sample(samples)
         W = W.view(W.size(0)*W.size(1), W.size(2), W.size(3), W.size(4))
