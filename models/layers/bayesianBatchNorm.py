@@ -160,8 +160,13 @@ class MetaBayesBatchNorm(MetaBayesNorm):
         """
         r"""
         About sampling:
-        Difficult to find the better strategy here. Should we have one running stat for every sample and make this layer dependant on the number of samples? Or we consider there is one running stat for all samples?
-        The implementation here is the second one, and I haven't find a way to truly parallelize the computation of the batch norm layer.
+        To paralellize the computations, the selected strategy is to sample weights and biases and run the running stats 
+        for each sample by duplicating the running stats the first time. Once it is duplicated, we update the previous 
+        stats with the new stats.
+        Possible issue:
+        When changing the number of samples, the running stats are not updated as we would like to during the forward.
+        Possible alternative: Update the same running stats for all samples by doing a for loop, but it is not 
+        parallelizable.
         """
         if self.affine == True:
             # Sample the weights
@@ -172,23 +177,24 @@ class MetaBayesBatchNorm(MetaBayesNorm):
             biases = biases.view(biases.size(
                 0)*biases.size(1), *biases.size()[2:])
         x = x.reshape(x.size(1), x.size(0)*x.size(2), *x.size()[3:])
-        # repeat running stats
-        running_mean = self.running_mean.repeat(samples)
-        running_var = self.running_var.repeat(samples)
+        if self.track_running_stats and not self.running_mean.size(0) == x.size(1):
+            self.running_mean = self.running_mean.repeat(
+                samples)
+            self.running_var = self.running_var.repeat(
+                samples)
         # compute batch norm
         out = F.batch_norm(
             x,
-            running_mean,
-            running_var,
+            self.running_mean if not self.running_mean is None else None,
+            self.running_var if not self.running_var is None else None,
             weights if self.affine else None,
             biases if self.affine else None,
             bn_training,
             exponential_average_factor,
             self.eps,
         )
-        out = out.view(samples, out.size(0), out.size(1) //
-                       samples, *out.size()[2:])
-        return out
+        return out.view(samples, out.size(0), out.size(1) //
+                        samples, *out.size()[2:])
 
 
 class MetaBayesBatchNorm1d(MetaBayesBatchNorm):

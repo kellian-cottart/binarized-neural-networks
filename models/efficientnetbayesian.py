@@ -72,6 +72,7 @@ class EfficientNetBayesian(Module):
         self.n_samples_train = n_samples_train
         self.sigma_multiplier = sigma_multiplier
         self.version = version
+        self.std = std
         # retrieve weights from EfficientNet
         current = LOOK_UP_DICT[str(version)]
         effnet = current["model"](weights=current["weights"].IMAGENET1K_V1)
@@ -106,7 +107,7 @@ class EfficientNetBayesian(Module):
 
     def conv_to_bayesian(self, layer):
         new_layer = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size[0], stride=layer.stride[0],
-                                    padding=layer.padding[0], bias=layer.bias is not None, sigma_init=self.sigma_init*self.sigma_multiplier, device=self.device, groups=layer.groups)
+                                    padding=layer.padding[0], bias=layer.bias is not None, sigma_init=self.std*self.sigma_multiplier, device=self.device, groups=layer.groups)
         new_layer.weight.mu.data = layer.weight.data.clone()
         if layer.bias is not None:
             new_layer.bias.mu.data = layer.bias.data.clone()
@@ -133,7 +134,7 @@ class EfficientNetBayesian(Module):
                 new_layer = self.conv_to_bayesian(elem)
             # BatchNorm doesn't really work well with Bayesian, so we replace it with an Identity
             elif isinstance(elem, BatchNorm2d):
-                new_layer = MetaBayesBatchNorm2d(num_features=elem.num_features, eps=elem.eps,
+                new_layer = MetaBayesBatchNorm2d(num_features=elem.num_features, eps=elem.eps, sigma_init=self.std*self.sigma_multiplier,
                                                  momentum=elem.momentum, affine=elem.affine, track_running_stats=elem.track_running_stats)
                 if elem.affine:
                     new_layer.weight.mu.data = elem.weight.data.detach().clone()
@@ -212,4 +213,4 @@ class EfficientNetBayesian(Module):
         return sum(p.numel() for p in self.parameters())
 
     def extra_repr(self):
-        return super().extra_repr() + f"n_samples_train={self.n_samples_train}, sigma_init={self.sigma_init}, sigma_multiplier={self.sigma_multiplier}, version={self.version}, params={self.number_parameters()}"
+        return super().extra_repr() + f"n_samples_train={self.n_samples_train}, sigma_init={self.std}, sigma_multiplier={self.sigma_multiplier}, version={self.version}, params={self.number_parameters()}"

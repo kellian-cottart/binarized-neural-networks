@@ -31,33 +31,33 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 2,
-            "nn_type": models.ConvBayesianNeuralNetwork,
+            "nn_type": models.EfficientNetBayesian,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [1024, 512],
-                "features": [16, 32, 64],
-                "kernel_size": [3, 3, 3],
+                "layers": [1280],
+                # "features": [16, 32, 64],
+                # "kernel_size": [3, 3, 3],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
-                "std": 0.01,  # also sigma init
-                "n_samples_test": 5,
-                "n_samples_train": 5,
+                "std": 0.1,  # also sigma init
+                "n_samples_test": 3,
+                "n_samples_train": 3,
                 "tau": 1,
                 "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
                     "power": 4
                 },
-                "normalization": "batchnorm",
+                "normalization": "",
                 "eps": 1e-5,
                 "momentum": 0.1,
                 "running_stats": True,
                 "affine": True,
                 "bias": True,
                 "frozen": False,
-                "sigma_multiplier": 1,
+                "sigma_multiplier": 1e-2,
                 "version": 0,
             },
             "training_parameters": {
@@ -86,7 +86,7 @@ if __name__ == "__main__":
             "optimizer_parameters": {
                 "sigma_prior": 1e-1,
                 "N": 1e5,
-                "clamp_grad": 1,
+                "clamp_grad": 0.1,
             },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
@@ -102,7 +102,7 @@ if __name__ == "__main__":
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             # "optimizer": optim.SGD,
             # "optimizer_parameters": {"lr": 0.0001, "momentum": 0},
-            "task": "MNIST",
+            "task": "CIFAR10",
             "n_tasks": 1,
             "n_classes": 1,
         }
