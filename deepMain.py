@@ -43,8 +43,8 @@ if __name__ == "__main__":
                 "dropout": False,
                 "init": "gaussian",
                 "std": 0.1,  # also sigma init
-                "n_samples_test": 3,
-                "n_samples_train": 3,
+                "n_samples_test": 0,
+                "n_samples_train": 0,
                 "tau": 1,
                 "activation_function": "relu",
                 "activation_parameters": {
@@ -58,7 +58,7 @@ if __name__ == "__main__":
                 "affine": True,
                 "bias": True,
                 "frozen": False,
-                "sigma_multiplier": 1e-2,
+                "sigma_multiplier": 1e-4,
                 "version": 0,
             },
             "training_parameters": {
@@ -83,12 +83,12 @@ if __name__ == "__main__":
             #     "N": 20_000,
             #     "normalize_gradients": False,
             # },
-            "optimizer": MESU,
-            "optimizer_parameters": {
-                "sigma_prior": 1e-1,
-                "N": 1e5,
-                "clamp_grad": 0.5,
-            },
+            # "optimizer": MESU,
+            # "optimizer_parameters": {
+            #     "sigma_prior": 1e-1,
+            #     "N": 1e5,
+            #     "clamp_grad": 0.1,
+            # },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
             #     "train_set_size": 10000,
@@ -101,8 +101,8 @@ if __name__ == "__main__":
             # },
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
-            # "optimizer": SGD,
-            # "optimizer_parameters": {"lr": 0.0001, "momentum": 0},
+            "optimizer": SGD,
+            "optimizer_parameters": {"lr": 0.001, "momentum": 0},
             "task": "core50-ni",
             "n_tasks": 8,
             "n_classes": 1,

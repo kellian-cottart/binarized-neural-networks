@@ -24,7 +24,7 @@ class MetaBayesSequential(Sequential):
 
 class MetaBayesMBConv(MBConv):
     """ MBConv block with different forward pass for Bayesian layers
-    https: // github.com/pytorch/vision/blob/main/torchvision/models/efficientnet.py"""
+    https://github.com/pytorch/vision/blob/main/torchvision/models/efficientnet.py"""
 
     def forward(self, x, samples: int):
         result = self.block(x, samples)

@@ -74,6 +74,8 @@ class MESU(Optimizer):
 
 
 def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: int, clamp_grad: float):
+
+    print(len(params), len(d_p_list))
     if not params:
         raise ValueError('No gradients found in parameters!')
     if len(params) % 2 == 1:
