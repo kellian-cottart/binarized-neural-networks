@@ -80,9 +80,9 @@ class MetaBayesNorm(Module):
         self.reset_running_stats()
         if self.affine:
             init.ones_(self.weight.mu)
-            init.constant_(self.weight.sigma, 0.01)
+            init.constant_(self.weight.sigma, 0.1)
             init.zeros_(self.bias.mu)
-            init.constant_(self.bias.sigma, 0.01)
+            init.constant_(self.bias.sigma, 0.1)
 
     def _check_input_dim(self, x):
         raise NotImplementedError
@@ -112,7 +112,7 @@ class MetaBayesBatchNorm(MetaBayesNorm):
             num_features, eps, momentum, affine, track_running_stats, **factory_kwargs
         )
 
-    def forward(self, x: Tensor, samples: int = 1) -> Tensor:
+    def forward(self, x: Tensor, samples: int) -> Tensor:
         self._check_input_dim(x)
 
         # exponential_average_factor is set to self.momentum
@@ -168,7 +168,7 @@ class MetaBayesBatchNorm(MetaBayesNorm):
                 exponential_average_factor,
                 self.eps,
             )
-        return out.reshape([samples, *x.shape[1:]])
+        return out
 
 
 class MetaBayesBatchNorm1d(MetaBayesBatchNorm):

@@ -1,4 +1,4 @@
-import math
+from math import sqrt
 from torch import Tensor
 import torch.nn.functional as F
 import torch.nn.init as init
@@ -118,7 +118,7 @@ class MetaBayesConvNd(Module):
         # uniform(-1/sqrt(k), 1/sqrt(k)), where k = weight.size(1) * prod(*kernel_size)
         # For more details see: https://github.com/pytorch/pytorch/issues/15314#issuecomment-477448573
         fan_in, fan_out = init._calculate_fan_in_and_fan_out(self.weight.mu)
-        self.bound = math.sqrt(6/(fan_in+fan_out))
+        self.bound = sqrt(6/(fan_in+fan_out))
         init.uniform_(self.weight.mu, -self.bound, self.bound)
         init.constant_(self.weight.sigma, self.sigma_init)
         if self.bias is not None:

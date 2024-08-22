@@ -1,18 +1,17 @@
-import models.midvggbibayesian
 from utils import *
 from dataloader import *
 import models
-import torch
 import trainer
 from optimizers import *
 import os
 import json
 import tqdm
 import datetime
+from torch import device, cuda, functional, stack, save, prod, set_default_device, set_default_dtype, manual_seed, randperm
 
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
-DEVICE = torch.device("cuda:0")
+DEVICE = device("cuda:0")
 GRAPHS = False
 MODULO = 10
 ### PATHS ###
@@ -22,10 +21,10 @@ RUN_ID = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-")
 
 if __name__ == "__main__":
     ### SEED ###
-    torch.manual_seed(SEED)
-    torch.cuda.manual_seed(SEED)
-    torch.set_default_device(DEVICE)
-    torch.set_default_dtype(torch.float32)
+    manual_seed(SEED)
+    cuda.manual_seed(SEED)
+    set_default_device(DEVICE)
+    set_default_dtype(float32)
     ### INIT DATALOADER ###
     loader = GPULoading(device=DEVICE, root=DATASETS_PATH)
     ### NETWORK CONFIGURATION ###
@@ -36,13 +35,13 @@ if __name__ == "__main__":
             "nn_parameters": {
                 # NETWORK ###
                 "layers": [1280],
-                # "features": [],
-                # "kernel_size": [],
+                # "features": [16, 32],
+                "kernel_size": [3, 3, 3],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
-                "std": 0.1,
+                "std": 0.1,  # also sigma init
                 "n_samples_test": 1,
                 "n_samples_train": 1,
                 "tau": 1,
@@ -58,7 +57,7 @@ if __name__ == "__main__":
                 "affine": False,
                 "bias": True,
                 "frozen": False,
-                "sigma_multiplier": 1e-2,
+                "sigma_multiplier": 1e-1,
                 "version": 0,
             },
             "training_parameters": {
@@ -72,7 +71,7 @@ if __name__ == "__main__":
             },
             "label_trick": True,
             "output_function": "log_softmax",
-            "criterion": torch.functional.F.nll_loss,
+            "criterion": functional.F.nll_loss,
             "reduction": "sum",
             # "optimizer": BHUparallel,
             # "optimizer_parameters": {
@@ -85,9 +84,9 @@ if __name__ == "__main__":
             # },
             "optimizer": MESU,
             "optimizer_parameters": {
-                "sigma_prior": 0.1,
+                "sigma_prior": 1e-1,
                 "N": 1e5,
-                "clamp_grad": 1,
+                "clamp_grad": 0.1,
             },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
@@ -101,7 +100,7 @@ if __name__ == "__main__":
             # },
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
-            # "optimizer": torch.optim.SGD,
+            # "optimizer": optim.SGD,
             # "optimizer_parameters": {"lr": 0.0001, "momentum": 0},
             "task": "core50-ni",
             "n_tasks": 8,
@@ -126,8 +125,8 @@ if __name__ == "__main__":
         main_folder = os.path.join(SAVE_FOLDER, RUN_ID+name)
         for iteration in range(N_NETWORKS):
             ### SEEDING ###
-            torch.manual_seed(SEED + iteration)
-            torch.cuda.manual_seed(SEED + iteration)
+            manual_seed(SEED + iteration)
+            cuda.manual_seed(SEED + iteration)
             ### LOADING DATASET ###
             train_dataset, test_dataset, shape, target_size = loader.task_selection(
                 task=data["task"], n_tasks=data["n_tasks"], batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"], run=iteration)
@@ -139,7 +138,7 @@ if __name__ == "__main__":
                 # Add the input size
                 elif not "VGG" in data["nn_type"].__name__ and not "EfficientNet" in data["nn_type"].__name__:
                     data['nn_parameters']['layers'].insert(
-                        0, torch.prod(torch.tensor(shape)))
+                        0, prod(tensor(shape)))
 
             # Instantiate the network
             model = data['nn_type'](**data['nn_parameters'])
@@ -159,11 +158,11 @@ if __name__ == "__main__":
             ### CREATING PERMUTATIONS ###
             permutations = None
             if "Permuted" in data["task"]:
-                permutations = [torch.randperm(torch.prod(torch.tensor(shape)))
+                permutations = [randperm(prod(tensor(shape)))
                                 for _ in range(data["n_tasks"])]
             if "CIL" in data["task"]:
                 # Create the permutations for the class incremental scenario: n_classes per task with no overlap
-                random_permutation = torch.randperm(target_size)
+                random_permutation = randperm(target_size)
                 if isinstance(data["n_classes"], int):
                     permutations = [random_permutation[i * data["n_classes"]:(i + 1) * data["n_classes"]]
                                     for i in range(data["n_tasks"])]
@@ -238,15 +237,15 @@ if __name__ == "__main__":
                 x, "__name__") else str(x), indent=4)
             with open(os.path.join(sub_folder, "config.json"), "w") as f:
                 f.write(string)
-            torch.save(net_trainer.testing_accuracy,
-                       os.path.join(sub_folder, "accuracy.pt"))
-            accuracies.append(torch.stack(net_trainer.testing_accuracy))
+            save(net_trainer.testing_accuracy,
+                 os.path.join(sub_folder, "accuracy.pt"))
+            accuracies.append(stack(net_trainer.testing_accuracy))
             if "training_accuracy" in dir(net_trainer) and len(net_trainer.training_accuracy) > 0:
-                torch.save(net_trainer.training_accuracy,
-                           os.path.join(sub_folder, "training_accuracy.pt"))
+                save(net_trainer.training_accuracy,
+                     os.path.join(sub_folder, "training_accuracy.pt"))
                 training_accuracies.append(
-                    torch.stack(net_trainer.training_accuracy))
-        accuracies = torch.stack(accuracies)
+                    stack(net_trainer.training_accuracy))
+        accuracies = stack(accuracies)
         ### SAVE GRAPHS ###
         title = "tasks"
         visualize_sequential(title,

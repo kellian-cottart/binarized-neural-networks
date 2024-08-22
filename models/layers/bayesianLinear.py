@@ -1,4 +1,4 @@
-import math
+from math import sqrt
 from torch import Tensor
 import torch.nn.init as init
 from torch.nn.modules import Module
@@ -19,7 +19,7 @@ class MetaBayesLinearParallel(Module):
         self.out_features = out_features
 
         # Initialize weight parameters
-        self.bound = math.sqrt(2/in_features)
+        self.bound = sqrt(2/in_features)
         self.sigma_init = sigma_init
         self.weight = GaussianParameter(out_features=out_features,
                                         in_features=in_features,

@@ -1,8 +1,8 @@
+from torch.nn import Module
+from torch import cosh
 
-import torch
 
-
-class HyperbolicCosineActivation(torch.nn.Module):
+class HyperbolicCosineActivation(Module):
     """ Inverse Squared Hyperbolic Cosine Activation Layer
     """
 
@@ -12,7 +12,7 @@ class HyperbolicCosineActivation(torch.nn.Module):
 
     def forward(self, tensor_input):
         """ Forward pass: Inverse Squared Hyperbolic Cosine function"""
-        return torch.cosh(1/self.width * tensor_input)**(-2)
+        return cosh(1/self.width * tensor_input)**(-2)
 
     def __repr__(self):
         return f"HyperbolicCosineActivation(width={self.width})"

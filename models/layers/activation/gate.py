@@ -1,8 +1,8 @@
+from torch.nn import Module
+from torch.autograd import Function
 
-import torch
 
-
-class Gate(torch.autograd.Function):
+class Gate(Function):
     """ Sign Elephant Activation Function
 
     Allows for backpropagation of the gate function because it is not differentiable.
@@ -29,7 +29,7 @@ class Gate(torch.autograd.Function):
                               ((i > width/2) & ((i < 3*width/2))).float()), None
 
 
-class GateActivation(torch.nn.Module):
+class GateActivation(Module):
     """ Gate Activation Layer
 
     Applies a gate function to the input tensor.

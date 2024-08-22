@@ -1,8 +1,8 @@
+from torch.utils.data import Dataset
+from torch import tensor, isin, unique, randperm
 
-import torch
 
-
-class GPUTensorDataset(torch.utils.data.Dataset):
+class GPUTensorDataset(Dataset):
     """ Dataset which has a data and a targets tensor, designed to be used on GPU
 
     Args:
@@ -27,7 +27,7 @@ class GPUTensorDataset(torch.utils.data.Dataset):
 
     def shuffle(self):
         """ Shuffle the data and targets tensors """
-        perm = torch.randperm(len(self.data), device="cpu")
+        perm = randperm(len(self.data), device="cpu")
         self.data = self.data[perm]
         self.targets = self.targets[perm]
 
@@ -39,9 +39,9 @@ class GPUTensorDataset(torch.utils.data.Dataset):
 
     def __getclasses__(self, class_indexes):
         """ Return a GPUTensorDataset with only the specified classes """
-        class_indexes = torch.tensor(class_indexes, device="cpu")
-        indexes = torch.isin(self.targets, class_indexes)
+        class_indexes = tensor(class_indexes, device="cpu")
+        indexes = isin(self.targets, class_indexes)
         return GPUTensorDataset(self.data[indexes], self.targets[indexes], device=self.device)
 
     def __repr__(self):
-        return f"GPUTensorDataset(data={self.data.shape},targets={self.targets.shape}, classes={torch.unique(self.targets)} ,device_idle={self.data.device}, device_train={self.device})"
+        return f"GPUTensorDataset(data={self.data.shape},targets={self.targets.shape}, classes={unique(self.targets)} ,device_idle={self.data.device}, device_train={self.device})"

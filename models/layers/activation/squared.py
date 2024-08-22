@@ -1,15 +1,13 @@
+from torch.nn import Module
 
 
-import torch
-
-
-class SquaredActivation(torch.nn.Module):
+class SquaredActivation(Module):
     """ Squared Activation Layer
 
     Applies the squared activation function to the input tensor.
     """
 
-    def __call__(self, *args: torch.Any, **kwds: torch.Any) -> torch.Any:
+    def __call__(self, *args: any, **kwds: any):
         return super().__call__(*args, **kwds)
 
     def forward(self, tensor_input):

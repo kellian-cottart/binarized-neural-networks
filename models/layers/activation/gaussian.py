@@ -1,8 +1,8 @@
+from torch.nn import Module
+from torch import exp
 
-import torch
 
-
-class GaussianActivation(torch.nn.Module):
+class GaussianActivation(Module):
     """ Gaussian Activation Layer
 
     Applies a Gaussian (0, 1) function to the input tensor.
@@ -15,7 +15,7 @@ class GaussianActivation(torch.nn.Module):
 
     def forward(self, tensor_input):
         """ Forward pass: Gaussian function"""
-        return torch.exp(-(tensor_input - self.mean)**2 / (2 * self.std**2))
+        return exp(-(tensor_input - self.mean)**2 / (2 * self.std**2))
 
     def __repr__(self):
         return f"GaussianActivation(mean={self.mean}, std={self.std})"

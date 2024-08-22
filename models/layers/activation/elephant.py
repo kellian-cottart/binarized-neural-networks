@@ -1,8 +1,8 @@
+from torch.nn import Module
+from torch import absolute
 
-import torch
 
-
-class ElephantActivation(torch.nn.Module):
+class ElephantActivation(Module):
     """ Elephant Activation Layer
 
     Applies the elephant activation function to the input tensor.
@@ -21,7 +21,7 @@ class ElephantActivation(torch.nn.Module):
             width (float): Width of the function
             power (float): Power of the function
         """
-        return 1/(1+torch.absolute(tensor_input/self.width)**self.power)
+        return 1/(1+absolute(tensor_input/self.width)**self.power)
 
     def extra_repr(self):
         return f"width={self.width}, power={self.power}"

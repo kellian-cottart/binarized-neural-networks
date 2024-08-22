@@ -1,5 +1,5 @@
-import torch
 from .structures import *
+from torch import cat
 
 
 def permuted_dataset(dataset, batch_size, continual, task_id, iteration, max_iterations, permutations, epoch):
@@ -13,7 +13,7 @@ def permuted_dataset(dataset, batch_size, continual, task_id, iteration, max_ite
         max_iterations - int(max_iterations*split))) * batch_size)  # Ratio between the number of images taken from batch perm 1 and batch perm 2
     if len(permutations) > task_id + 1 and batch_size - n_images_taken_b1 > 0 and continual == True:
         next_perm = permutations[task_id + 1]
-        batch_data = torch.cat(
+        batch_data = cat(
             (batch_data[:n_images_taken_b1, :, perm],
                 batch_data[n_images_taken_b1:, :, next_perm]), dim=0).view(shape)
     else:

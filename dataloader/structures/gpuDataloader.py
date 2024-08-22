@@ -1,4 +1,4 @@
-import torch
+from torch import randperm, arange
 
 
 class GPUDataLoader():
@@ -25,9 +25,9 @@ class GPUDataLoader():
         """ Return an iterator over the dataset """
         self.index = 0
         if self.shuffle:
-            self.perm = torch.randperm(len(self.dataset))
+            self.perm = randperm(len(self.dataset))
         else:
-            self.perm = torch.arange(len(self.dataset))
+            self.perm = arange(len(self.dataset))
         return self
 
     def __next__(self):

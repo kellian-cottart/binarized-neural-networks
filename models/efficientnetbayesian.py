@@ -1,4 +1,4 @@
-from torch.nn import Module, BatchNorm2d, AdaptiveAvgPool2d, Conv2d, ModuleList
+from torch.nn import Module, BatchNorm2d, Conv2d, ModuleList
 from torchvision import models
 from torchvision.models.efficientnet import MBConvConfig
 from torchvision.ops.misc import Conv2dNormActivation, SqueezeExcitation
@@ -117,8 +117,7 @@ class EfficientNetBayesian(Module):
         https://github.com/pytorch/vision/blob/main/torchvision/ops/misc.py
         """
         return MetaBayesSequential(
-            MetaBayesianAdaptiveAvgPool2d(
-                output_size=layer.avgpool.output_size),
+            layer.avgpool,
             self.conv_to_bayesian(layer.fc1),
             layer.activation,
             self.conv_to_bayesian(layer.fc2),
@@ -137,13 +136,11 @@ class EfficientNetBayesian(Module):
                 new_layer = MetaBayesBatchNorm2d(num_features=elem.num_features, eps=elem.eps,
                                                  momentum=elem.momentum, affine=elem.affine, track_running_stats=elem.track_running_stats)
                 if elem.affine:
-                    new_layer.weight.mu.data = elem.weight.data.clone()
-                    new_layer.bias.mu.data = elem.bias.data.clone()
-                    new_layer.running_mean.data = elem.running_mean.data.clone()
-                    new_layer.running_var.data = elem.running_var.data.clone()
-            elif isinstance(elem, AdaptiveAvgPool2d):
-                new_layer = MetaBayesianAdaptiveAvgPool2d(
-                    output_size=elem.output_size)
+                    new_layer.weight.mu.data = elem.weight.data.detach().clone()
+                    new_layer.bias.mu.data = elem.bias.data.detach().clone()
+                if elem.track_running_stats:
+                    new_layer.running_mean = elem.running_mean
+                    new_layer.running_var = elem.running_var
             else:
                 new_layer = elem
             new_sequential.append(new_layer)
@@ -183,9 +180,6 @@ class EfficientNetBayesian(Module):
         ]
         MBCount = 0
         for i, layer in enumerate(features):
-            if isinstance(layer, AdaptiveAvgPool2d):
-                features[i] = MetaBayesianAdaptiveAvgPool2d(
-                    output_size=layer.output_size)
             if isinstance(layer, Conv2dNormActivation):
                 features[i] = self.replace_convNorm(layer)
             elif isinstance(layer, Sequential):

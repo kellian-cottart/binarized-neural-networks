@@ -1,8 +1,9 @@
+from torch.autograd import Function
+from torch import sign, abs
+from torch.nn import Module
 
-import torch
 
-
-class Sign(torch.autograd.Function):
+class Sign(Function):
     """ Sign Activation Function
 
     Allows for backpropagation of the sign function because it is not differentiable.
@@ -15,7 +16,7 @@ class Sign(torch.autograd.Function):
         ctx.save_for_backward(tensor_input)
         ctx.offset_x = offset_x
         ctx.width = width
-        return torch.sign(tensor_input - offset_x)
+        return sign(tensor_input - offset_x)
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -24,10 +25,10 @@ class Sign(torch.autograd.Function):
         offset_x = ctx.offset_x
         width = ctx.width
         # condition = ((i >= offset_x - width) & (i <= offset_x + width)).float()
-        return grad_output * (torch.abs(i) < width).float(), None, None
+        return grad_output * (abs(i) < width).float(), None, None
 
 
-class SignWeights(torch.autograd.Function):
+class SignWeights(Function):
     """ Sign Binary Weights
 
     Allows for backpropagation of the binary weights using the identity function.
@@ -48,7 +49,7 @@ class SignWeights(torch.autograd.Function):
         return grad_output
 
 
-class SignActivation(torch.nn.Module):
+class SignActivation(Module):
     """ Sign Activation Layer
 
     Applies the sign activation function to the input tensor.

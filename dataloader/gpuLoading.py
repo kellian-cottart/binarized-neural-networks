@@ -1,4 +1,3 @@
-import torch
 import numpy as np
 import idx2numpy
 from torchvision.transforms import v2
@@ -6,11 +5,12 @@ from torchvision import models, datasets
 import os
 import requests
 import pickle
-import numpy as np
 import sys
 from tqdm import tqdm
 import hashlib
 from .structures import *
+from torch import tensor, load, save, cat, from_numpy, LongTensor, Tensor, float32
+from torch.nn import Sequential
 
 PATH_MNIST_X_TRAIN = "datasets/MNIST/raw/train-images-idx3-ubyte"
 PATH_MNIST_Y_TRAIN = "datasets/MNIST/raw/train-labels-idx1-ubyte"
@@ -82,10 +82,10 @@ class GPULoading:
 
         Args:
             folder (str): Folder to save the features
-            train_x (torch.tensor): Training data
-            train_y (torch.tensor): Training labels
-            test_x (torch.tensor): Testing data
-            test_y (torch.tensor): Testing labels
+            train_x (tensor): Training data
+            train_y (tensor): Training labels
+            test_x (tensor): Testing data
+            test_y (tensor): Testing labels
             task (str, optional): Name of the task. Defaults to "cifar100".
             iterations (int, optional): Number of passes to make. Defaults to 10.
         """
@@ -94,7 +94,7 @@ class GPULoading:
             weights=models.ResNet18_Weights.DEFAULT
         )
         # Remove the classification layer
-        resnet18 = torch.nn.Sequential(
+        resnet18 = Sequential(
             *list(resnet18.children())[:-1])
         # Freeze the weights of the feature extractor
         for param in resnet18.parameters():
@@ -104,13 +104,13 @@ class GPULoading:
             v2.feature_extraction(220, antialias=True),
             v2.RandomHorizontalFlip(),
             v2.ToImage(),
-            v2.ToDtype(torch.float32, scale=True),
+            v2.ToDtype(float32, scale=True),
             v2.Normalize(mean=(0.0,), std=(1.0,))
         ])
         transform_test = v2.Compose([
             v2.feature_extraction(220, antialias=True),
             v2.ToImage(),
-            v2.ToDtype(torch.float32, scale=True),
+            v2.ToDtype(float32, scale=True),
             v2.Normalize(mean=(0.0,), std=(1.0,))
         ])
         # Extract the features
@@ -119,17 +119,17 @@ class GPULoading:
         features_test = []
         target_test = []
         # Normalize
-        train_x = torch.from_numpy(train_x).float() / 255
-        test_x = torch.from_numpy(test_x).float() / 255
+        train_x = from_numpy(train_x).float() / 255
+        test_x = from_numpy(test_x).float() / 255
         if len(train_x.size()) == 3:
             train_x = train_x.unsqueeze(1)
             test_x = test_x.unsqueeze(1)
         # Converting the data to a GPU TensorDataset (allows to load everything in the GPU memory at once)
         train_dataset = GPUTensorDataset(
-            train_x, torch.Tensor(train_y).type(
-                torch.LongTensor), device=self.device)
-        test_dataset = GPUTensorDataset(test_x, torch.Tensor(test_y).type(
-            torch.LongTensor), device=self.device)
+            train_x, Tensor(train_y).type(
+                LongTensor), device=self.device)
+        test_dataset = GPUTensorDataset(test_x, Tensor(test_y).type(
+            LongTensor), device=self.device)
         train_dataset = GPUDataLoader(
             train_dataset, batch_size=1024, shuffle=True, drop_last=False, transform=transform_train, device=self.device)
         test_dataset = GPUDataLoader(
@@ -144,28 +144,28 @@ class GPULoading:
             target_test.append(target)
 
         # Concatenate the features
-        features_train = torch.cat(features_train)
-        target_train = torch.cat(target_train)
-        features_test = torch.cat(features_test)
-        target_test = torch.cat(target_test)
+        features_train = cat(features_train)
+        target_train = cat(target_train)
+        features_test = cat(features_test)
+        target_test = cat(target_test)
         # Save the features
-        torch.save(features_train,
-                   f"{folder}/{task}_{iterations}_features_train.pt")
-        torch.save(
+        save(features_train,
+             f"{folder}/{task}_{iterations}_features_train.pt")
+        save(
             target_train, f"{folder}/{task}_{iterations}_target_train.pt")
-        torch.save(features_test,
-                   f"{folder}/{task}_{iterations}_features_test.pt")
-        torch.save(
+        save(features_test,
+             f"{folder}/{task}_{iterations}_features_test.pt")
+        save(
             target_test, f"{folder}/{task}_{iterations}_target_test.pt")
 
     def to_dataset(self, train_x, train_y, test_x, test_y):
         """ Create a DataLoader to load the data in batches
 
         Args:
-            train_x (torch.tensor): Training data
-            train_y (torch.tensor): Training labels
-            test_x (torch.tensor): Testing data
-            test_y (torch.tensor): Testing labels
+            train_x (tensor): Training data
+            train_y (tensor): Training labels
+            test_x (tensor): Testing data
+            test_y (tensor): Testing labels
             batch_size (int): Batch size
 
         Returns:
@@ -173,10 +173,10 @@ class GPULoading:
 
         """
         train_dataset = GPUTensorDataset(
-            train_x, torch.Tensor(train_y).type(
-                torch.LongTensor), device=self.device)
-        test_dataset = GPUTensorDataset(test_x, torch.Tensor(test_y).type(
-            torch.LongTensor), device=self.device)
+            train_x, Tensor(train_y).type(
+                LongTensor), device=self.device)
+        test_dataset = GPUTensorDataset(test_x, Tensor(test_y).type(
+            LongTensor), device=self.device)
         return train_dataset, test_dataset
 
     def normalization(self, train_x, test_x):
@@ -187,12 +187,12 @@ class GPULoading:
             test_x (np.array): Testing data
 
         Returns:
-            torch.tensor, torch.tensor: Normalized training and testing data
+            tensor, tensor: Normalized training and testing data
         """
         # Completely convert train_x and test_x to float torch tensors
         # division by 255 is only scaling from uint to float
-        train_x = torch.from_numpy(train_x).float() / 255
-        test_x = torch.from_numpy(test_x).float() / 255
+        train_x = from_numpy(train_x).float() / 255
+        test_x = from_numpy(test_x).float() / 255
 
         if len(train_x.size()) == 3:
             train_x = train_x.unsqueeze(1)
@@ -201,7 +201,7 @@ class GPULoading:
         # Normalize the pixels to 0, 1
         transform = v2.Compose(
             [v2.ToImage(),
-             v2.ToDtype(torch.float32, scale=True),
+             v2.ToDtype(float32, scale=True),
              v2.Normalize((0,), (1,), inplace=True),
              v2.Pad(self.padding, fill=0, padding_mode='constant'),
              ])
@@ -273,13 +273,13 @@ class GPULoading:
                 test_x = test_x.reshape(-1, 3, 32, 32)
                 self.feature_extraction(
                     folder, train_x, train_y, test_x, test_y, task="cifar10", iterations=iterations)
-            train_x = torch.load(
+            train_x = load(
                 f"{folder}/cifar10_{iterations}_features_train.pt")
-            train_y = torch.load(
+            train_y = load(
                 f"{folder}/cifar10_{iterations}_target_train.pt")
-            test_x = torch.load(
+            test_x = load(
                 f"{folder}/cifar10_{iterations}_features_test.pt")
-            test_y = torch.load(
+            test_y = load(
                 f"{folder}/cifar10_{iterations}_target_test.pt")
         else:
             train_x = []
@@ -325,13 +325,13 @@ class GPULoading:
                 test_x = test_x.reshape(-1, 3, 32, 32)
                 self.feature_extraction(
                     folder, train_x, train_y, test_x, test_y, task="cifar100", iterations=iterations)
-            train_x = torch.load(
+            train_x = load(
                 f"{folder}/cifar100_{iterations}_features_train.pt")
-            train_y = torch.load(
+            train_y = load(
                 f"{folder}/cifar100_{iterations}_target_train.pt")
-            test_x = torch.load(
+            test_x = load(
                 f"{folder}/cifar100_{iterations}_features_test.pt")
-            test_y = torch.load(
+            test_y = load(
                 f"{folder}/cifar100_{iterations}_target_test.pt")
         else:
             path_databatch = PATH_CIFAR100_DATABATCH
@@ -447,18 +447,18 @@ class CORe50:
         """ Returns the train and test sequential datasets"""
 
         test_indexes = self.lup[self.scenario][self.run][-1]
-        test_x = torch.tensor(self.data[test_indexes]).float().to("cpu")
+        test_x = tensor(self.data[test_indexes]).float().to("cpu")
         test_x = test_x.permute(0, 3, 1, 2) / 255
         v2.Normalize((0,), (1,), inplace=True)(test_x, test_x)
-        test_y = torch.tensor(
+        test_y = tensor(
             self.labels[self.scenario][self.run][-1]).to("cpu")
         test_dataset = GPUTensorDataset(test_x, test_y, device=self.device)
         train_loader = []
         for i in range(self.batch_scenario[self.scenario]):
             train_indexes = self.lup[self.scenario][self.run][i]
-            train_x = torch.tensor(self.data[train_indexes]).float().to("cpu")
+            train_x = tensor(self.data[train_indexes]).float().to("cpu")
             train_x = train_x.permute(0, 3, 1, 2) / 255
-            train_y = torch.tensor(
+            train_y = tensor(
                 self.labels[self.scenario][self.run][i]).to("cpu")
             # normalize the data between 0 and 1
             v2.Normalize((0,), (1,), inplace=True)(
