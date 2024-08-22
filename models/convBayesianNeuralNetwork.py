@@ -14,38 +14,17 @@ class ConvBayesianNeuralNetwork(ConvNN):
                  features: list = [64, 128, 256],
                  n_samples_train: int = 1,
                  zeroMean: bool = False,
-                 init: str = "uniform",
-                 std: float = 0.01,
-                 device: str = "cuda:0",
-                 dropout: bool = False,
-                 normalization: str = None,
-                 bias: bool = False,
-                 running_stats: bool = False,
-                 affine: bool = False,
-                 eps: float = 1e-5,
-                 momentum: float = 0.15,
-                 activation_function: functional = functional.relu,
-                 output_function: str = "softmax",
-                 kernel_size: int = 3,
-                 padding: Union[int, tuple] = "same",
-                 stride: int = 1,
-                 dilation: int = 1,
-                 gnnum_groups: int = 32,
+                 sigma_multiplier: int = 1,
                  *args,
                  **kwargs):
 
         self.zeroMean = zeroMean
-        self.sigma_init = std
         self.n_samples_train = n_samples_train
-        super().__init__(layers=layers, features=features, init=init, std=std, device=device,
-                         dropout=dropout, normalization=normalization, bias=bias,
-                         running_stats=running_stats, affine=affine, eps=eps, momentum=momentum,
-                         activation_function=activation_function, output_function=output_function,
-                         kernel_size=kernel_size, padding=padding, stride=stride, dilation=dilation,
-                         gnnum_groups=gnnum_groups, *args, **kwargs)
+        self.sigma_multiplier = sigma_multiplier
+        super().__init__(layers=layers, features=features, *args, **kwargs)
         self.features = MetaBayesSequential(*self.features)
-        self.classifier = BayesianNN(layers=layers, zeroMean=zeroMean, sigma_init=std, n_samples_train=n_samples_train, device=device, init=init, std=std, dropout=dropout, normalization=normalization,
-                                     bias=bias, running_stats=running_stats, affine=affine, eps=eps, momentum=momentum, activation_function=activation_function, output_function=output_function, *args, **kwargs)
+        self.classifier = BayesianNN(
+            layers=layers, zeroMean=zeroMean, n_samples_train=n_samples_train, *args, **kwargs)
 
     def _features_init(self, features, bias=False):
         """ Initialize layers of the network for convolutional layers
@@ -58,11 +37,11 @@ class ConvBayesianNeuralNetwork(ConvNN):
         for i, _ in enumerate(features[:-1]):
             # Conv layers with BatchNorm and MaxPool
             self.features.append(MetaBayesConv2d(
-                features[i], features[i+1], kernel_size=self.kernel_size[i], stride=self.stride, padding=self.padding, dilation=self.dilation, bias=bias, sigma_init=self.sigma_init, device=self.device))
+                features[i], features[i+1], kernel_size=self.kernel_size[i], stride=self.stride, padding=self.padding, dilation=self.dilation, bias=bias, sigma_init=self.std*self.sigma_multiplier, device=self.device))
             self.features.append(self._norm_init(features[i+1]))
             self.features.append(self._activation_init())
             self.features.append(MetaBayesConv2d(
-                features[i+1], features[i+1], kernel_size=self.kernel_size[i], stride=self.stride, padding=self.padding, dilation=self.dilation, bias=bias, sigma_init=self.sigma_init, device=self.device))
+                features[i+1], features[i+1], kernel_size=self.kernel_size[i], stride=self.stride, padding=self.padding, dilation=self.dilation, bias=bias, sigma_init=self.std*self.sigma_multiplier, device=self.device))
             self.features.append(self._norm_init(features[i+1]))
             self.features.append(self._activation_init())
             self.features.append(MaxPool2d(
@@ -76,7 +55,7 @@ class ConvBayesianNeuralNetwork(ConvNN):
     def _norm_init(self, n_features):
         """Returns a layer of normalization"""
         if self.normalization == "batchnorm":
-            return MetaBayesBatchNorm2d(n_features, eps=self.eps, momentum=self.momentum, affine=self.affine, track_running_stats=self.running_stats).to(self.device)
+            return MetaBayesBatchNorm2d(n_features, eps=self.eps, momentum=self.momentum, affine=self.affine, track_running_stats=self.running_stats, sigma_init=self.std*self.sigma_multiplier).to(self.device)
         elif self.normalization == "layernorm":
             return LayerNorm(n_features).to(self.device)
         elif self.normalization == "instancenorm":
@@ -92,4 +71,4 @@ class ConvBayesianNeuralNetwork(ConvNN):
         return self.classifier(x, self.n_samples_train)
 
     def extra_repr(self) -> str:
-        return super().extra_repr() + f", n_samples_train={self.n_samples_train}, zeroMean={self.zeroMean}, sigma_init={self.sigma_init}"
+        return super().extra_repr() + f", n_samples_train={self.n_samples_train}, zeroMean={self.zeroMean}, sigma_init={self.std}"

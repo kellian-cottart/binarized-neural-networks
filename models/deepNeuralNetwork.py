@@ -53,6 +53,7 @@ class DNN(torch.nn.Module):
         self.activation_function = activation_function
         self.gnnum_groups = gnnum_groups
         self.squared_inputs = squared_inputs
+        self.std = std
         if "activation_parameters" in kwargs:
             self.activation_parameters = kwargs["activation_parameters"]
         ### LAYER INITIALIZATION ###

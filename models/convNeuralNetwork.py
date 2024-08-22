@@ -62,12 +62,15 @@ class ConvNN(torch.nn.Module):
         self.affine = affine
         self.activation_function = activation_function
         self.gnnum_groups = gnnum_groups
+        self.std = std
         ### LAYER INITIALIZATION ###
         self._features_init(features, bias)
         ### WEIGHT INITIALIZATION ###
         self._weight_init(init, std)
-        self.classifier = DNN(layers, init, std, device, dropout, normalization, bias, running_stats,
-                              affine, eps, momentum, gnnum_groups, activation_function)
+        self.classifier = DNN(layers=layers, init=init, std=std, device=device,
+                              dropout=dropout, normalization=normalization, bias=bias,
+                              running_stats=running_stats, affine=affine, eps=eps, momentum=momentum,
+                              activation_function=activation_function)
 
     def _features_init(self, features, bias=False):
         """ Initialize layers of the network for convolutional layers

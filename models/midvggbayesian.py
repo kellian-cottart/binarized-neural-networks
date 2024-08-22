@@ -65,8 +65,8 @@ class MidVGGBayesian(Module):
         self.sigma_multiplier = sigma_multiplier
         # retrieve weights from VGG16
         vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
-        self.features = self.replace_conv(torch.nn.ModuleList(
-            list(vgg.features.children())).to(self.device))
+        self.features = self.replace_conv(
+            MetaBayesSequential(*vgg.features).to(device))
         if frozen == True:
             for param in self.features.parameters():
                 param.requires_grad = False
@@ -149,19 +149,7 @@ class MidVGGBayesian(Module):
             torch.Tensor: Output tensor
 
         """
-        for layer in self.features:
-            if isinstance(layer, MetaBayesConv2d):
-                x = layer(
-                    x, self.n_samples_train if self.n_samples_train > 1 else 1)
-            else:
-                try:
-                    x = layer(x)
-                except:
-                    # Normalization layers, but input is (n_samples, batch, features)
-                    shape = x.shape
-                    x = x.reshape([shape[0]*shape[1], *x.shape[2:]])
-                    x = layer(x)
-                    x = x.reshape([shape[0], shape[1], *x.shape[1:]])
+        x = self.features(x, self.n_samples_train)
         return self.classifier.forward(x)
 
     # add number of parameters total

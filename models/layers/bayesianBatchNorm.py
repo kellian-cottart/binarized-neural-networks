@@ -24,6 +24,7 @@ class MetaBayesNorm(Module):
         self,
         num_features: int,
         eps: float = 1e-5,
+        sigma_init: float = 0.1,
         momentum: Optional[float] = 0.1,
         affine: bool = True,
         track_running_stats: bool = True,
@@ -37,6 +38,7 @@ class MetaBayesNorm(Module):
         self.momentum = momentum
         self.affine = affine
         self.track_running_stats = track_running_stats
+        self.sigma_init = sigma_init
         if self.affine:
             self.weight = GaussianParameter(num_features, **factory_kwargs)
             self.bias = GaussianParameter(num_features, **factory_kwargs)
@@ -80,9 +82,9 @@ class MetaBayesNorm(Module):
         self.reset_running_stats()
         if self.affine:
             init.ones_(self.weight.mu)
-            init.constant_(self.weight.sigma, 0.1)
+            init.constant_(self.weight.sigma, self.sigma_init)
             init.zeros_(self.bias.mu)
-            init.constant_(self.bias.sigma, 0.1)
+            init.constant_(self.bias.sigma, self.sigma_init)
 
     def _check_input_dim(self, x):
         raise NotImplementedError
@@ -90,7 +92,8 @@ class MetaBayesNorm(Module):
     def extra_repr(self):
         return (
             "{num_features}, eps={eps}, momentum={momentum}, affine={affine}, "
-            "track_running_stats={track_running_stats}".format(**self.__dict__)
+            "track_running_stats={track_running_stats}, sigma_init={sigma_init}".format(
+                **self.__dict__)
         )
 
 
@@ -104,12 +107,20 @@ class MetaBayesBatchNorm(MetaBayesNorm):
         momentum: Optional[float] = 0.1,
         affine: bool = True,
         track_running_stats: bool = True,
+        sigma_init: float = 0.1,
         device=None,
         dtype=None,
     ) -> None:
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__(
-            num_features, eps, momentum, affine, track_running_stats, **factory_kwargs
+            num_features=num_features,
+            eps=eps,
+            sigma_init=sigma_init,
+            momentum=momentum,
+            affine=affine,
+            track_running_stats=track_running_stats,
+            device=device,
+            dtype=dtype,
         )
 
     def forward(self, x: Tensor, samples: int) -> Tensor:
@@ -155,19 +166,28 @@ class MetaBayesBatchNorm(MetaBayesNorm):
         if self.affine == True:
             # Sample the weights
             weights = self.weight.sample(samples)
-            bias = self.bias.sample(samples)
-        out = empty_like(x)
-        for i in range(samples):
-            out[i] = F.batch_norm(
-                x[i],
-                self.running_mean if not self.training or self.track_running_stats else None,
-                self.running_var if not self.training or self.track_running_stats else None,
-                weights[i] if self.affine else None,
-                bias[i] if self.affine else None,
-                bn_training,
-                exponential_average_factor,
-                self.eps,
-            )
+            biases = self.bias.sample(samples)
+            weights = weights.view(weights.size(
+                0)*weights.size(1), *weights.size()[2:])
+            biases = biases.view(biases.size(
+                0)*biases.size(1), *biases.size()[2:])
+        x = x.reshape(x.size(1), x.size(0)*x.size(2), *x.size()[3:])
+        # repeat running stats
+        running_mean = self.running_mean.repeat(samples)
+        running_var = self.running_var.repeat(samples)
+        # compute batch norm
+        out = F.batch_norm(
+            x,
+            running_mean,
+            running_var,
+            weights if self.affine else None,
+            biases if self.affine else None,
+            bn_training,
+            exponential_average_factor,
+            self.eps,
+        )
+        out = out.view(samples, out.size(0), out.size(1) //
+                       samples, *out.size()[2:])
         return out
 
 

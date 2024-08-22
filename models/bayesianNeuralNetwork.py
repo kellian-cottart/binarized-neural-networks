@@ -11,7 +11,6 @@ class BayesianNN(DNN):
     def __init__(self,
                  layers,
                  zeroMean=False,
-                 std=0.1,
                  n_samples_train=1,
                  *args,
                  **kwargs):
@@ -22,7 +21,6 @@ class BayesianNN(DNN):
             n_samples_backward (int): Number of backward samples
         """
         self.zeroMean = zeroMean
-        self.sigma_init = std
         self.n_samples_train = n_samples_train
         super().__init__(layers, *args, **kwargs)
         self.layers = MetaBayesSequential(*self.layers)
@@ -44,7 +42,7 @@ class BayesianNN(DNN):
                 out_features=layers[i+1],
                 bias=bias,
                 zeroMean=self.zeroMean,
-                sigma_init=self.sigma_init,
+                sigma_init=self.std,
                 device=self.device
             ))
             self.layers.append(self._norm_init(layers[i+1]))
@@ -63,7 +61,13 @@ class BayesianNN(DNN):
             Module: Normalization layer module
         """
         normalization_layers = {
-            "batchnorm": lambda: MetaBayesBatchNorm1d(n_features, eps=self.eps, momentum=self.momentum, affine=self.affine, track_running_stats=self.running_stats),
+            "batchnorm": lambda: MetaBayesBatchNorm1d(
+                n_features,
+                eps=self.eps,
+                momentum=self.momentum,
+                affine=self.affine,
+                track_running_stats=self.running_stats,
+                sigma_init=self.std),
             "layernorm": lambda: LayerNorm(n_features),
             "instancenorm": lambda: InstanceNorm1d(n_features, eps=self.eps, affine=self.affine, track_running_stats=self.running_stats),
             "groupnorm": lambda: GroupNorm(self.gnnum_groups, n_features),

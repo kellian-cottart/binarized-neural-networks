@@ -30,38 +30,38 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "image_padding": 0,
-            "nn_type": models.EfficientNetBayesian,
+            "image_padding": 2,
+            "nn_type": models.ConvBayesianNeuralNetwork,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [1280],
-                # "features": [16, 32],
+                "layers": [1024, 512],
+                "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
-                "std": 0.1,  # also sigma init
-                "n_samples_test": 1,
-                "n_samples_train": 1,
+                "std": 0.01,  # also sigma init
+                "n_samples_test": 5,
+                "n_samples_train": 5,
                 "tau": 1,
                 "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
                     "power": 4
                 },
-                "normalization": "",
+                "normalization": "batchnorm",
                 "eps": 1e-5,
                 "momentum": 0.1,
-                "running_stats": False,
-                "affine": False,
+                "running_stats": True,
+                "affine": True,
                 "bias": True,
                 "frozen": False,
-                "sigma_multiplier": 1e-1,
+                "sigma_multiplier": 1,
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 5,
+                'n_epochs': 25,
                 'batch_size': 128,
                 'test_batch_size': 128,
                 'feature_extraction': False,
@@ -86,7 +86,7 @@ if __name__ == "__main__":
             "optimizer_parameters": {
                 "sigma_prior": 1e-1,
                 "N": 1e5,
-                "clamp_grad": 0.1,
+                "clamp_grad": 1,
             },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
@@ -102,8 +102,8 @@ if __name__ == "__main__":
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             # "optimizer": optim.SGD,
             # "optimizer_parameters": {"lr": 0.0001, "momentum": 0},
-            "task": "core50-ni",
-            "n_tasks": 8,
+            "task": "MNIST",
+            "n_tasks": 1,
             "n_classes": 1,
         }
     ]

@@ -16,9 +16,9 @@ class MetaBayesSequential(Sequential):
                 try:
                     x = module(x)
                 except:
-                    cat_x = x.view([x.shape[0]*x.shape[1], *x.shape[2:]])
+                    cat_x = x.reshape(x.size(0)*x.size(1), *x.size()[2:])
                     cat_x = module(cat_x)
-                    x = cat_x.view([x.shape[0], x.shape[1], *cat_x.shape[1:]])
+                    x = cat_x.reshape(x.size(0), x.size(1), *cat_x.size()[1:])
         return x
 
 

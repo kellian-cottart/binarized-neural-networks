@@ -1,5 +1,5 @@
 from math import sqrt
-from torch import Tensor
+from torch import Tensor, stack
 import torch.nn.functional as F
 import torch.nn.init as init
 from torch.nn.modules import Module
