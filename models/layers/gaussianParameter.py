@@ -23,6 +23,7 @@ class GaussianParameter(Module):
         """Sample from the Gaussian distribution using the reparameterization trick."""
         # Sample from the standard normal and adjust with sigma and mu
         if samples == 0:
+            self.sigma.requires_grad = False
             return self.mu.unsqueeze(0)
         buffer_epsilon = self.sigma.unsqueeze(0).repeat(
             samples, *([1]*len(self.sigma.shape)))

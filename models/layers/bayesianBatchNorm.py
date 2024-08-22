@@ -171,12 +171,13 @@ class MetaBayesBatchNorm(MetaBayesNorm):
         if self.affine == True:
             # Sample the weights
             weights = self.weight.sample(samples)
-            biases = self.bias.sample(samples)
             weights = weights.view(weights.size(
                 0)*weights.size(1), *weights.size()[2:])
+            biases = self.bias.sample(samples)
             biases = biases.view(biases.size(
                 0)*biases.size(1), *biases.size()[2:])
         x = x.reshape(x.size(1), x.size(0)*x.size(2), *x.size()[3:])
+        samples = samples if samples > 1 else 1
         if self.track_running_stats and not self.running_mean.size(0) == x.size(1):
             self.running_mean = self.running_mean.repeat(
                 samples)

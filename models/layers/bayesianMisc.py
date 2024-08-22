@@ -30,5 +30,5 @@ class MetaBayesMBConv(MBConv):
         result = self.block(x, samples)
         if self.use_res_connect:
             result = self.stochastic_depth(result)
-            result += input
+            result += x
         return result

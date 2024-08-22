@@ -8,6 +8,7 @@ import json
 import tqdm
 import datetime
 from torch import device, cuda, functional, stack, save, prod, set_default_device, set_default_dtype, manual_seed, randperm
+from torch.optim import SGD
 
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
@@ -30,7 +31,7 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "image_padding": 2,
+            "image_padding": 0,
             "nn_type": models.EfficientNetBayesian,
             "nn_parameters": {
                 # NETWORK ###
@@ -86,7 +87,7 @@ if __name__ == "__main__":
             "optimizer_parameters": {
                 "sigma_prior": 1e-1,
                 "N": 1e5,
-                "clamp_grad": 0.1,
+                "clamp_grad": 0.5,
             },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
@@ -100,10 +101,10 @@ if __name__ == "__main__":
             # },
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
-            # "optimizer": optim.SGD,
+            # "optimizer": SGD,
             # "optimizer_parameters": {"lr": 0.0001, "momentum": 0},
-            "task": "CIFAR10",
-            "n_tasks": 1,
+            "task": "core50-ni",
+            "n_tasks": 8,
             "n_classes": 1,
         }
     ]
