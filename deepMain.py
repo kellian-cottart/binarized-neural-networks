@@ -102,7 +102,7 @@ if __name__ == "__main__":
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             "optimizer": SGD,
-            "optimizer_parameters": {"lr": 0.001, "momentum": 0},
+            "optimizer_parameters": {"lr": 1e-3, "momentum": 0},
             "task": "core50-ni",
             "n_tasks": 8,
             "n_classes": 1,

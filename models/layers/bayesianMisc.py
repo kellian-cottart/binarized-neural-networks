@@ -1,5 +1,6 @@
-from torch.nn import Sequential
-from torchvision.models.efficientnet import MBConv
+from torch.nn import Sequential, Module
+from torchvision.models.efficientnet import MBConv, _MBConvConfig
+from typing import Callable, Optional
 
 
 class MetaBayesSequential(Sequential):

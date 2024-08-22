@@ -134,14 +134,15 @@ class EfficientNetBayesian(Module):
                 new_layer = self.conv_to_bayesian(elem)
             # BatchNorm doesn't really work well with Bayesian, so we replace it with an Identity
             elif isinstance(elem, BatchNorm2d):
-                new_layer = MetaBayesBatchNorm2d(num_features=elem.num_features, eps=elem.eps, sigma_init=self.std*self.sigma_multiplier,
-                                                 momentum=elem.momentum, affine=elem.affine, track_running_stats=elem.track_running_stats)
-                if elem.affine:
-                    new_layer.weight.mu.data = elem.weight.data.detach().clone()
-                    new_layer.bias.mu.data = elem.bias.data.detach().clone()
-                if elem.track_running_stats:
-                    new_layer.running_mean = elem.running_mean
-                    new_layer.running_var = elem.running_var
+                # new_layer = MetaBayesBatchNorm2d(num_features=elem.num_features, eps=elem.eps, sigma_init=self.std*self.sigma_multiplier,
+                #                                  momentum=elem.momentum, affine=elem.affine, track_running_stats=elem.track_running_stats)
+                # if elem.affine:
+                #     new_layer.weight.mu.data = elem.weight.data.clone()
+                #     new_layer.bias.mu.data = elem.bias.data.clone()
+                # if elem.track_running_stats:
+                #     new_layer.running_mean = elem.running_mean.clone()
+                #     new_layer.running_var = elem.running_var.clone()
+                new_layer = Identity()
             else:
                 new_layer = elem
             new_sequential.append(new_layer)
@@ -157,8 +158,9 @@ class EfficientNetBayesian(Module):
             stochastic_depth_prob=layer.stochastic_depth.p,
             norm_layer=BatchNorm2d,
         )
+        new_conv.load_state_dict(layer.state_dict())
         new_sequential = torch.nn.ModuleList()
-        for i, iterable in enumerate(layer.block):
+        for iterable in layer.block:
             if isinstance(iterable, Conv2dNormActivation):
                 new_layer = self.replace_convNorm(iterable)
             elif isinstance(iterable, SqueezeExcitation):
@@ -179,7 +181,7 @@ class EfficientNetBayesian(Module):
             MBConvConfig(6, 5, 2, 112, 192, 4),
             MBConvConfig(6, 3, 1, 192, 320, 1),
         ]
-        MBCount = 0
+        MBConv_count = 0
         for i, layer in enumerate(features):
             if isinstance(layer, Conv2dNormActivation):
                 features[i] = self.replace_convNorm(layer)
@@ -187,8 +189,8 @@ class EfficientNetBayesian(Module):
                 for k, sequential in enumerate(layer):
                     if isinstance(sequential, MBConv):
                         features[i][k] = self.replace_mbconv(
-                            sequential, configurations[MBCount])
-                MBCount += 1
+                            sequential, configurations[MBConv_count])
+                        MBConv_count += 1
                 if not isinstance(layer, MetaBayesSequential):
                     features[i] = MetaBayesSequential(*layer)
         return features
