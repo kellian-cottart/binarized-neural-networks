@@ -1,10 +1,9 @@
 import math
-import torch
 from torch import Tensor
 import torch.nn.init as init
 from torch.nn.modules import Module
-from torch.nn.parameter import Parameter
 from .gaussianParameter import *
+from torch import einsum
 
 
 class MetaBayesLinearParallel(Module):
@@ -57,9 +56,9 @@ class MetaBayesLinearParallel(Module):
         W = self.weight.sample(samples)
         if self.bias:
             B = self.bias.sample(samples).unsqueeze(1).repeat(1, x.size(1), 1)
-            return torch.einsum('soi, sbi -> sbo', W, x) + B
+            return einsum('soi, sbi -> sbo', W, x) + B
         else:
-            return torch.einsum('soi, sbi -> sbo', W, x)
+            return einsum('soi, sbi -> sbo', W, x)
 
     def extra_repr(self) -> str:
         """Representation for pretty print and debugging."""

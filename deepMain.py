@@ -36,15 +36,15 @@ if __name__ == "__main__":
             "nn_parameters": {
                 # NETWORK ###
                 "layers": [1280],
-                # "features": [16, 32],
-                "kernel_size": [3, 3, 3],
+                # "features": [],
+                # "kernel_size": [],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
                 "std": 0.1,
-                "n_samples_test": 5,
-                "n_samples_train": 5,
+                "n_samples_test": 1,
+                "n_samples_train": 1,
                 "tau": 1,
                 "activation_function": "relu",
                 "activation_parameters": {
@@ -58,7 +58,7 @@ if __name__ == "__main__":
                 "affine": False,
                 "bias": True,
                 "frozen": False,
-                "sigma_multiplier": 1e-3,
+                "sigma_multiplier": 1e-2,
                 "version": 0,
             },
             "training_parameters": {

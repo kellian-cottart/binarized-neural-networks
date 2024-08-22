@@ -1,5 +1,4 @@
-import torch
-from torch import Tensor
+from torch import Tensor, zeros, ones, tensor, long
 import torch.nn.functional as F
 import torch.nn.init as init
 from torch.nn.modules import Module
@@ -46,18 +45,18 @@ class MetaBayesNorm(Module):
             self.register_parameter("bias", None)
         if self.track_running_stats:
             self.register_buffer(
-                "running_mean", torch.zeros(num_features, **factory_kwargs)
+                "running_mean", zeros(num_features, **factory_kwargs)
             )
             self.register_buffer(
-                "running_var", torch.ones(num_features, **factory_kwargs)
+                "running_var", ones(num_features, **factory_kwargs)
             )
             self.running_mean: Optional[Tensor]
             self.running_var: Optional[Tensor]
             self.register_buffer(
                 "num_batches_tracked",
-                torch.tensor(
+                tensor(
                     0,
-                    dtype=torch.long,
+                    dtype=long,
                     **{k: v for k, v in factory_kwargs.items() if k != "dtype"},
                 ),
             )
@@ -80,10 +79,10 @@ class MetaBayesNorm(Module):
     def reset_parameters(self) -> None:
         self.reset_running_stats()
         if self.affine:
-            init.uniform_(self.weight.mu, 0.9, 1.1)
-            init.uniform_(self.weight.sigma, 0.05, 0.15)
-            init.uniform_(self.bias.mu, -0.1, 0.1)
-            init.uniform_(self.bias.sigma, 0.05, 0.15)
+            init.ones_(self.weight.mu)
+            init.constant_(self.weight.sigma, 0.01)
+            init.zeros_(self.bias.mu)
+            init.constant_(self.bias.sigma, 0.01)
 
     def _check_input_dim(self, x):
         raise NotImplementedError
@@ -157,7 +156,7 @@ class MetaBayesBatchNorm(MetaBayesNorm):
             # Sample the weights
             weights = self.weight.sample(samples)
             bias = self.bias.sample(samples)
-        out = torch.empty_like(x)
+        out = empty_like(x)
         for i in range(samples):
             out[i] = F.batch_norm(
                 x[i],

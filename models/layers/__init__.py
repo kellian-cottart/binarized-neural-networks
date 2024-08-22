@@ -5,4 +5,4 @@ from .biBayesianConv import *
 from .bayesianConv import *
 from .bayesianLinear import *
 from .bayesianBatchNorm import *
-from .bayesianAdaptiveAvgPool import *
+from .bayesianMisc import *

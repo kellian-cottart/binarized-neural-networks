@@ -65,10 +65,8 @@ class MidVGGBayesian(Module):
         self.sigma_multiplier = sigma_multiplier
         # retrieve weights from VGG16
         vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
-        self.features = torch.nn.ModuleList(
-            list(vgg.features.children())).to(self.device)
-
-        self.features = self.replace_conv()
+        self.features = self.replace_conv(torch.nn.ModuleList(
+            list(vgg.features.children())).to(self.device))
         if frozen == True:
             for param in self.features.parameters():
                 param.requires_grad = False
@@ -106,12 +104,6 @@ class MidVGGBayesian(Module):
                 if layer.bias is not None:
                     new_layer.bias.mu.data = layer.bias.data.clone()
                 module_list[i] = new_layer
-            elif isinstance(layer, torch.nn.ModuleList):
-                # if the layer is a ModuleList, we need to iterate over it
-                module_list[i] = self.replace_conv(layer)
-            elif isinstance(layer, torch.nn.Sequential):
-                # if the layer is a Sequential, we need to iterate over it
-                module_list[i] = self.replace_conv(layer)
         return module_list
 
     def _activation_init(self):

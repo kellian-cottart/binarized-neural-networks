@@ -1,10 +1,8 @@
 import math
-import torch
 from torch import Tensor
 import torch.nn.functional as F
 import torch.nn.init as init
 from torch.nn.modules import Module
-from torch.nn.parameter import Parameter
 from torch.nn.modules.utils import _pair, _reverse_repeat_tuple
 from torch.nn.common_types import _size_2_t
 from typing import Optional, List, Tuple, Union
@@ -17,7 +15,7 @@ class MetaBayesConvNd(Module):
     __constants__ = ['stride', 'padding', 'dilation', 'groups',
                      'padding_mode', 'output_padding', 'in_channels',
                      'out_channels', 'kernel_size']
-    __annotations__ = {'bias': Optional[torch.Tensor]}
+    __annotations__ = {'bias': Optional[Tensor]}
 
     def _conv_forward(self, input: Tensor, weight: Tensor, bias: Optional[Tensor]) -> Tensor:
 

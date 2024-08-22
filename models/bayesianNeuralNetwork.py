@@ -1,5 +1,3 @@
-
-import torch
 from .layers import *
 from .deepNeuralNetwork import *
 from .layers.activation import *
