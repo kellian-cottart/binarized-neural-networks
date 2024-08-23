@@ -162,7 +162,7 @@ class MetaBayesBatchNorm(MetaBayesNorm):
         About sampling:
         To paralellize the computations, the selected strategy is to sample weights and biases and run the running stats 
         for each sample by duplicating the running stats the first time. Once it is duplicated, we update the previous 
-        stats with the new stats.
+        stats with the mean of the new stats.
         Possible issue:
         When changing the number of samples, the running stats are not updated as we would like to during the forward.
         Possible alternative: Update the same running stats for all samples by doing a for loop, but it is not 
@@ -178,7 +178,7 @@ class MetaBayesBatchNorm(MetaBayesNorm):
                 0)*biases.size(1), *biases.size()[2:])
         x = x.reshape(x.size(1), x.size(0)*x.size(2), *x.size()[3:])
         samples = samples if samples > 1 else 1
-        if self.track_running_stats and not self.running_mean.size(0) == x.size(1):
+        if self.track_running_stats and samples > 1:
             self.running_mean = self.running_mean.repeat(
                 samples)
             self.running_var = self.running_var.repeat(
@@ -194,6 +194,13 @@ class MetaBayesBatchNorm(MetaBayesNorm):
             exponential_average_factor,
             self.eps,
         )
+        if self.track_running_stats and samples > 1:
+            # reshape into samples, rest
+            self.running_mean = self.running_mean.view(
+                samples, self.running_mean.size(0) // samples, *self.running_mean.size()[1:]).mean(dim=0)
+            self.running_var = self.running_var.view(
+                samples, self.running_var.size(0) // samples, *self.running_var.size()[1:]).mean(dim=0)
+
         return out.view(samples, out.size(0), out.size(1) //
                         samples, *out.size()[2:])
 
