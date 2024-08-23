@@ -23,7 +23,6 @@ class BayesianNN(DNN):
         self.zeroMean = zeroMean
         self.n_samples_train = n_samples_train
         super().__init__(layers, *args, **kwargs)
-        self.layers = MetaBayesSequential(*self.layers)
 
     def _layer_init(self, layers, bias=False):
         """ Initialize layers of NN
@@ -32,6 +31,7 @@ class BayesianNN(DNN):
             dropout (bool): Whether to use dropout
             bias (bool): Whether to use bias
         """
+        self.layers = MetaBayesSequential(*self.layers)
         self.layers.append(nn.Flatten(start_dim=2).to(self.device))
         for i, _ in enumerate(layers[:-1]):
             # BiBayesian layers with BatchNorm

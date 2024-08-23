@@ -56,10 +56,9 @@ class MidVGG(Module):
         self.gnnum_groups = gnnum_groups
         # retrieve weights from VGG16
         vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
-
         # remove classifier layers
-        self.features = torch.nn.ModuleList(
-            list(vgg.features.children())).to(self.device)
+        self.features = Sequential(
+            *list(vgg.features.children())).to(self.device)
         # freeze feature extractor
         if frozen == True:
             for param in self.features.parameters():
@@ -112,10 +111,9 @@ class MidVGG(Module):
             torch.Tensor: Output tensor
 
         """
-        for layer in self.features:
-            x = layer(x)
-        return self.classifier.forward(x)
-
+        x = self.features(x)
+        x = self.classifier(x)
+        return x
     # add number of parameters total
 
     def number_parameters(self):

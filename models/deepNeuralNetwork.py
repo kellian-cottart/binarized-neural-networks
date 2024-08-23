@@ -43,7 +43,6 @@ class DNN(torch.nn.Module):
                  **kwargs):
         super(DNN, self).__init__()
         self.device = device
-        self.layers = torch.nn.ModuleList().to(self.device)
         self.dropout = dropout
         self.normalization = normalization
         self.eps = eps
@@ -68,7 +67,8 @@ class DNN(torch.nn.Module):
             layers (list): List of layer sizes (including input and output layers)
             bias (bool): Whether to use bias
         """
-        self.layers.append(nn.Flatten().to(self.device))
+        self.layers = []
+        self.layers.append(Flatten())
         for i, _ in enumerate(layers[:-1]):
             # Linear layers with BatchNorm
             if self.dropout and i != 0:
@@ -96,7 +96,9 @@ class DNN(torch.nn.Module):
 
         """
         ### FORWARD PASS ###
-        return self.layers(x)
+        for module in self.layers:
+            x = module(x)
+        return x
 
     def load_bn_states(self, state_dict):
         """ Load batch normalization states

@@ -65,8 +65,8 @@ class MidVGGBayesian(Module):
         self.sigma_multiplier = sigma_multiplier
         # retrieve weights from VGG16
         vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
-        self.features = self.replace_conv(
-            MetaBayesSequential(*vgg.features).to(device))
+        self.features = self.replace_conv(MetaBayesSequential(
+            *list(vgg.features.children())).to(self.device))
         if frozen == True:
             for param in self.features.parameters():
                 param.requires_grad = False

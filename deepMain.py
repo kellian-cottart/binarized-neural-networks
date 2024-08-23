@@ -32,10 +32,10 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 0,
-            "nn_type": models.MidVGGBayesian,
+            "nn_type": models.MidVGG,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [8192, 512],
+                "layers": [8192],
                 # "features": [16, 32, 64],
                 # "kernel_size": [3, 3, 3],
                 "padding": "same",
@@ -83,12 +83,12 @@ if __name__ == "__main__":
             #     "N": 20_000,
             #     "normalize_gradients": False,
             # },
-            "optimizer": MESU,
-            "optimizer_parameters": {
-                "sigma_prior": 1e-2,
-                "N": 1e5,
-                "clamp_grad": 0.1,
-            },
+            # "optimizer": MESU,
+            # "optimizer_parameters": {
+            #     "sigma_prior": 1e-2,
+            #     "N": 1e5,
+            #     "clamp_grad": 0.1,
+            # },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
             #     "train_set_size": 10000,
@@ -101,8 +101,8 @@ if __name__ == "__main__":
             # },
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
-            # "optimizer": SGD,
-            # "optimizer_parameters": {"lr": 1e-3, "momentum": 0},
+            "optimizer": SGD,
+            "optimizer_parameters": {"lr": 1e-4, "momentum": 0},
             "task": "core50-ni",
             "n_tasks": 8,
             "n_classes": 1,
