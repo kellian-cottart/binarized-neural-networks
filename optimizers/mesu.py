@@ -81,7 +81,6 @@ def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: in
             'Parameters must include both Sigma and Mu in each group.')
     for mu, sigma, grad_mu, grad_sigma in zip(params[::2], params[1::2], d_p_list[::2], d_p_list[1::2]):
         if clamp_grad > 0:
-            grad_mu.data.clamp_(-clamp_grad, clamp_grad)
             grad_sigma.data.clamp_(-clamp_grad, clamp_grad)
         variance = sigma.data ** 2
         mu.data.add_(-variance * grad_mu - variance *

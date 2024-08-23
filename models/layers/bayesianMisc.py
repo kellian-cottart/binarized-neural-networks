@@ -13,7 +13,7 @@ class MetaBayesSequential(Sequential):
         super().__init__(*args)
 
     def forward(self, x, samples):
-        for i, module in enumerate(self):
+        for module in self:
             if "Meta" in module.__class__.__name__:
                 x = module(x, samples)
             elif not isinstance(module, Flatten):
@@ -65,12 +65,11 @@ class MetaBayesSqueezeExcitation(Module):
         self.scale_activation = scale_activation
 
     def set_weights(self, fc1, fc2):
-        with no_grad():
-            self.fc1.weight.mu.copy_(fc1.weight)
-            self.fc2.weight.mu.copy_(fc2.weight)
-            if fc1.bias is not None and fc2.bias is not None:
-                self.fc1.bias.mu.copy_(fc1.bias)
-                self.fc2.bias.mu.copy_(fc2.bias)
+        self.fc1.weight.mu.data = fc1.weight.data.clone()
+        self.fc2.weight.mu.data = fc2.weight.data.clone()
+        if fc1.bias is not None and fc2.bias is not None:
+            self.fc1.bias.mu.data = fc1.bias.data.clone()
+            self.fc2.bias.mu.data = fc2.bias.data.clone()
 
     def forward(self, x: Tensor, samples: int) -> Tensor:
         scale = MetaBayesSequential(

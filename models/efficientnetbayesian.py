@@ -109,10 +109,9 @@ class EfficientNetBayesian(Module):
     def conv_to_bayesian(self, layer):
         new_layer = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size, stride=layer.stride,
                                     padding=layer.padding, bias=layer.bias is not None, sigma_init=self.std*self.sigma_multiplier, device=self.device, groups=layer.groups)
-        with torch.no_grad():
-            new_layer.weight.mu.copy_(layer.weight)
-            if layer.bias is not None:
-                new_layer.bias.mu.copy_(layer.bias)
+        new_layer.weight.mu.data = layer.weight.data.clone()
+        if layer.bias is not None:
+            new_layer.bias.mu.data = layer.bias.data.clone()
         return new_layer
 
     def replace_excitation(self, layer):
@@ -138,14 +137,6 @@ class EfficientNetBayesian(Module):
             elif isinstance(elem, BatchNorm2d):
                 new_layer = MetaBayesBatchNorm2d(num_features=elem.num_features, eps=elem.eps, sigma_init=self.std*self.sigma_multiplier,
                                                  momentum=elem.momentum, affine=elem.affine, track_running_stats=elem.track_running_stats)
-                if elem.affine:
-                    with torch.no_grad():
-                        new_layer.weight.mu.copy_(elem.weight)
-                        new_layer.bias.mu.copy_(elem.bias)
-                if elem.track_running_stats:
-                    with torch.no_grad():
-                        new_layer.running_mean.copy_(elem.running_mean)
-                        new_layer.running_var.copy_(elem.running_var)
             else:
                 new_layer = elem
             new_sequential.append(new_layer)

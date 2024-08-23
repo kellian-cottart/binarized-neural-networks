@@ -58,7 +58,7 @@ if __name__ == "__main__":
                 "affine": True,
                 "bias": True,
                 "frozen": False,
-                "sigma_multiplier": 1,
+                "sigma_multiplier": 1e-2,
                 "version": 0,
             },
             "training_parameters": {
@@ -103,8 +103,8 @@ if __name__ == "__main__":
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             # "optimizer": SGD,
             # "optimizer_parameters": {"lr": 1e-3, "momentum": 0},
-            "task": "CIFAR10",
-            "n_tasks": 1,
+            "task": "core50-ni",
+            "n_tasks": 8,
             "n_classes": 1,
         }
     ]
