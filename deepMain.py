@@ -32,10 +32,10 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 0,
-            "nn_type": models.EfficientNetBayesian,
+            "nn_type": models.MidVGGBayesian,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [1280],
+                "layers": [8192, 512],
                 # "features": [16, 32, 64],
                 # "kernel_size": [3, 3, 3],
                 "padding": "same",

@@ -83,6 +83,7 @@ class DNN(torch.nn.Module):
             self.layers.append(self._norm_init(layers[i+1]))
             if i < len(layers)-2:
                 self.layers.append(self._activation_init())
+        self.layers = torch.nn.Sequential(*self.layers).to(self.device)
 
     def forward(self, x, *args, **kwargs):
         """ Forward pass of DNN
@@ -95,9 +96,7 @@ class DNN(torch.nn.Module):
 
         """
         ### FORWARD PASS ###
-        for layer in self.layers:
-            x = layer(x)
-        return x
+        return self.layers(x)
 
     def load_bn_states(self, state_dict):
         """ Load batch normalization states
