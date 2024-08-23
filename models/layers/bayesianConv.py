@@ -190,10 +190,10 @@ class MetaBayesConv2d(MetaBayesConvNd):
             - feature map are made of monte carlo samples
             - the input of the neural network is not a monte carlo sample"""
         weights = self.weight.sample(samples)
-        B = self.bias.sample(samples).flatten(
-        ) if self.bias is not None else None
         concatened_weights = weights.view(weights.size(
             0)*weights.size(1), *weights.size()[2:])
+        B = self.bias.sample(samples).flatten(
+        ) if self.bias is not None else None
         samples = samples if samples > 0 else 1
         if x.dim() != weights.dim():
             x = x.unsqueeze(0)
@@ -201,4 +201,6 @@ class MetaBayesConv2d(MetaBayesConvNd):
             x = x.repeat(samples, *([1]*(x.dim()-1)))
         x = x.view(x.size(1), x.size(0)*x.size(2), *x.size()[3:])
         out = self._conv_forward(x, concatened_weights, B, samples)
-        return out.view(samples, out.size(0), out.size(1) // samples, out.size(2), out.size(3))
+        out = out.view(samples, out.size(0), out.size(
+            1) // samples, out.size(2), out.size(3))
+        return out

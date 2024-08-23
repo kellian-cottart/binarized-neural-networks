@@ -4,6 +4,7 @@ from torchvision.models.efficientnet import MBConvConfig
 from torchvision.ops.misc import Conv2dNormActivation, SqueezeExcitation
 from .layers import *
 from .bayesianNeuralNetwork import *
+from functools import partial
 
 LOOK_UP_DICT = {}
 for i in range(8):
@@ -106,24 +107,25 @@ class EfficientNetBayesian(Module):
         )
 
     def conv_to_bayesian(self, layer):
-        new_layer = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size[0], stride=layer.stride[0],
-                                    padding=layer.padding[0], bias=layer.bias is not None, sigma_init=self.std*self.sigma_multiplier, device=self.device, groups=layer.groups)
-        new_layer.weight.mu.data = layer.weight.data.clone()
-        if layer.bias is not None:
-            new_layer.bias.mu.data = layer.bias.data.clone()
+        new_layer = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size, stride=layer.stride,
+                                    padding=layer.padding, bias=layer.bias is not None, sigma_init=self.std*self.sigma_multiplier, device=self.device, groups=layer.groups)
+        with torch.no_grad():
+            new_layer.weight.mu.copy_(layer.weight)
+            if layer.bias is not None:
+                new_layer.bias.mu.copy_(layer.bias)
         return new_layer
 
     def replace_excitation(self, layer):
         """ Replace torchvision's SqueezeExcitation layer's convolutions with Bayesian ones
         https://github.com/pytorch/vision/blob/main/torchvision/ops/misc.py
         """
-        return MetaBayesSequential(
-            layer.avgpool,
-            self.conv_to_bayesian(layer.fc1),
+        new_excitation = MetaBayesSqueezeExcitation(
+            layer.fc1.in_channels,
+            layer.fc1.out_channels,
             layer.activation,
-            self.conv_to_bayesian(layer.fc2),
-            layer.scale_activation,
-        )
+            layer.scale_activation)
+        new_excitation.set_weights(layer.fc1, layer.fc2)
+        return new_excitation
 
     def replace_convNorm(self, layer):
         """ Replace torchvision's ConvNorm layer with a Bayesian one, by turning the whole layer into a ModuleList
@@ -134,15 +136,16 @@ class EfficientNetBayesian(Module):
                 new_layer = self.conv_to_bayesian(elem)
             # BatchNorm doesn't really work well with Bayesian, so we replace it with an Identity
             elif isinstance(elem, BatchNorm2d):
-                # new_layer = MetaBayesBatchNorm2d(num_features=elem.num_features, eps=elem.eps, sigma_init=self.std*self.sigma_multiplier,
-                #                                  momentum=elem.momentum, affine=elem.affine, track_running_stats=elem.track_running_stats)
-                # if elem.affine:
-                #     new_layer.weight.mu.data = elem.weight.data.clone()
-                #     new_layer.bias.mu.data = elem.bias.data.clone()
-                # if elem.track_running_stats:
-                #     new_layer.running_mean = elem.running_mean.clone()
-                #     new_layer.running_var = elem.running_var.clone()
-                new_layer = Identity()
+                new_layer = MetaBayesBatchNorm2d(num_features=elem.num_features, eps=elem.eps, sigma_init=self.std*self.sigma_multiplier,
+                                                 momentum=elem.momentum, affine=elem.affine, track_running_stats=elem.track_running_stats)
+                if elem.affine:
+                    with torch.no_grad():
+                        new_layer.weight.mu.copy_(elem.weight)
+                        new_layer.bias.mu.copy_(elem.bias)
+                if elem.track_running_stats:
+                    with torch.no_grad():
+                        new_layer.running_mean.copy_(elem.running_mean)
+                        new_layer.running_var.copy_(elem.running_var)
             else:
                 new_layer = elem
             new_sequential.append(new_layer)
@@ -153,11 +156,7 @@ class EfficientNetBayesian(Module):
         https://github.com/pytorch/vision/blob/main/torchvision/models/efficientnet.py
         """
         # replace the block with a sequential
-        new_conv = MetaBayesMBConv(
-            cnf=cnf,
-            stochastic_depth_prob=layer.stochastic_depth.p,
-            norm_layer=BatchNorm2d,
-        )
+        new_conv = cnf.block(cnf, layer.stochastic_depth.p, BatchNorm2d)
         new_conv.load_state_dict(layer.state_dict())
         new_sequential = torch.nn.ModuleList()
         for iterable in layer.block:
@@ -173,24 +172,35 @@ class EfficientNetBayesian(Module):
 
     def replace_conv(self, features):
         configurations = [
-            MBConvConfig(1, 3, 1, 32, 16, 1),
-            MBConvConfig(6, 3, 2, 16, 24, 2),
-            MBConvConfig(6, 5, 2, 24, 40, 2),
-            MBConvConfig(6, 3, 2, 40, 80, 3),
-            MBConvConfig(6, 5, 1, 80, 112, 3),
-            MBConvConfig(6, 5, 2, 112, 192, 4),
-            MBConvConfig(6, 3, 1, 192, 320, 1),
+            MBConvConfig(1, 3, 1, 32, 16, 1, block=MetaBayesMBConv),
+            MBConvConfig(6, 3, 2, 16, 24, 2, block=MetaBayesMBConv),
+            MBConvConfig(6, 5, 2, 24, 40, 2, block=MetaBayesMBConv),
+            MBConvConfig(6, 3, 2, 40, 80, 3, block=MetaBayesMBConv),
+            MBConvConfig(6, 5, 1, 80, 112, 3, block=MetaBayesMBConv),
+            MBConvConfig(6, 5, 2, 112, 192, 4, block=MetaBayesMBConv),
+            MBConvConfig(6, 3, 1, 192, 320, 1, block=MetaBayesMBConv),
         ]
-        MBConv_count = 0
+        block_count = 0
         for i, layer in enumerate(features):
             if isinstance(layer, Conv2dNormActivation):
                 features[i] = self.replace_convNorm(layer)
             elif isinstance(layer, Sequential):
-                for k, sequential in enumerate(layer):
-                    if isinstance(sequential, MBConv):
+                for k, mbconv in enumerate(layer):
+                    if isinstance(mbconv, MBConv):
+                        current_config = configurations[block_count]
+                        if k > 0:
+                            current_config = MBConvConfig(
+                                expand_ratio=current_config.expand_ratio,
+                                kernel=current_config.kernel,
+                                stride=current_config.stride,
+                                input_channels=current_config.out_channels,
+                                out_channels=current_config.out_channels,
+                                num_layers=current_config.num_layers,
+                                block=MetaBayesMBConv
+                            )
                         features[i][k] = self.replace_mbconv(
-                            sequential, configurations[MBConv_count])
-                        MBConv_count += 1
+                            mbconv, current_config)
+                block_count += 1
                 if not isinstance(layer, MetaBayesSequential):
                     features[i] = MetaBayesSequential(*layer)
         return features

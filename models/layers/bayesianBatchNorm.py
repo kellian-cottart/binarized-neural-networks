@@ -119,8 +119,7 @@ class MetaBayesBatchNorm(MetaBayesNorm):
             momentum=momentum,
             affine=affine,
             track_running_stats=track_running_stats,
-            device=device,
-            dtype=dtype,
+            **factory_kwargs,
         )
 
     def forward(self, x: Tensor, samples: int) -> Tensor:
@@ -200,9 +199,9 @@ class MetaBayesBatchNorm(MetaBayesNorm):
                 samples, self.running_mean.size(0) // samples, *self.running_mean.size()[1:]).mean(dim=0)
             self.running_var = self.running_var.view(
                 samples, self.running_var.size(0) // samples, *self.running_var.size()[1:]).mean(dim=0)
-
-        return out.view(samples, out.size(0), out.size(1) //
-                        samples, *out.size()[2:])
+        out = out.view(samples, out.size(0), out.size(1) //
+                       samples, *out.size()[2:])
+        return out
 
 
 class MetaBayesBatchNorm1d(MetaBayesBatchNorm):
