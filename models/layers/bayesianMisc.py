@@ -56,11 +56,14 @@ class MetaBayesSqueezeExcitation(Module):
         activation: Callable[..., Module] = ReLU,
         scale_activation: Callable[...,
                                    Module] = Sigmoid,
+        sigma_init: float = 0.1,
     ) -> None:
         super().__init__()
         self.avgpool = AdaptiveAvgPool2d(1)
-        self.fc1 = MetaBayesConv2d(input_channels, squeeze_channels, 1)
-        self.fc2 = MetaBayesConv2d(squeeze_channels, input_channels, 1)
+        self.fc1 = MetaBayesConv2d(
+            input_channels, squeeze_channels, 1, sigma_init=sigma_init)
+        self.fc2 = MetaBayesConv2d(
+            squeeze_channels, input_channels, 1, sigma_init=sigma_init)
         self.activation = activation
         self.scale_activation = scale_activation
 

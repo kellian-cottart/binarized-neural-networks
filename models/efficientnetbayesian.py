@@ -122,7 +122,8 @@ class EfficientNetBayesian(Module):
             layer.fc1.in_channels,
             layer.fc1.out_channels,
             layer.activation,
-            layer.scale_activation)
+            layer.scale_activation,
+            sigma_init=self.std*self.sigma_multiplier)
         new_excitation.set_weights(layer.fc1, layer.fc2)
         return new_excitation
 
@@ -135,7 +136,7 @@ class EfficientNetBayesian(Module):
                 new_layer = self.conv_to_bayesian(elem)
             # BatchNorm doesn't really work well with Bayesian, so we replace it with an Identity
             elif isinstance(elem, BatchNorm2d):
-                new_layer = MetaBayesBatchNorm2d(num_features=elem.num_features, eps=elem.eps, sigma_init=self.std*self.sigma_multiplier,
+                new_layer = MetaBayesBatchNorm2d(num_features=elem.num_features, eps=elem.eps, sigma_init=self.std,
                                                  momentum=elem.momentum, affine=elem.affine, track_running_stats=elem.track_running_stats)
             else:
                 new_layer = elem

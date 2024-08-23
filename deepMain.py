@@ -58,7 +58,7 @@ if __name__ == "__main__":
                 "affine": True,
                 "bias": True,
                 "frozen": False,
-                "sigma_multiplier": 1e-2,
+                "sigma_multiplier": 1e-1,
                 "version": 0,
             },
             "training_parameters": {
@@ -85,7 +85,7 @@ if __name__ == "__main__":
             # },
             "optimizer": MESU,
             "optimizer_parameters": {
-                "sigma_prior": 1e-1,
+                "sigma_prior": 1e-2,
                 "N": 1e5,
                 "clamp_grad": 0.1,
             },
