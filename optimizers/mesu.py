@@ -32,7 +32,7 @@ class MESU(Optimizer):
             - Individual priors for each synapse
     """
 
-    def __init__(self, params, sigma_prior=0.1, N=1e5, clamp_grad=0):
+    def __init__(self, params, lr=1, sigma_prior=0.1, N=1e5, clamp_grad=0):
 
         if sigma_prior <= 0:
             raise ValueError(
@@ -41,6 +41,7 @@ class MESU(Optimizer):
             raise ValueError(f'N must be positive, got {N}')
 
         defaults = dict(
+            lr=lr,
             sigma_prior=sigma_prior,
             N=N,
             clamp_grad=clamp_grad
@@ -67,23 +68,31 @@ class MESU(Optimizer):
             mesu(
                 params_with_grad,
                 d_p_list,
+                learning_rate=group['lr'],
                 sigma_prior=group['sigma_prior'],
                 N=group['N'],
                 clamp_grad=group['clamp_grad'],
             )
 
 
-def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: int, clamp_grad: float):
+def mesu(params: List[Tensor], d_p_list: List[Tensor], *, learning_rate: float, sigma_prior: float, N: int, clamp_grad: float):
     if not params:
         raise ValueError('No gradients found in parameters!')
     if len(params) % 2 == 1:
         raise ValueError(
             'Parameters must include both Sigma and Mu in each group.')
-    for mu, sigma, grad_mu, grad_sigma in zip(params[::2], params[1::2], d_p_list[::2], d_p_list[1::2]):
+
+    for i, param in enumerate(params):
+        d_p = d_p_list[i]
+
         if clamp_grad > 0:
-            grad_sigma.data.clamp_(-clamp_grad, clamp_grad)
-        variance = sigma.data ** 2
-        mu.data.add_(-variance * grad_mu - variance *
-                     mu.data / (N * sigma_prior ** 2))
-        sigma.data.add_(-0.5 * variance * grad_sigma + sigma.data *
-                        (sigma_prior ** 2 - variance) / (N * sigma_prior ** 2))
+            d_p = clamp(d_p, -clamp_grad, clamp_grad)
+
+        is_sigma = (i % 2 == 0)
+        if is_sigma:
+            variance = param.data ** 2
+            param.data.add_(-0.5 * variance * d_p + param.data *
+                            (sigma_prior ** 2 - variance) / (N * sigma_prior ** 2))
+        else:
+            param.data.add_(-learning_rate * variance * d_p -
+                            variance * param.data / (N * sigma_prior ** 2))

@@ -37,11 +37,11 @@ class ConvBayesianNeuralNetwork(ConvNN):
         for i, _ in enumerate(features[:-1]):
             # Conv layers with BatchNorm and MaxPool
             self.features.append(MetaBayesConv2d(
-                features[i], features[i+1], kernel_size=self.kernel_size[i], stride=self.stride, padding=self.padding, dilation=self.dilation, bias=bias, sigma_init=self.std*self.sigma_multiplier, device=self.device))
+                features[i], features[i+1], kernel_size=self.kernel_size[i], stride=self.stride, padding=self.padding, dilation=self.dilation, bias=bias, sigma_init=self.std, device=self.device))
             self.features.append(self._norm_init(features[i+1]))
             self.features.append(self._activation_init())
             self.features.append(MetaBayesConv2d(
-                features[i+1], features[i+1], kernel_size=self.kernel_size[i], stride=self.stride, padding=self.padding, dilation=self.dilation, bias=bias, sigma_init=self.std*self.sigma_multiplier, device=self.device))
+                features[i+1], features[i+1], kernel_size=self.kernel_size[i], stride=self.stride, padding=self.padding, dilation=self.dilation, bias=bias, sigma_init=self.std, device=self.device))
             self.features.append(self._norm_init(features[i+1]))
             self.features.append(self._activation_init())
             self.features.append(MaxPool2d(
@@ -67,6 +67,8 @@ class ConvBayesianNeuralNetwork(ConvNN):
 
     def forward(self, x, *args, **kwargs):
         """Forward propagation of the binarized neural network"""
+        samples = self.n_samples_train if self.n_samples_train > 1 else 1
+        x = x.repeat(samples, *([1] * (len(x.size())-1)))
         x = self.features(x, self.n_samples_train)
         return self.classifier(x, self.n_samples_train)
 

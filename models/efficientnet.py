@@ -8,7 +8,7 @@ LOOK_UP_DICT = {}
 for i in range(8):
     LOOK_UP_DICT[str(i)] = {
         "model": getattr(torchvision.models, f"efficientnet_b{i}"),
-        "weights": getattr(torchvision.models, f"EfficientNet_B{i}_Weights")
+        "weights": getattr(torchvision.models, f"EfficientNet_B{i}_Weights"),
     }
 
 
@@ -69,6 +69,7 @@ class EfficientNet(Module):
         # remove classifier layers
         self.features = effnet.features
         self.avgpool = effnet.avgpool
+        self.transform = current["weights"].IMAGENET1K_V1.transforms()
         # freeze feature extractor
         if frozen == True:
             for param in self.features.parameters():
@@ -121,6 +122,7 @@ class EfficientNet(Module):
             torch.Tensor: Output tensor
 
         """
+        x = self.transform(x)
         x = self.features(x)
         x = self.avgpool(x)
         return self.classifier.forward(x)

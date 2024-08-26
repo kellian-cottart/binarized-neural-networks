@@ -32,7 +32,7 @@ class BayesianNN(DNN):
             bias (bool): Whether to use bias
         """
         self.layers = MetaBayesSequential(*self.layers)
-        self.layers.append(nn.Flatten(start_dim=2).to(self.device))
+        self.layers.append(nn.Flatten(start_dim=1).to(self.device))
         for i, _ in enumerate(layers[:-1]):
             # BiBayesian layers with BatchNorm
             if self.dropout and i != 0:
@@ -84,6 +84,8 @@ class BayesianNN(DNN):
             torch.Tensor: Output tensor
 
         """
-        if x.dim() == 4:
-            x = x.unsqueeze(0)
-        return self.layers(x, self.n_samples_train)
+        samples = self.n_samples_train if self.n_samples_train > 1 else 1
+        if x.size(0) == 1:
+            x = x.repeat(samples, *([1] * (len(x.size())-1)))
+        out = self.layers(x, self.n_samples_train)
+        return out.reshape(samples, out.size(0)//samples, *out.size()[1:])

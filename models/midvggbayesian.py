@@ -98,12 +98,11 @@ class MidVGGBayesian(Module):
         for i, layer in enumerate(module_list):
             if isinstance(layer, torch.nn.Conv2d):
                 # replace the layer
-                new_layer = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size[0], stride=layer.stride[0],
-                                            padding=layer.padding[0], bias=self.bias, sigma_init=self.sigma_init*self.sigma_multiplier, device=self.device)
-                with torch.no_grad():
-                    new_layer.weight.mu.copy_(layer.weight)
-                    if layer.bias is not None:
-                        new_layer.bias.mu.copy_(layer.bias)
+                new_layer = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size, stride=layer.stride,
+                                            padding=layer.padding, bias=self.bias, sigma_init=self.sigma_init*self.sigma_multiplier, device=self.device)
+                new_layer.weight.mu.data = layer.weight.data.clone()
+                if layer.bias is not None:
+                    new_layer.bias.mu.data = layer.bias.data.clone()
                 module_list[i] = new_layer
         return module_list
 
@@ -150,8 +149,9 @@ class MidVGGBayesian(Module):
             torch.Tensor: Output tensor
 
         """
+        x = x.repeat(self.n_samples_train, *([1] * (len(x.size())-1)))
         x = self.features(x, self.n_samples_train)
-        return self.classifier.forward(x)
+        return self.classifier.forward(x, self.n_samples_train)
 
     # add number of parameters total
 

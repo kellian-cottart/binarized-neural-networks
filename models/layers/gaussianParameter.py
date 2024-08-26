@@ -25,12 +25,10 @@ class GaussianParameter(Module):
         if samples == 0:
             self.sigma.requires_grad = False
             return self.mu.unsqueeze(0)
-        buffer_epsilon = self.sigma.unsqueeze(0).repeat(
-            samples, *([1]*len(self.sigma.shape)))
-        epsilon = empty_like(buffer_epsilon).normal_()
-        mu = self.mu.unsqueeze(0).repeat(
-            samples, *([1]*len(self.mu.shape)))
-        return mu + buffer_epsilon * epsilon
+        sigma = self.sigma.repeat(samples, *([1] * (len(self.sigma.size()))))
+        epsilon = empty_like(sigma).normal_()
+        mu = self.mu.repeat(samples, *([1] * (len(self.mu.size()))))
+        return mu + sigma * epsilon
 
     def extra_repr(self):
         return f"mu={self.mu.size()}, sigma={self.sigma.size()}"

@@ -53,6 +53,7 @@ class DNN(torch.nn.Module):
         self.gnnum_groups = gnnum_groups
         self.squared_inputs = squared_inputs
         self.std = std
+        self.layers = []
         if "activation_parameters" in kwargs:
             self.activation_parameters = kwargs["activation_parameters"]
         ### LAYER INITIALIZATION ###
@@ -67,7 +68,6 @@ class DNN(torch.nn.Module):
             layers (list): List of layer sizes (including input and output layers)
             bias (bool): Whether to use bias
         """
-        self.layers = []
         self.layers.append(Flatten())
         for i, _ in enumerate(layers[:-1]):
             # Linear layers with BatchNorm
@@ -96,9 +96,7 @@ class DNN(torch.nn.Module):
 
         """
         ### FORWARD PASS ###
-        for module in self.layers:
-            x = module(x)
-        return x
+        return self.layers(x)
 
     def load_bn_states(self, state_dict):
         """ Load batch normalization states
@@ -163,7 +161,6 @@ class DNN(torch.nn.Module):
 
     def _weight_init(self, init='normal', std=0.1):
         """ Initialize weights of each layer
-
         Args:
             init (str): Initialization method for weights
             std (float): Standard deviation for initialization

@@ -8,7 +8,7 @@ import json
 import tqdm
 import datetime
 from torch import device, cuda, functional, stack, save, prod, set_default_device, set_default_dtype, manual_seed, randperm
-from torch.optim import SGD
+from torch.optim import SGD, Adam
 
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
@@ -32,19 +32,20 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 0,
-            "nn_type": models.MidVGG,
+            "nn_type": models.EfficientNetBayesian,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [8192],
+                "layers": [1280],
                 # "features": [16, 32, 64],
-                # "kernel_size": [3, 3, 3],
+                "kernel_size": [3, 3, 3],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
-                "std": 0.1,  # also sigma init
-                "n_samples_test": 3,
-                "n_samples_train": 3,
+                "std": 0.01,  # also sigma init
+                "bias": True,
+                "n_samples_test": 0,
+                "n_samples_train": 0,
                 "tau": 1,
                 "activation_function": "relu",
                 "activation_parameters": {
@@ -54,23 +55,22 @@ if __name__ == "__main__":
                 "normalization": "",
                 "eps": 1e-5,
                 "momentum": 0.1,
-                "running_stats": True,
-                "affine": True,
-                "bias": True,
+                "running_stats": False,
+                "affine": False,
                 "frozen": False,
                 "sigma_multiplier": 1e-1,
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 10,
-                'batch_size': 128,
-                'test_batch_size': 128,
+                'n_epochs': 1,
+                'batch_size': 64,
+                'test_batch_size': 64,
                 'feature_extraction': False,
                 'data_aug_it': 1,
                 "continual": True,
                 "task_boundaries": False,
             },
-            "label_trick": True,
+            "label_trick": False,
             "output_function": "log_softmax",
             "criterion": functional.F.nll_loss,
             "reduction": "sum",
@@ -85,7 +85,8 @@ if __name__ == "__main__":
             # },
             # "optimizer": MESU,
             # "optimizer_parameters": {
-            #     "sigma_prior": 1e-2,
+            #     "lr": 1,
+            #     "sigma_prior": 1e-1,
             #     "N": 1e5,
             #     "clamp_grad": 0.1,
             # },
@@ -102,7 +103,7 @@ if __name__ == "__main__":
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             "optimizer": SGD,
-            "optimizer_parameters": {"lr": 1e-4, "momentum": 0},
+            "optimizer_parameters": {"lr": 0.001},
             "task": "core50-ni",
             "n_tasks": 8,
             "n_classes": 1,

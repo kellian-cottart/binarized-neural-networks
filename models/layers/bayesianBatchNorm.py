@@ -1,4 +1,4 @@
-from torch import Tensor, zeros, ones, tensor, long
+from torch import Tensor, zeros, ones, tensor, long, stack
 import torch.nn.functional as F
 import torch.nn.init as init
 from torch.nn.modules import Module
@@ -157,66 +157,43 @@ class MetaBayesBatchNorm(MetaBayesNorm):
         passed when the update should occur (i.e. in training mode when they are tracked), or when buffer stats are
         used for normalization (i.e. in eval mode when buffers are not None).
         """
-        r"""
-        About sampling:
-        To paralellize the computations, the selected strategy is to sample weights and biases and run the running stats 
-        for each sample by duplicating the running stats the first time. Once it is duplicated, we update the previous 
-        stats with the mean of the new stats.
-        Possible issue:
-        When changing the number of samples, the running stats are not updated as we would like to during the forward.
-        Possible alternative: Update the same running stats for all samples by doing a for loop, but it is not 
-        parallelizable.
-        """
         if self.affine == True:
             # Sample the weights
             weights = self.weight.sample(samples)
-            weights = weights.view(weights.size(
-                0)*weights.size(1), *weights.size()[2:])
             biases = self.bias.sample(samples)
-            biases = biases.view(biases.size(
-                0)*biases.size(1), *biases.size()[2:])
-        x = x.reshape(x.size(1), x.size(0)*x.size(2), *x.size()[3:])
         samples = samples if samples > 1 else 1
-        if self.track_running_stats and samples > 1:
-            self.running_mean = self.running_mean.repeat(
-                samples)
-            self.running_var = self.running_var.repeat(
-                samples)
-        # compute batch norm
-        out = F.batch_norm(
-            x,
-            self.running_mean if not self.running_mean is None else None,
-            self.running_var if not self.running_var is None else None,
-            weights if self.affine else None,
-            biases if self.affine else None,
-            bn_training,
-            exponential_average_factor,
-            self.eps,
-        )
-        if self.track_running_stats and samples > 1:
-            # reshape into samples, rest
-            self.running_mean = self.running_mean.view(
-                samples, self.running_mean.size(0) // samples, *self.running_mean.size()[1:]).mean(dim=0)
-            self.running_var = self.running_var.view(
-                samples, self.running_var.size(0) // samples, *self.running_var.size()[1:]).mean(dim=0)
-        out = out.view(samples, out.size(0), out.size(1) //
-                       samples, *out.size()[2:])
+        x = x.reshape(samples, x.size(0)//samples,
+                      x.size(1), *x.size()[2:])
+        out = []
+        for i in range(samples):
+            out.append(F.batch_norm(
+                x[i],
+                self.running_mean if not self.training or self.track_running_stats else None,
+                self.running_var if not self.training or self.track_running_stats else None,
+                weights[i] if self.affine else None,
+                biases[i] if self.affine else None,
+                bn_training,
+                exponential_average_factor,
+                self.eps,
+            ))
+        out = stack(out)
+        out = out.reshape(out.size(0)*out.size(1), *out.size()[2:])
         return out
 
 
 class MetaBayesBatchNorm1d(MetaBayesBatchNorm):
     def _check_input_dim(self, x):
-        if x.dim() != 3 and x.dim() != 4:
+        if x.dim() != 2 and x.dim() != 3:
             raise ValueError(
-                "expected 3D or 4D input (got {}D input)".format(
+                "expected 2D or 3D input (got {}D input)".format(
                     x.dim())
             )
 
 
 class MetaBayesBatchNorm2d(MetaBayesBatchNorm):
     def _check_input_dim(self, x):
-        if x.dim() != 4 and x.dim() != 5:
+        if x.dim() != 3 and x.dim() != 4:
             raise ValueError(
-                "expected 4D input or 5D input (got {}D input)".format(
+                "expected 3D input or 4D input (got {}D input)".format(
                     x.dim())
             )

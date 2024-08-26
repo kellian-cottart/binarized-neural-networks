@@ -16,10 +16,6 @@ class MetaBayesSequential(Sequential):
         for module in self:
             if "Meta" in module.__class__.__name__:
                 x = module(x, samples)
-            elif not isinstance(module, Flatten):
-                cat_x = x.reshape(x.size(0)*x.size(1), *x.size()[2:])
-                cat_x = module(cat_x)
-                x = cat_x.reshape(x.size(0), x.size(1), *cat_x.size()[1:])
             else:
                 x = module(x)
         return x

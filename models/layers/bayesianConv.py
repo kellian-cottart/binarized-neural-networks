@@ -181,26 +181,21 @@ class MetaBayesConv2d(MetaBayesConvNd):
         if self.padding_mode != 'zeros':
             return F.conv2d(F.pad(x, self._reversed_padding_repeated_twice, mode=self.padding_mode),
                             weight, bias, self.stride,
-                            _pair(0), self.dilation, groups=samples*self.groups)
+                            _pair(0), self.dilation, groups=self.groups)
         return F.conv2d(x, weight, bias, self.stride,
-                        self.padding, self.dilation, groups=samples*self.groups)
+                        self.padding, self.dilation, groups=self.groups)
 
     def forward(self, x: Tensor, samples=1) -> Tensor:
         """ The shapings are necessary to take into account that:
             - feature map are made of monte carlo samples
             - the input of the neural network is not a monte carlo sample"""
         weights = self.weight.sample(samples)
-        concatened_weights = weights.view(weights.size(
-            0)*weights.size(1), *weights.size()[2:])
-        B = self.bias.sample(samples).flatten(
-        ) if self.bias is not None else None
-        samples = samples if samples > 0 else 1
-        if x.dim() != weights.dim():
-            x = x.unsqueeze(0)
-        if x.size(0) == 1:
-            x = x.repeat(samples, *([1]*(x.dim()-1)))
-        x = x.view(x.size(1), x.size(0)*x.size(2), *x.size()[3:])
-        out = self._conv_forward(x, concatened_weights, B, samples)
-        out = out.view(samples, out.size(0), out.size(
-            1) // samples, out.size(2), out.size(3))
-        return out
+        B = self.bias.sample(samples) if self.bias is not None else None
+        samples = samples if samples > 1 else 1
+        x = x.reshape(samples, x.size(0)//samples, x.size(1), *x.size()[2:])
+        out = []
+        for i in range(samples):
+            out.append(self._conv_forward(
+                x[i], weights[i], B[i] if B is not None else None, samples))
+        out = stack(out)
+        return out.reshape(out.size(0)*out.size(1), *out.size()[2:])

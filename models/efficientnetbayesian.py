@@ -80,6 +80,7 @@ class EfficientNetBayesian(Module):
         effnet.features.append(effnet.avgpool)
         self.features = self.replace_conv(effnet.features)
         self.features = MetaBayesSequential(*self.features)
+        self.transform = current["weights"].IMAGENET1K_V1.transforms()
         # append features to add avgpool
         if frozen == True:
             for param in self.features.parameters():
@@ -138,6 +139,12 @@ class EfficientNetBayesian(Module):
             elif isinstance(elem, BatchNorm2d):
                 new_layer = MetaBayesBatchNorm2d(num_features=elem.num_features, eps=elem.eps, sigma_init=self.std,
                                                  momentum=elem.momentum, affine=elem.affine, track_running_stats=elem.track_running_stats)
+                if elem.affine:
+                    new_layer.weight.data = elem.weight.data.clone()
+                    new_layer.bias.data = elem.bias.data.clone()
+                    if elem.track_running_stats:
+                        new_layer.running_mean.data = elem.running_mean.data.clone()
+                        new_layer.running_var.data = elem.running_var.data.clone()
             else:
                 new_layer = elem
             new_sequential.append(new_layer)
@@ -207,8 +214,11 @@ class EfficientNetBayesian(Module):
             torch.Tensor: Output tensor
 
         """
+        samples = self.n_samples_train if self.n_samples_train > 1 else 1
+        x = x.repeat(samples, *([1] * (len(x.size())-1)))
+        x = self.transform(x)
         x = self.features(x, self.n_samples_train)
-        return self.classifier.forward(x)
+        return self.classifier(x)
 
     # add number of parameters total
 
