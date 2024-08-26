@@ -139,9 +139,9 @@ class EfficientNetBayesian(Module):
             elif isinstance(elem, BatchNorm2d):
                 new_layer = MetaBayesBatchNorm2d(num_features=elem.num_features, eps=elem.eps, sigma_init=self.std,
                                                  momentum=elem.momentum, affine=elem.affine, track_running_stats=elem.track_running_stats)
-                if elem.affine:
-                    new_layer.weight.data = elem.weight.data.clone()
-                    new_layer.bias.data = elem.bias.data.clone()
+                if elem.affine == True:
+                    new_layer.weight.mu.data = elem.weight.data.clone()
+                    new_layer.bias.mu.data = elem.bias.data.clone()
                     if elem.track_running_stats:
                         new_layer.running_mean.data = elem.running_mean.data.clone()
                         new_layer.running_var.data = elem.running_var.data.clone()
@@ -215,9 +215,13 @@ class EfficientNetBayesian(Module):
 
         """
         samples = self.n_samples_train if self.n_samples_train > 1 else 1
-        x = x.repeat(samples, *([1] * (len(x.size())-1)))
         x = self.transform(x)
-        x = self.features(x, self.n_samples_train)
+        x = x.repeat(samples, *([1] * (len(x.size())-1)))
+        for module in self.features:
+            print(module)
+            x = module(x, samples=self.n_samples_train)
+            print(x[0])
+            breakpoint()
         return self.classifier(x)
 
     # add number of parameters total

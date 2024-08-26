@@ -10,12 +10,12 @@ class GaussianParameter(Module):
         if in_features is None:
             self.mu = Parameter(empty(
                 (out_features,), **factory_kwargs))
-        elif kernel_size is not None:
-            self.mu = Parameter(empty(
-                (out_features, in_features, *kernel_size), **factory_kwargs))
+        elif kernel_size is None:
+            self.mu = Parameter(
+                empty((out_features, in_features), **factory_kwargs))
         else:
             self.mu = Parameter(empty(
-                (out_features, in_features), **factory_kwargs))
+                (out_features, in_features, *kernel_size), **factory_kwargs))
         self.sigma = Parameter(
             empty_like(self.mu))
 
@@ -23,7 +23,6 @@ class GaussianParameter(Module):
         """Sample from the Gaussian distribution using the reparameterization trick."""
         # Sample from the standard normal and adjust with sigma and mu
         if samples == 0:
-            self.sigma.requires_grad = False
             return self.mu.unsqueeze(0)
         sigma = self.sigma.repeat(samples, *([1] * (len(self.sigma.size()))))
         epsilon = empty_like(sigma).normal_()

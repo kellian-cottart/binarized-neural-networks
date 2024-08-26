@@ -176,7 +176,7 @@ class MetaBayesConv2d(MetaBayesConvNd):
             in_channels, out_channels, kernel_size_, stride_, padding_, dilation_, groups=groups,
             transposed=False, output_padding=_pair(0), sigma_init=sigma_init, bias=bias, padding_mode=padding_mode, **factory_kwargs)
 
-    def _conv_forward(self, x: Tensor, weight: Tensor, bias: Optional[Tensor], samples=1):
+    def _conv_forward(self, x: Tensor, weight: Tensor, bias: Optional[Tensor]):
         """ To compute the monte carlo sampling in an optimum manner, we use the functionality group of F.conv2d """
         if self.padding_mode != 'zeros':
             return F.conv2d(F.pad(x, self._reversed_padding_repeated_twice, mode=self.padding_mode),
@@ -196,6 +196,6 @@ class MetaBayesConv2d(MetaBayesConvNd):
         out = []
         for i in range(samples):
             out.append(self._conv_forward(
-                x[i], weights[i], B[i] if B is not None else None, samples))
+                x[i], weights[i], B[i] if B is not None else None))
         out = stack(out)
         return out.reshape(out.size(0)*out.size(1), *out.size()[2:])
