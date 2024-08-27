@@ -24,7 +24,6 @@ class MetaBayesLinearParallel(Module):
         self.weight = GaussianParameter(out_features=out_features,
                                         in_features=in_features,
                                         **factory_kwargs)
-
         # Control for zero mean initialization
         self.zeroMean = zeroMean
 
@@ -54,15 +53,12 @@ class MetaBayesLinearParallel(Module):
     def forward(self, x: Tensor, samples: int) -> Tensor:
         """Forward pass using sampled weights and biases."""
         W = self.weight.sample(samples)
-        if self.bias is not None:
-            B = self.bias.sample(samples).unsqueeze(1)
-        samples = samples if samples > 1 else 1
-        x = x.view(samples, x.size(0)//samples, *x.size()[1:])
-        out = einsum('soi, sbi -> sbo', W, x)
-        if self.bias is not None:
-            B = B.expand(
-                samples, x.size(1), self.out_features)
-            out += B
+        x = x.reshape(samples, x.size(0)//samples, x.size(1))
+        if self.bias:
+            B = self.bias.sample(samples).unsqueeze(1).repeat(1, x.size(1), 1)
+            out = einsum('soi, sbi -> sbo', W, x) + B
+        else:
+            out = einsum('soi, sbi -> sbo', W, x)
         return out.reshape(out.size(0)*out.size(1), *out.size()[2:])
 
     def extra_repr(self) -> str:

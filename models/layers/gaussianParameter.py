@@ -8,16 +8,16 @@ class GaussianParameter(Module):
     def __init__(self, out_features, in_features=None, kernel_size=None, **factory_kwargs):
         super(GaussianParameter, self).__init__()
         if in_features is None:
-            self.mu = Parameter(empty(
+            self.sigma = Parameter(empty(
                 (out_features,), **factory_kwargs))
         elif kernel_size is None:
-            self.mu = Parameter(
+            self.sigma = Parameter(
                 empty((out_features, in_features), **factory_kwargs))
         else:
-            self.mu = Parameter(empty(
+            self.sigma = Parameter(empty(
                 (out_features, in_features, *kernel_size), **factory_kwargs))
-        self.sigma = Parameter(
-            empty_like(self.mu))
+        self.mu = Parameter(
+            empty_like(self.sigma, **factory_kwargs))
 
     def sample(self, samples=1):
         """Sample from the Gaussian distribution using the reparameterization trick."""

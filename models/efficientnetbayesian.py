@@ -137,7 +137,7 @@ class EfficientNetBayesian(Module):
                 new_layer = self.conv_to_bayesian(elem)
             # BatchNorm doesn't really work well with Bayesian, so we replace it with an Identity
             elif isinstance(elem, BatchNorm2d):
-                new_layer = MetaBayesBatchNorm2d(num_features=elem.num_features, eps=elem.eps, sigma_init=self.std,
+                new_layer = MetaBayesBatchNorm2d(num_features=elem.num_features, eps=elem.eps, sigma_init=self.std*self.sigma_multiplier,
                                                  momentum=elem.momentum, affine=elem.affine, track_running_stats=elem.track_running_stats)
                 if elem.affine == True:
                     new_layer.weight.mu.data = elem.weight.data.clone()
@@ -145,6 +145,7 @@ class EfficientNetBayesian(Module):
                     if elem.track_running_stats:
                         new_layer.running_mean.data = elem.running_mean.data.clone()
                         new_layer.running_var.data = elem.running_var.data.clone()
+                        new_layer.num_batches_tracked.data = elem.num_batches_tracked.data.clone()
             else:
                 new_layer = elem
             new_sequential.append(new_layer)
@@ -157,16 +158,16 @@ class EfficientNetBayesian(Module):
         # replace the block with a sequential
         new_conv = cnf.block(cnf, layer.stochastic_depth.p, BatchNorm2d)
         new_conv.load_state_dict(layer.state_dict())
-        new_sequential = torch.nn.ModuleList()
-        for iterable in layer.block:
+        new_conv.stochastic_depth.load_state_dict(
+            layer.stochastic_depth.state_dict())
+        new_conv.use_res_connect = layer.use_res_connect if hasattr(
+            layer, "use_res_connect") else None
+        for i, iterable in enumerate(layer.block):
             if isinstance(iterable, Conv2dNormActivation):
-                new_layer = self.replace_convNorm(iterable)
+                layer.block[i] = self.replace_convNorm(iterable)
             elif isinstance(iterable, SqueezeExcitation):
-                new_layer = self.replace_excitation(iterable)
-            else:
-                new_layer = iterable
-            new_sequential.append(new_layer)
-        new_conv.block = MetaBayesSequential(*new_sequential)
+                layer.block[i] = self.replace_excitation(iterable)
+        new_conv.block = MetaBayesSequential(*layer.block)
         return new_conv
 
     def replace_conv(self, features):
@@ -214,14 +215,11 @@ class EfficientNetBayesian(Module):
             torch.Tensor: Output tensor
 
         """
-        samples = self.n_samples_train if self.n_samples_train > 1 else 1
+        repeat_samples = self.n_samples_train if self.n_samples_train > 1 else 1
+        samples = self.n_samples_train
         x = self.transform(x)
-        x = x.repeat(samples, *([1] * (len(x.size())-1)))
-        for module in self.features:
-            print(module)
-            x = module(x, samples=self.n_samples_train)
-            print(x[0])
-            breakpoint()
+        x = x.repeat(repeat_samples, *([1] * (len(x.size())-1)))
+        x = self.features(x, samples)
         return self.classifier(x)
 
     # add number of parameters total

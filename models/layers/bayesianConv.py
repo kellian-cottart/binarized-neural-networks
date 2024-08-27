@@ -176,26 +176,48 @@ class MetaBayesConv2d(MetaBayesConvNd):
             in_channels, out_channels, kernel_size_, stride_, padding_, dilation_, groups=groups,
             transposed=False, output_padding=_pair(0), sigma_init=sigma_init, bias=bias, padding_mode=padding_mode, **factory_kwargs)
 
-    def _conv_forward(self, x: Tensor, weight: Tensor, bias: Optional[Tensor]):
+    def _conv_forward(self, x: Tensor, weight: Tensor, bias: Optional[Tensor], samples=1) -> Tensor:
         """ To compute the monte carlo sampling in an optimum manner, we use the functionality group of F.conv2d """
         if self.padding_mode != 'zeros':
             return F.conv2d(F.pad(x, self._reversed_padding_repeated_twice, mode=self.padding_mode),
                             weight, bias, self.stride,
-                            _pair(0), self.dilation, groups=self.groups)
-        return F.conv2d(x, weight, bias, self.stride,
-                        self.padding, self.dilation, groups=self.groups)
+                            _pair(0), self.dilation, groups=self.groups*samples)
+        return F.conv2d(
+            x=x,
+            weight=weight,
+            bias=bias,
+            stride=self.stride,
+            padding=self.padding,
+            dilation=self.dilation,
+            groups=self.groups*samples)
 
-    def forward(self, x: Tensor, samples=1) -> Tensor:
+    # def forward(self, x: Tensor, samples) -> Tensor:
+    #     """ The shapings are necessary to take into account that:
+    #         - feature map are made of monte carlo samples
+    #         - the input of the neural network is not a monte carlo sample"""
+    #     weights = self.weight.sample(samples)
+    #     B = self.bias.sample(samples) if self.bias is not None else None
+    #     samples = samples if samples > 1 else 1
+    #     x = x.reshape(samples, x.size(0)//samples, x.size(1), *x.size()[2:])
+    #     out = []
+    #     for i in range(samples):
+    #         out.append(self._conv_forward(
+    #             x[i], weights[i], B[i] if B is not None else None))
+    #     out = stack(out)
+    #     return out.reshape(out.size(0)*out.size(1), *out.size()[2:])
+
+    def forward(self, x: Tensor, samples) -> Tensor:
         """ The shapings are necessary to take into account that:
             - feature map are made of monte carlo samples
             - the input of the neural network is not a monte carlo sample"""
         weights = self.weight.sample(samples)
-        B = self.bias.sample(samples) if self.bias is not None else None
+        B = self.bias.sample(samples).flatten(
+        ) if self.bias is not None else None
         samples = samples if samples > 1 else 1
-        x = x.reshape(samples, x.size(0)//samples, x.size(1), *x.size()[2:])
-        out = []
-        for i in range(samples):
-            out.append(self._conv_forward(
-                x[i], weights[i], B[i] if B is not None else None))
-        out = stack(out)
-        return out.reshape(out.size(0)*out.size(1), *out.size()[2:])
+        weights = weights.reshape(weights.size(
+            0)*weights.size(1), *weights.size()[2:])
+        x = x.reshape(x.size(0)//samples, x.size(1),
+                      samples*x.size(2), *x.size()[3:])
+        out = self._conv_forward(x, weights, B, samples)
+        return out.reshape(out.size(0)*samples, out.size(1) //
+                           samples, *out.size()[2:])

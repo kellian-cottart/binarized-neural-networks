@@ -25,11 +25,11 @@ class MetaBayesMBConv(MBConv):
     """ MBConv block with different forward pass for Bayesian layers
     https://github.com/pytorch/vision/blob/main/torchvision/models/efficientnet.py"""
 
-    def forward(self, x, samples: int):
-        result = self.block(x, samples)
+    def forward(self, input, samples: int):
+        result = self.block(input, samples)
         if self.use_res_connect:
             result = self.stochastic_depth(result)
-            result += x
+            result += input
         return result
 
 

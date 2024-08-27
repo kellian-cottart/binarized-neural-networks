@@ -84,8 +84,9 @@ class BayesianNN(DNN):
             torch.Tensor: Output tensor
 
         """
-        samples = self.n_samples_train if self.n_samples_train > 1 else 1
-        if x.size(0) == 1:
-            x = x.repeat(samples, *([1] * (len(x.size())-1)))
-        out = self.layers(x, self.n_samples_train)
-        return out.reshape(samples, out.size(0)//samples, *out.size()[1:])
+        repeat_samples = self.n_samples_train if self.n_samples_train > 1 else 1
+        samples = self.n_samples_train
+        if x.dim() == 4:
+            x = x.repeat(samples, *(1,)*len(x.size()[1:]))
+        out = self.layers(x, samples)
+        return out.reshape(repeat_samples, out.size(0)//repeat_samples, *out.size()[1:])
