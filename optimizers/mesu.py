@@ -90,16 +90,3 @@ def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: in
             mu.data / (N * sigma_prior ** 2)
         sigma.data = sigma.data - 0.5 * variance * grad_sigma + sigma.data * \
             (sigma_prior ** 2 - variance) / (N * sigma_prior ** 2)
-
-# for i, param in enumerate(params):
-#         d_p = d_p_list[i]
-#         if clamp_grad > 0:
-#             d_p.clamp_(-clamp_grad, clamp_grad)
-#         is_sigma = (i % 2 == 0)
-#         if is_sigma:
-#             variance = param.data ** 2
-#             param.data = param.data - 0.5 * variance * d_p + param.data * \
-#                 (sigma_prior ** 2 - variance) / (N * sigma_prior ** 2)
-#         else:
-#             param.data = param.data - variance * d_p - variance * \
-#                 param.data / (N * sigma_prior ** 2)

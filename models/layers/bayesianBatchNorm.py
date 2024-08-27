@@ -167,7 +167,7 @@ class MetaBayesBatchNorm(MetaBayesNorm):
         if self.track_running_stats:
             running_mean = self.running_mean.repeat(
                 samples, *([1] * (len(self.running_mean.size())-1)))
-            running_var.repeat(
+            running_var = self.running_var.repeat(
                 samples, *([1] * (len(self.running_var.size())-1)))
         out = F.batch_norm(
             x,
