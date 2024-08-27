@@ -11,7 +11,7 @@ from torch import device, cuda, functional, stack, save, prod, set_default_devic
 from torch.optim import SGD, Adam
 
 SEED = 1000  # Random seed
-N_NETWORKS = 1  # Number of networks to train
+N_NETWORKS = 10  # Number of networks to train
 DEVICE = device("cuda:0")
 GRAPHS = False
 MODULO = 10
@@ -31,7 +31,7 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "image_padding": 2,
+            "image_padding": 0,
             "nn_type": models.EfficientNetBayesian,
             "nn_parameters": {
                 # NETWORK ###
@@ -62,7 +62,7 @@ if __name__ == "__main__":
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 1,
+                'n_epochs': 10,
                 'batch_size': 32,
                 'test_batch_size': 32,
                 'feature_extraction': False,
@@ -104,7 +104,7 @@ if __name__ == "__main__":
             # "optimizer": SGD,
             # "optimizer_parameters": {"lr": 0.001},
             "task": "core50-ni",
-            "n_tasks": 1,
+            "n_tasks": 8,
             "n_classes": 1,
         }
     ]
