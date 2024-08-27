@@ -162,23 +162,29 @@ class MetaBayesBatchNorm(MetaBayesNorm):
             weights = self.weight.sample(samples)
             biases = self.bias.sample(samples)
         samples = samples if samples > 1 else 1
-        x = x.reshape(samples, x.size(0)//samples,
-                      x.size(1), *x.size()[2:])
-        out = []
-        for i in range(samples):
-            out.append(F.batch_norm(
-                x[i],
-                self.running_mean if not self.training or self.track_running_stats else None,
-                self.running_var if not self.training or self.track_running_stats else None,
-                weights[i] if self.affine else None,
-                biases[i] if self.affine else None,
-                bn_training,
-                exponential_average_factor,
-                self.eps,
-            ))
-        out = stack(out)
-        out = out.reshape(out.size(0)*out.size(1), *out.size()[2:])
-        return out
+        x = x.reshape(x.size(0)//samples,
+                      samples*x.size(1), *x.size()[2:])
+        if self.track_running_stats:
+            running_mean = self.running_mean.repeat(
+                samples, *([1] * (len(self.running_mean.size())-1)))
+            running_var.repeat(
+                samples, *([1] * (len(self.running_var.size())-1)))
+        out = F.batch_norm(
+            x,
+            running_mean if not self.training or self.track_running_stats else None,
+            running_var if not self.training or self.track_running_stats else None,
+            weights if self.affine else None,
+            biases if self.affine else None,
+            bn_training,
+            exponential_average_factor,
+            self.eps,
+        )
+        if self.track_running_stats:
+            self.running_mean = running_mean.reshape(samples, running_mean.size(
+                0)//samples, *running_mean.size()[1:]).mean(dim=0)
+            self.running_var = running_var.reshape(samples, running_var.size(
+                0)//samples, *running_var.size()[1:]).mean(dim=0)
+        return out.reshape(out.size(0)*samples, out.size(1)//samples, *out.size()[2:])
 
 
 class MetaBayesBatchNorm1d(MetaBayesBatchNorm):

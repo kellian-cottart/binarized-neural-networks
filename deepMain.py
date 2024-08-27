@@ -42,10 +42,10 @@ if __name__ == "__main__":
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
-                "std": 0.01,  # also sigma init
+                "std": 0.1,  # also sigma init
                 "bias": True,
-                "n_samples_test": 1,
-                "n_samples_train": 1,
+                "n_samples_test": 3,
+                "n_samples_train": 3,
                 "tau": 1,
                 "activation_function": "relu",
                 "activation_parameters": {
@@ -58,13 +58,13 @@ if __name__ == "__main__":
                 "running_stats": False,
                 "affine": False,
                 "frozen": False,
-                "sigma_multiplier": 1e-4,
+                "sigma_multiplier": 1e-2,
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 10,
-                'batch_size': 64,
-                'test_batch_size': 64,
+                'n_epochs': 1,
+                'batch_size': 32,
+                'test_batch_size': 32,
                 'feature_extraction': False,
                 'data_aug_it': 1,
                 "continual": True,

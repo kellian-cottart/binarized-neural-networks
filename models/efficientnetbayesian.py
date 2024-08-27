@@ -220,7 +220,7 @@ class EfficientNetBayesian(Module):
         x = self.transform(x)
         x = x.repeat(repeat_samples, *([1] * (len(x.size())-1)))
         x = self.features(x, samples)
-        return self.classifier(x)
+        return self.classifier(x, classifier=True)
 
     # add number of parameters total
 

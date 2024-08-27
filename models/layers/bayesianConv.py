@@ -191,21 +191,6 @@ class MetaBayesConv2d(MetaBayesConvNd):
             dilation=self.dilation,
             groups=self.groups*samples)
 
-    # def forward(self, x: Tensor, samples) -> Tensor:
-    #     """ The shapings are necessary to take into account that:
-    #         - feature map are made of monte carlo samples
-    #         - the input of the neural network is not a monte carlo sample"""
-    #     weights = self.weight.sample(samples)
-    #     B = self.bias.sample(samples) if self.bias is not None else None
-    #     samples = samples if samples > 1 else 1
-    #     x = x.reshape(samples, x.size(0)//samples, x.size(1), *x.size()[2:])
-    #     out = []
-    #     for i in range(samples):
-    #         out.append(self._conv_forward(
-    #             x[i], weights[i], B[i] if B is not None else None))
-    #     out = stack(out)
-    #     return out.reshape(out.size(0)*out.size(1), *out.size()[2:])
-
     def forward(self, x: Tensor, samples) -> Tensor:
         """ The shapings are necessary to take into account that:
             - feature map are made of monte carlo samples
@@ -216,8 +201,8 @@ class MetaBayesConv2d(MetaBayesConvNd):
         samples = samples if samples > 1 else 1
         weights = weights.reshape(weights.size(
             0)*weights.size(1), *weights.size()[2:])
-        x = x.reshape(x.size(0)//samples, x.size(1),
-                      samples*x.size(2), *x.size()[3:])
+        x = x.reshape(x.size(0)//samples, samples*x.size(1),
+                      x.size(2), *x.size()[3:])
         out = self._conv_forward(x, weights, B, samples)
         return out.reshape(out.size(0)*samples, out.size(1) //
                            samples, *out.size()[2:])

@@ -22,6 +22,8 @@ class BayesianNN(DNN):
         """
         self.zeroMean = zeroMean
         self.n_samples_train = n_samples_train
+        if "classifier" in kwargs:
+            self.classifier = kwargs["classifier"]
         super().__init__(layers, *args, **kwargs)
 
     def _layer_init(self, layers, bias=False):
@@ -86,7 +88,7 @@ class BayesianNN(DNN):
         """
         repeat_samples = self.n_samples_train if self.n_samples_train > 1 else 1
         samples = self.n_samples_train
-        if x.dim() == 4:
+        if x.dim() == 4 and hasattr(self, "classifier"):
             x = x.repeat(samples, *(1,)*len(x.size()[1:]))
         out = self.layers(x, samples)
         return out.reshape(repeat_samples, out.size(0)//repeat_samples, *out.size()[1:])
