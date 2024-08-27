@@ -164,26 +164,34 @@ class MetaBayesBatchNorm(MetaBayesNorm):
         samples = samples if samples > 1 else 1
         x = x.reshape(x.size(0)//samples,
                       samples*x.size(1), *x.size()[2:])
-        if self.track_running_stats:
+        if self.track_running_stats or not self.training:
             running_mean = self.running_mean.repeat(
                 samples, *([1] * (len(self.running_mean.size())-1)))
             running_var = self.running_var.repeat(
                 samples, *([1] * (len(self.running_var.size())-1)))
-        out = F.batch_norm(
-            x,
-            running_mean if not self.training or self.track_running_stats else None,
-            running_var if not self.training or self.track_running_stats else None,
-            weights if self.affine else None,
-            biases if self.affine else None,
-            bn_training,
-            exponential_average_factor,
-            self.eps,
-        )
-        if self.track_running_stats:
+            out = F.batch_norm(
+                x,
+                running_mean,
+                running_var,
+                weights if self.affine else None,
+                biases if self.affine else None,
+                bn_training,
+                exponential_average_factor,
+                self.eps,
+            )
             self.running_mean = running_mean.reshape(samples, running_mean.size(
                 0)//samples, *running_mean.size()[1:]).mean(dim=0)
             self.running_var = running_var.reshape(samples, running_var.size(
                 0)//samples, *running_var.size()[1:]).mean(dim=0)
+        else:
+            out = F.batch_norm(
+                x,
+                None,
+                None,
+                weights if self.affine else None,
+                biases if self.affine else None,
+                self.eps,
+            )
         return out.reshape(out.size(0)*samples, out.size(1)//samples, *out.size()[2:])
 
 
