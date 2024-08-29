@@ -1,6 +1,7 @@
 import torch
-import tqdm
-import os
+from copy import deepcopy
+from dataloader import *
+from optimizers import MetaplasticAdam
 
 
 class GPUTrainer:
@@ -18,7 +19,7 @@ class GPUTrainer:
             scheduler_parameters (dict, optional): Parameters of the scheduler. Defaults to None.
     """
 
-    def __init__(self, model, optimizer, optimizer_parameters, criterion, reduction, device, output_function, *args, **kwargs):
+    def __init__(self, model, optimizer, optimizer_parameters, criterion, reduction, device, output_function, task=None, n_tasks=None, *args, **kwargs):
         self.model = model
         if not hasattr(self, "optimizer"):
             self.optimizer = optimizer(
@@ -27,6 +28,8 @@ class GPUTrainer:
             )
         self.criterion = criterion
         self.device = device
+        self.task = task
+        self.n_tasks = n_tasks
         self.training_accuracy = []
         self.testing_accuracy = []
         self.mean_testing_accuracy = []
@@ -34,6 +37,15 @@ class GPUTrainer:
         self.output_function = output_function
         self.hessian = []
         self.gradient = []
+        if "regularizer" in kwargs and kwargs["regularizer"]["type"].lower() == "ewc":
+            self.ewc = True
+            self.lbda = kwargs["regularizer"]["lambda"]
+            self.params = {
+                n: p for n, p in self.model.named_parameters() if p.requires_grad}
+            self.means = {}
+            self.precision_matrices = self.compute_fisher()
+            for n, p in deepcopy(self.params).items():
+                self.means[n] = p.clone().detach()
         # Label trick
         if "label_trick" in kwargs:
             self.label_trick = kwargs["label_trick"]
@@ -103,6 +115,8 @@ class GPUTrainer:
             targets.to(self.device),
             reduction=self.reduction,
         )
+        if hasattr(self, "ewc") and self.ewc == True:
+            self.loss += self.ewc_loss()
         ### BACKWARD PASS ###
         self.optimizer.zero_grad()
         self.loss.backward()
@@ -225,10 +239,10 @@ class GPUTrainer:
             predicted = torch.argmax(predictions, dim=1)
         return torch.mean((predicted == labels.to(self.device)).float()), full_predictions
 
-    def pbar_update(self, pbar, epoch, n_epochs, task, n_tasks):
+    def pbar_update(self, pbar, epoch, n_epochs, task_id, n_tasks):
         """Update the progress bar with the current loss and accuracy"""
         pbar.set_description(
-            f"Epoch {epoch+1}/{n_epochs} - Task {task+1}/{n_tasks}")
+            f"Epoch {epoch+1}/{n_epochs} - Task {task_id+1}/{n_tasks}")
         # creation of a dictionnary with the name of the test set and the accuracy
         kwargs = {}
         if len(self.testing_accuracy) > 0:
@@ -256,3 +270,78 @@ class GPUTrainer:
         """Load the model
         """
         self.model.load_state_dict(torch.load(path))
+
+    def epoch_step(self, batch_size, test_batch_size, task_train_dataset, test_dataset, task_id, permutations, epoch, pbar, epochs, continual=False, batch_params=None):
+        num_batches = len(task_train_dataset) // batch_size + 1
+        task_train_dataset.shuffle()
+        for n_batch in range(num_batches):
+            ### TRAINING ###
+            batch, labels = batch_yielder(
+                dataset=task_train_dataset,
+                task=self.task,
+                batch_size=batch_size,
+                task_id=task_id,
+                iteration=n_batch,
+                max_iterations=epochs*num_batches,
+                permutations=permutations,
+                epoch=epoch,
+                continual=continual
+            )
+            self.batch_step(batch, labels)
+        if self.optimizer in [MetaplasticAdam] and self.model.affine:
+            batch_params[task_id] = self.model.save_bn_states()
+        ### TESTING ###
+        # Depending on the task, we also need to use the framework on the test set and show training or not
+        predictions, labels = self.evaluate_tasks(
+            dataset=test_dataset,
+            task=self.task,
+            permutations=permutations,
+            batch_size=test_batch_size,
+            train_dataset=task_train_dataset,
+            batch_params=batch_params if self.optimizer in [
+                MetaplasticAdam] and self.model.affine else None
+        )
+        self.pbar_update(
+            pbar, epoch, n_epochs=epochs, n_tasks=self.n_tasks, task_id=task_id)
+        if self.optimizer in [MetaplasticAdam] and self.model.affine:
+            self.model.load_bn_states(batch_params[task_id])
+        return predictions, labels
+
+    def evaluate_tasks(self, dataset, task, permutations, batch_size=1024, train_dataset=None, batch_params=None):
+        if "Permuted" in task:
+            dataset = dataset[0]
+            predictions, labels = self.evaluate(
+                test_permuted_dataset(
+                    test_dataset=dataset,
+                    permutations=permutations
+                ),
+                batch_size=dataset.data.shape[0],
+                batch_params=batch_params)
+        else:
+            predictions, labels = self.evaluate(
+                dataset,
+                batch_size=batch_size,
+                batch_params=batch_params)
+        return predictions, labels
+
+    def ewc_loss(self):
+        losses = []
+        breakpoint()
+        return torch.tensor([0])
+
+    def compute_diag_fisher(self, task_train_dataset, batch_yielder, data, batch_size, epochs, permutations, task_id):
+        num_batches = 1
+        task_train_dataset.shuffle()
+        for n_batch in range(num_batches):
+            ### TRAINING ###
+            batch, labels = batch_yielder(
+                dataset=task_train_dataset,
+                task=data["task"],
+                batch_size=batch_size,
+                task_id=task_id,
+                iteration=n_batch,
+                max_iterations=epochs*num_batches,
+                permutations=permutations,
+                epoch=epochs,
+                continual=data["training_parameters"]["continual"] if "continual" in data["training_parameters"] else None
+            )

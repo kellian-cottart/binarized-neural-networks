@@ -10,11 +10,11 @@ class BiBayesianNN(DNN):
     """
 
     def __init__(self,
-                 layers,
                  n_samples_test: int = 1,
                  n_samples_train: int = 1,
                  tau: float = 1,
                  binarized: bool = False,
+                 classifier: bool = False,
                  *args,
                  **kwargs):
         """ NN initialization
@@ -27,7 +27,9 @@ class BiBayesianNN(DNN):
         self.n_samples_test = n_samples_test
         self.n_samples_train = n_samples_train
         self.binarized = binarized
-        super().__init__(layers, *args, **kwargs)
+        self.classifier = classifier
+        super().__init__(*args, **kwargs)
+        self.layers = BinarizedSequential(*self.layers)
 
     def _layer_init(self, layers, bias=False):
         """ Initialize layers of NN
@@ -36,7 +38,7 @@ class BiBayesianNN(DNN):
             dropout (bool): Whether to use dropout
             bias (bool): Whether to use bias
         """
-        self.layers.append(nn.Flatten(start_dim=2).to(self.device))
+        self.layers.append(nn.Flatten(start_dim=1).to(self.device))
         for i, _ in enumerate(layers[:-1]):
             # BiBayesian layers with BatchNorm
             if self.dropout and i != 0:
@@ -63,22 +65,26 @@ class BiBayesianNN(DNN):
             torch.Tensor: Output tensor
 
         """
-        if x.dim() == 4:
-            x = x.unsqueeze(0)
+        samples = self.n_samples_train if backwards else self.n_samples_test
+        if x.dim() == 4 and hasattr(self, "classifier"):
+            x = x.repeat(samples, *(1,)*len(x.size()[1:]))
         ### FORWARD PASS ###
-        for layer in self.layers:
+        x = self.layers(x, backwards=backwards,
+                        samples=samples)
+        return x.reshape(samples, x.size(0)//samples, *(x.size()[1:]))
+
+
+class BinarizedSequential(torch.nn.Sequential):
+    def __init__(self, *args):
+        super().__init__(*args)
+
+    def forward(self, x, samples, backwards=True):
+        for layer in self:
             if isinstance(layer, BiBayesianLinear):
                 if backwards:
-                    x = layer(x, self.n_samples_train)
+                    x = layer(x, samples)
                 else:
-                    x = layer.sample(x, self.n_samples_test)
+                    x = layer.sample(x, samples)
             else:
-                try:
-                    x = layer(x)
-                except:
-                    # Normalization layers, but input is (n_samples, batch, features)
-                    shape = x.shape
-                    x = x.reshape([shape[0]*shape[1], shape[2]])
-                    x = layer(x)
-                    x = x.reshape([shape[0], shape[1], shape[2]])
+                x = layer(x)
         return x

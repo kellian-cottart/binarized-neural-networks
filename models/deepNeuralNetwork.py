@@ -175,3 +175,6 @@ class DNN(torch.nn.Module):
                         layer.weight.data, a=-std/2, b=std/2)
                 elif init == 'xavier':
                     torch.nn.init.xavier_normal_(layer.weight.data)
+
+    def _extra_repr(self):
+        return f"layers={self.layers}, activation_function={self.activation_function}, normalization={self.normalization}, dropout={self.dropout}, device={self.device}"

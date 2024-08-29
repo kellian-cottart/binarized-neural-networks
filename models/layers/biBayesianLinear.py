@@ -34,20 +34,23 @@ class BiBayesianLinear(torch.nn.Module):
         self.binarized = binarized
         self.tau = tau
 
-    def sample(self, x, n_samples=1):
+    def sample(self, x, samples=1):
         """ Sample the weights for the layer"""
         # Compute p for Bernoulli sampling
         p = torch.sigmoid(2*self.weight)
         # Sample the weights according to 2*Ber(p) - 1
-        weights = 2*Bernoulli(p).sample((n_samples,)).to(x.device)-1
+        weights = 2*Bernoulli(p).sample((samples,)).to(x.device)-1
+        x = x.reshape(samples, x.size(0)//samples, *(x.size()[1:]))
         # Notation: s samples, b batch, o out_features, i in_features
-        return torch.einsum('soi, sbi -> sbo', weights, x)
+        out = torch.einsum('soi, sbi -> sbo', weights, x)
+        return out.reshape(out.size(0)*out.size(1), *(out.size()[2:]))
 
-    def forward(self, x, n_samples=1):
+    def forward(self, x, samples=1):
         """ Forward pass of the neural network for the backward pass """
+        x = x.reshape(samples, x.size(0)//samples, *(x.size()[1:]))
         # Compute epsilon from uniform U(0,1), but avoid 0
         epsilon = torch.distributions.Uniform(
-            1e-10, 1).sample((n_samples, *self.weight.shape)).to(x.device)
+            1e-10, 1).sample((samples, *self.weight.shape)).to(x.device)
         # Compute delta = 1/2 log(epsilon/(1-epsilon))
         delta = (0.5 * torch.log(epsilon/(1-epsilon))).to(x.device)
         # Compute the new relaxed weights values
@@ -60,8 +63,10 @@ class BiBayesianLinear(torch.nn.Module):
         # just a little bit faster if we have one sample
         if relaxed_weights.shape[0] == 1:
             return (x.squeeze(0) @ relaxed_weights.squeeze(0).T).unsqueeze(0)
-        return torch.einsum('soi, sbi -> sbo', relaxed_weights, x)
+        out = torch.einsum('soi, sbi -> sbo', relaxed_weights, x)
+        return out.reshape(out.size(0)*out.size(1), *(out.size()[2:]))
 
-    def extra_repr(self):
-        return 'in_features={}, out_features={}, lambda.shape={}'.format(
-            self.in_features, self.out_features, self.weight.shape)
+    def extra_repr(self) -> str:
+        """Representation for pretty print and debugging."""
+        return 'in_features={}, out_features={}, tau={}'.format(
+            self.in_features, self.out_features, self.tau)

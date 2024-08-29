@@ -37,21 +37,3 @@ def test_permuted_dataset(test_dataset, permutations):
         data, targets = permuted_dataset(dataset=test_dataset, batch_size=test_dataset.data.shape[
                                          0], continual=False, task_id=i, iteration=0, max_iterations=1, permutations=permutations, epoch=0)
         yield GPUTensorDataset(data, targets, device=test_dataset.device)
-
-
-def evaluate_tasks(dataset, task, net_trainer, permutations, batch_size=1024, train_dataset=None, batch_params=None):
-    if "Permuted" in task:
-        dataset = dataset[0]
-        predictions, labels = net_trainer.evaluate(
-            test_permuted_dataset(
-                test_dataset=dataset,
-                permutations=permutations
-            ),
-            batch_size=dataset.data.shape[0],
-            batch_params=batch_params)
-    else:
-        predictions, labels = net_trainer.evaluate(
-            dataset,
-            batch_size=batch_size,
-            batch_params=batch_params)
-    return predictions, labels

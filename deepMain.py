@@ -5,10 +5,10 @@ import trainer
 from optimizers import *
 import os
 import json
-import tqdm
 import datetime
 from torch import device, cuda, functional, stack, save, prod, set_default_device, set_default_dtype, manual_seed, randperm
 from torch.optim import SGD, Adam
+import tqdm
 
 SEED = 1000  # Random seed
 N_NETWORKS = 10  # Number of networks to train
@@ -42,7 +42,7 @@ if __name__ == "__main__":
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
-                "std": 0.1,  # also sigma init
+                "std": 0.1,
                 "bias": True,
                 "n_samples_test": 3,
                 "n_samples_train": 3,
@@ -73,6 +73,10 @@ if __name__ == "__main__":
             "label_trick": False,
             "output_function": "log_softmax",
             "criterion": functional.F.nll_loss,
+            "regularizer": {
+                "type": "None",
+                "lambda": 1,
+            },
             "reduction": "sum",
             # "optimizer": BHUparallel,
             # "optimizer_parameters": {
@@ -81,14 +85,13 @@ if __name__ == "__main__":
             #     "ratio_coeff": 0.1,
             #     "mesuified": False,
             #     "N": 20_000,
-            #     "normalize_gradients": False,
             # },
-            "optimizer": MESU,
-            "optimizer_parameters": {
-                "sigma_prior": 1e-1,
-                "N": 1e5,
-                "clamp_grad": 1,
-            },
+            # "optimizer": MESU,
+            # "optimizer_parameters": {
+            #     "sigma_prior": 1e-1,
+            #     "N": 1e5,
+            #     "clamp_grad": 1,
+            # },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
             #     "train_set_size": 10000,
@@ -103,8 +106,8 @@ if __name__ == "__main__":
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             # "optimizer": SGD,
             # "optimizer_parameters": {"lr": 0.001},
-            "task": "core50-ni",
-            "n_tasks": 8,
+            "task": "CIFAR10",
+            "n_tasks": 1,
             "n_classes": 1,
         }
     ]
@@ -185,42 +188,19 @@ if __name__ == "__main__":
                     data["training_parameters"]["n_epochs"], list) else data["training_parameters"]["n_epochs"]
                 task_train_dataset = train_dataset[i] if isinstance(
                     train_dataset, list) else train_dataset
-                pbar = tqdm.trange(epochs)
+                pbar = tqdm.tqdm(range(epochs))
                 for epoch in pbar:
-                    num_batches = len(task_train_dataset) // batch_size + 1
-                    task_train_dataset.shuffle()
-                    for n_batch in range(num_batches):
-                        ### TRAINING ###
-                        batch, labels = batch_yielder(
-                            dataset=task_train_dataset,
-                            task=data["task"],
-                            batch_size=batch_size,
-                            task_id=i,
-                            iteration=n_batch,
-                            max_iterations=epochs*num_batches,
-                            permutations=permutations,
-                            epoch=epoch,
-                            continual=data["training_parameters"]["continual"] if "continual" in data["training_parameters"] else None
-                        )
-                        net_trainer.batch_step(batch, labels)
-                    if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
-                        batch_params[i] = net_trainer.model.save_bn_states()
-                    ### TESTING ###
-                    # Depending on the task, we also need to use the framework on the test set and show training or not
-                    predictions, labels = evaluate_tasks(
-                        dataset=test_dataset,
-                        task=data["task"],
-                        net_trainer=net_trainer,
-                        permutations=permutations,
-                        batch_size=data["training_parameters"]["test_batch_size"],
-                        train_dataset=task_train_dataset,
-                        batch_params=batch_params if data["optimizer"] in [
-                            MetaplasticAdam] and net_trainer.model.affine else None
-                    )
-                    net_trainer.pbar_update(
-                        pbar, epoch, n_epochs=epochs, n_tasks=data["n_tasks"], task=i)
-                    if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
-                        net_trainer.model.load_bn_states(batch_params[i])
+                    predictions, labels = net_trainer.epoch_step(batch_size=batch_size,
+                                                                 test_batch_size=data["training_parameters"]["test_batch_size"],
+                                                                 task_train_dataset=task_train_dataset,
+                                                                 test_dataset=test_dataset,
+                                                                 task_id=i,
+                                                                 permutations=permutations,
+                                                                 epoch=epoch,
+                                                                 pbar=pbar,
+                                                                 epochs=epochs,
+                                                                 continual=data["training_parameters"]["continual"],
+                                                                 batch_params=batch_params if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine else None)
                     ### EXPORT VISUALIZATION OF PARAMETERS ###
                     if GRAPHS:
                         graphs(main_folder=main_folder, net_trainer=net_trainer, task=i,
