@@ -40,12 +40,12 @@ class GPUTrainer:
         if "regularizer" in kwargs and kwargs["regularizer"]["type"].lower() == "ewc":
             self.ewc = True
             self.lbda = kwargs["regularizer"]["lambda"]
+            self.means = {}
+            self.precision_matrices = {}
+            self.old_tasks = []
             self.params = {
                 n: p for n, p in self.model.named_parameters() if p.requires_grad}
-            self.means = {}
-            self.precision_matrices = self.compute_fisher()
-            for n, p in deepcopy(self.params).items():
-                self.means[n] = p.clone().detach()
+            self.update_ewc()
         # Label trick
         if "label_trick" in kwargs:
             self.label_trick = kwargs["label_trick"]
@@ -116,22 +116,12 @@ class GPUTrainer:
             reduction=self.reduction,
         )
         if hasattr(self, "ewc") and self.ewc == True:
-            self.loss += self.ewc_loss()
+            self.loss += self.lbda * self.ewc_loss()
+        self.old_tasks = []
         ### BACKWARD PASS ###
         self.optimizer.zero_grad()
         self.loss.backward()
         self.optimizer.step()
-
-    def epoch_step(self, train_dataset):
-        """Perform the training of a single epoch
-
-        Args:
-            train_dataset (torch.Tensor): Training data
-            test_loader (torch.Tensor, optional): Testing data. Defaults to None.
-        """
-        ### SEND BATCH ###
-        for inputs, targets in train_dataset:
-            self.batch_step(inputs.to(self.device), targets.to(self.device))
 
     def compute_hessian(self):
         # only for last layer
@@ -271,6 +261,23 @@ class GPUTrainer:
         """
         self.model.load_state_dict(torch.load(path))
 
+    def evaluate_tasks(self, dataset, task, permutations, batch_size=128, train_dataset=None, batch_params=None):
+        if "Permuted" in task:
+            dataset = dataset[0]
+            predictions, labels = self.evaluate(
+                test_permuted_dataset(
+                    test_dataset=dataset,
+                    permutations=permutations
+                ),
+                batch_size=dataset.data.shape[0],
+                batch_params=batch_params)
+        else:
+            predictions, labels = self.evaluate(
+                dataset,
+                batch_size=batch_size,
+                batch_params=batch_params)
+        return predictions, labels
+
     def epoch_step(self, batch_size, test_batch_size, task_train_dataset, test_dataset, task_id, permutations, epoch, pbar, epochs, continual=False, batch_params=None):
         num_batches = len(task_train_dataset) // batch_size + 1
         task_train_dataset.shuffle()
@@ -305,43 +312,38 @@ class GPUTrainer:
             pbar, epoch, n_epochs=epochs, n_tasks=self.n_tasks, task_id=task_id)
         if self.optimizer in [MetaplasticAdam] and self.model.affine:
             self.model.load_bn_states(batch_params[task_id])
+
+        ### UPDATING EWC ###
+        if hasattr(self, "ewc") and self.ewc == True and epoch == epochs-1:
+            self.old_tasks.append(batch)
+            self.update_ewc()
         return predictions, labels
 
-    def evaluate_tasks(self, dataset, task, permutations, batch_size=1024, train_dataset=None, batch_params=None):
-        if "Permuted" in task:
-            dataset = dataset[0]
-            predictions, labels = self.evaluate(
-                test_permuted_dataset(
-                    test_dataset=dataset,
-                    permutations=permutations
-                ),
-                batch_size=dataset.data.shape[0],
-                batch_params=batch_params)
-        else:
-            predictions, labels = self.evaluate(
-                dataset,
-                batch_size=batch_size,
-                batch_params=batch_params)
-        return predictions, labels
+    def update_ewc(self):
+        self.params = {
+            n: p for n, p in self.model.named_parameters() if p.requires_grad}
+        for n, p in deepcopy(self.params).items():
+            self.means[n] = p.clone().detach()
+        self.compute_diag_fisher()
 
     def ewc_loss(self):
-        losses = []
-        breakpoint()
-        return torch.tensor([0])
+        loss = 0
+        for n, p in self.params.items():
+            loss += (self.precision_matrices[n]
+                     * (p - self.means[n]) ** 2).sum()
+        return loss
 
-    def compute_diag_fisher(self, task_train_dataset, batch_yielder, data, batch_size, epochs, permutations, task_id):
-        num_batches = 1
-        task_train_dataset.shuffle()
-        for n_batch in range(num_batches):
-            ### TRAINING ###
-            batch, labels = batch_yielder(
-                dataset=task_train_dataset,
-                task=data["task"],
-                batch_size=batch_size,
-                task_id=task_id,
-                iteration=n_batch,
-                max_iterations=epochs*num_batches,
-                permutations=permutations,
-                epoch=epochs,
-                continual=data["training_parameters"]["continual"] if "continual" in data["training_parameters"] else None
-            )
+    def compute_diag_fisher(self):
+        fisher = {}
+        for n, p in self.params.items():
+            fisher[n] = torch.zeros_like(p)
+        if len(self.old_tasks) > 0:
+            for task in self.old_tasks:
+                self.optimizer.zero_grad()
+                forward = self.model.forward(task)
+                forward = self.output_apply(forward)
+                targets = forward.max(1)[1]
+                self.criterion(forward, targets).backward()
+                for n, p in self.params.items():
+                    fisher[n] += p.grad.data ** 2 / len(self.old_tasks)
+        self.precision_matrices = {n: p for n, p in fisher.items()}

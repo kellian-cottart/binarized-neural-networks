@@ -11,7 +11,7 @@ from torch.optim import SGD, Adam
 import tqdm
 
 SEED = 1000  # Random seed
-N_NETWORKS = 10  # Number of networks to train
+N_NETWORKS = 1  # Number of networks to train
 DEVICE = device("cuda:0")
 GRAPHS = False
 MODULO = 10
@@ -32,17 +32,17 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 0,
-            "nn_type": models.EfficientNetBayesian,
+            "nn_type": models.DNN,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [1280],
+                "layers": [400, 2000],
                 # "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
-                "std": 0.1,
+                "std": 0.01,
                 "bias": True,
                 "n_samples_test": 3,
                 "n_samples_train": 3,
@@ -62,20 +62,20 @@ if __name__ == "__main__":
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 10,
-                'batch_size': 32,
-                'test_batch_size': 32,
+                'n_epochs': 100,
+                'batch_size': 128,
+                'test_batch_size': 128,
                 'feature_extraction': False,
                 'data_aug_it': 1,
-                "continual": True,
+                "continual": False,
                 "task_boundaries": False,
             },
             "label_trick": False,
             "output_function": "log_softmax",
             "criterion": functional.F.nll_loss,
             "regularizer": {
-                "type": "None",
-                "lambda": 1,
+                "type": "EWC",
+                "lambda": 1e5,
             },
             "reduction": "sum",
             # "optimizer": BHUparallel,
@@ -104,10 +104,10 @@ if __name__ == "__main__":
             # },
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
-            # "optimizer": SGD,
-            # "optimizer_parameters": {"lr": 0.001},
-            "task": "CIFAR10",
-            "n_tasks": 1,
+            "optimizer": SGD,
+            "optimizer_parameters": {"lr": 0.001},
+            "task": "PermutedMNIST",
+            "n_tasks": 10,
             "n_classes": 1,
         }
     ]
