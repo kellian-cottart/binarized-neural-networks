@@ -43,10 +43,7 @@ class GPUTrainer:
             self.lbda = kwargs["regularizer"]["lambda"]
             self.means = {}
             self.fisher_diagonals = {}
-            self.fishers = []
             self.dataset = None
-            self.params = {
-                n: p for n, p in self.model.named_parameters() if p.requires_grad}
             self.update_ewc()
         # Label trick
         if "label_trick" in kwargs:
@@ -332,18 +329,15 @@ class GPUTrainer:
         return predictions, labels
 
     def update_ewc(self):
-        self.params = {
-            n: p for n, p in self.model.named_parameters() if p.requires_grad}
-        self.means = {}
-        for n, p in self.params.items():
-            self.means[n] = p.clone().detach()
+        self.means = {
+            n: p.clone().detach() for n, p in self.model.named_parameters()
+        }
         self.compute_diag_fisher()
 
     def ewc_loss(self):
         loss = 0
-        for n, p in self.params.items():
-            loss += (self.fisher_diagonals[n]
-                     * (p - self.means[n]) ** 2).sum()
+        for n, p in self.model.named_parameters():
+            loss += (self.fisher_diagonals[n] * (p - self.means[n]) ** 2).sum()
         return loss
 
     def compute_diag_fisher(self):
@@ -351,29 +345,22 @@ class GPUTrainer:
         according to the formula F = E[(d(log(L)/d(theta))(d(log(L)/d(theta))^T)]
         """
         self.model.eval()
-        log_likelihoods = []
         fisher_diagonals = {
-            n: torch.zeros_like(p) for n, p in self.params.items()
+            n: torch.zeros_like(p) for n, p in self.model.named_parameters()
         }
         if self.dataset is not None:
-            for inputs in self.dataset:
-                forward = self.model.forward(inputs).to(self.device)
-                forward = self.output_apply(forward)
-                forward = forward.mean(dim=0)
-                log_likelihoods.append(forward)
-            log_likelihoods = torch.stack(log_likelihoods)
-            log_likelihoods = log_likelihoods.mean(dim=0)
             self.optimizer.zero_grad()
-            for i in range(len(log_likelihoods)):
-                log_likelihoods[i].backward(retain_graph=True)
-                for n, p in self.params.items():
-                    fisher_diagonals[n] += (p.grad ** 2).detach()
-                self.optimizer.zero_grad()
-        if len(self.fishers) > 0:
-            for fisher in self.fishers:
-                for n, p in self.params.items():
-                    fisher_diagonals[n] += fisher[n]
-            for n, p in self.params.items():
-                fisher_diagonals[n] /= len(self.fishers) + 1
+            forward = self.model.forward(self.dataset).to(self.device)
+            forward = torch.nn.functional.log_softmax(forward, dim=1)
+            labels = torch.argmax(forward, dim=1)
+            forward = forward[range(len(labels)), labels]
+            log_grads = []
+            for sample in forward:
+                log_grads.append(
+                    grad(sample, self.model.parameters(), retain_graph=True))
+            log_grad = zip(*log_grads)
+            log_grad = [torch.stack(grads) for grads in log_grad]
+            fisher_diag = [(grads ** 2).mean(dim=0) for grads in log_grad]
+            for n, p in self.model.named_parameters():
+                fisher_diagonals[n] = fisher_diag.pop(0).detach()
         self.fisher_diagonals = fisher_diagonals
-        self.fishers.append(fisher_diagonals)

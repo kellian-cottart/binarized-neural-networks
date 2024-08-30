@@ -75,9 +75,9 @@ if __name__ == "__main__":
             "criterion": functional.F.nll_loss,
             "regularizer": {
                 "type": "EWC",
-                "lambda": 200,
+                "lambda": 500,
             },
-            "reduction": "sum",
+            "reduction": "mean",
             # "optimizer": BHUparallel,
             # "optimizer_parameters": {
             #     "lr_max": 6,
@@ -105,7 +105,7 @@ if __name__ == "__main__":
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             "optimizer": SGD,
-            "optimizer_parameters": {"lr": 1e-3},
+            "optimizer_parameters": {"lr": 1e-1},
             "task": "PermutedMNIST",
             "n_tasks": 10,
             "n_classes": 1,
