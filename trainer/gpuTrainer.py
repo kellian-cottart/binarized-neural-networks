@@ -2,6 +2,7 @@ import torch
 from copy import deepcopy
 from dataloader import *
 from optimizers import MetaplasticAdam
+from torch.autograd import grad
 
 
 class GPUTrainer:
@@ -41,8 +42,9 @@ class GPUTrainer:
             self.ewc = True
             self.lbda = kwargs["regularizer"]["lambda"]
             self.means = {}
-            self.precision_matrices = {}
-            self.old_tasks = []
+            self.fisher_diagonals = {}
+            self.fishers = []
+            self.dataset = None
             self.params = {
                 n: p for n, p in self.model.named_parameters() if p.requires_grad}
             self.update_ewc()
@@ -116,8 +118,7 @@ class GPUTrainer:
             reduction=self.reduction,
         )
         if hasattr(self, "ewc") and self.ewc == True:
-            self.loss += self.lbda * self.ewc_loss()
-        self.old_tasks = []
+            self.loss += 1/2 * self.lbda * self.ewc_loss()
         ### BACKWARD PASS ###
         self.optimizer.zero_grad()
         self.loss.backward()
@@ -312,38 +313,67 @@ class GPUTrainer:
             pbar, epoch, n_epochs=epochs, n_tasks=self.n_tasks, task_id=task_id)
         if self.optimizer in [MetaplasticAdam] and self.model.affine:
             self.model.load_bn_states(batch_params[task_id])
-
         ### UPDATING EWC ###
         if hasattr(self, "ewc") and self.ewc == True and epoch == epochs-1:
-            self.old_tasks.append(batch)
+            task_train_dataset.shuffle()
+            batch, _ = batch_yielder(
+                dataset=task_train_dataset,
+                task=self.task,
+                batch_size=batch_size,
+                task_id=task_id,
+                iteration=0,
+                max_iterations=1,
+                permutations=permutations,
+                epoch=0,
+                continual=False
+            )
+            self.dataset = deepcopy(batch)
             self.update_ewc()
         return predictions, labels
 
     def update_ewc(self):
         self.params = {
             n: p for n, p in self.model.named_parameters() if p.requires_grad}
-        for n, p in deepcopy(self.params).items():
+        self.means = {}
+        for n, p in self.params.items():
             self.means[n] = p.clone().detach()
         self.compute_diag_fisher()
 
     def ewc_loss(self):
         loss = 0
         for n, p in self.params.items():
-            loss += (self.precision_matrices[n]
+            loss += (self.fisher_diagonals[n]
                      * (p - self.means[n]) ** 2).sum()
         return loss
 
     def compute_diag_fisher(self):
-        fisher = {}
-        for n, p in self.params.items():
-            fisher[n] = torch.zeros_like(p)
-        if len(self.old_tasks) > 0:
-            for task in self.old_tasks:
-                self.optimizer.zero_grad()
-                forward = self.model.forward(task)
+        """ This function computes the diagonal of the fisher matrix by doing a forward pass on the old tasks and computing the gradient, then squaring it
+        according to the formula F = E[(d(log(L)/d(theta))(d(log(L)/d(theta))^T)]
+        """
+        self.model.eval()
+        log_likelihoods = []
+        fisher_diagonals = {
+            n: torch.zeros_like(p) for n, p in self.params.items()
+        }
+        if self.dataset is not None:
+            for inputs in self.dataset:
+                forward = self.model.forward(inputs).to(self.device)
                 forward = self.output_apply(forward)
-                targets = forward.max(1)[1]
-                self.criterion(forward, targets).backward()
+                forward = forward.mean(dim=0)
+                log_likelihoods.append(forward)
+            log_likelihoods = torch.stack(log_likelihoods)
+            log_likelihoods = log_likelihoods.mean(dim=0)
+            self.optimizer.zero_grad()
+            for i in range(len(log_likelihoods)):
+                log_likelihoods[i].backward(retain_graph=True)
                 for n, p in self.params.items():
-                    fisher[n] += p.grad.data ** 2 / len(self.old_tasks)
-        self.precision_matrices = {n: p for n, p in fisher.items()}
+                    fisher_diagonals[n] += (p.grad ** 2).detach()
+                self.optimizer.zero_grad()
+        if len(self.fishers) > 0:
+            for fisher in self.fishers:
+                for n, p in self.params.items():
+                    fisher_diagonals[n] += fisher[n]
+            for n, p in self.params.items():
+                fisher_diagonals[n] /= len(self.fishers) + 1
+        self.fisher_diagonals = fisher_diagonals
+        self.fishers.append(fisher_diagonals)
