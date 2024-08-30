@@ -7,7 +7,8 @@ def permuted_dataset(dataset, batch_size, continual, task_id, iteration, max_ite
     batch_data, targets = dataset.__getbatch__(
         batch_size * iteration, batch_size)
     shape = batch_data.shape
-    batch_data = batch_data.to(perm.device).view(shape[0], shape[1], -1)
+    batch_data = batch_data.to(perm.device).view(
+        shape[0], shape[1], -1)
     split = 0.75
     n_images_taken_b1 = int((1 - (iteration*(epoch+1) - int(max_iterations*split)) / (
         max_iterations - int(max_iterations*split))) * batch_size)  # Ratio between the number of images taken from batch perm 1 and batch perm 2

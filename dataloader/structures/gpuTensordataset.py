@@ -35,6 +35,8 @@ class GPUTensorDataset(Dataset):
         """ Return a batch of data and targets """
         if start+batch_size > len(self.data):
             return self.data[start:], self.targets[start:]
+        if batch_size == 1:
+            return self.data[start].unsqueeze(0), self.targets[start].unsqueeze(0)
         return self.data[start:start+batch_size], self.targets[start:start+batch_size]
 
     def __getclasses__(self, class_indexes):

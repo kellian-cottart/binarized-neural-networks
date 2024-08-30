@@ -42,10 +42,10 @@ class GPUTrainer:
             self.ewc = True
             self.lbda = kwargs["regularizer"]["lambda"]
             self.fisher_mode = kwargs["regularizer"]["fisher"]
-            self.means = {}
-            self.fisher_diagonals = {}
+            self.old_fisher_diagonal = []
+            self.old_params = []
             self.dataset = None
-            self.update_ewc()
+            self.compute_diag_fisher()
         # Label trick
         if "label_trick" in kwargs:
             self.label_trick = kwargs["label_trick"]
@@ -278,7 +278,8 @@ class GPUTrainer:
         return predictions, labels
 
     def epoch_step(self, batch_size, test_batch_size, task_train_dataset, test_dataset, task_id, permutations, epoch, pbar, epochs, continual=False, batch_params=None):
-        num_batches = len(task_train_dataset) // batch_size + 1
+        num_batches = len(task_train_dataset) // batch_size + (1 if len(
+            task_train_dataset) % batch_size != 0 else 0)
         task_train_dataset.shuffle()
         for n_batch in range(num_batches):
             ### TRAINING ###
@@ -313,31 +314,48 @@ class GPUTrainer:
             self.model.load_bn_states(batch_params[task_id])
         ### UPDATING EWC ###
         if hasattr(self, "ewc") and self.ewc == True and epoch == epochs-1:
+            batch_size_fisher = 1
+            num_batches = len(task_train_dataset) // batch_size_fisher + (1 if len(
+                task_train_dataset) % batch_size_fisher != 0 else 0)
             task_train_dataset.shuffle()
-            batch, labels = batch_yielder(
-                dataset=task_train_dataset,
-                task=self.task,
-                batch_size=batch_size,
-                task_id=task_id,
-                iteration=0,
-                max_iterations=1,
-                permutations=permutations,
-                epoch=0,
-                continual=False
-            )
-            self.update_ewc(batch, labels)
+            # compute fisher diagonal
+            current_fisher_diagonal = {
+                n: torch.zeros_like(p) for n, p in self.model.named_parameters()
+            }
+            for n_batch in range(num_batches):
+                ### TRAINING ###
+                batch, labels = batch_yielder(
+                    dataset=task_train_dataset,
+                    task=self.task,
+                    batch_size=batch_size_fisher,
+                    task_id=task_id,
+                    iteration=n_batch,
+                    max_iterations=epochs*num_batches,
+                    permutations=permutations,
+                    epoch=0,
+                    continual=False
+                )
+                batch_fisher_diagonal = self.compute_diag_fisher(batch, labels)
+                for n, p in self.model.named_parameters():
+                    if p.requires_grad:
+                        current_fisher_diagonal[n] += batch_fisher_diagonal[n]
+            for n, p in self.model.named_parameters():
+                if p.requires_grad:
+                    current_fisher_diagonal[n] /= num_batches
+            # save the current params and fisher diagonal
+            self.old_params.append({
+                n: p.detach().clone() for n, p in self.model.named_parameters()
+            })
+            self.old_fisher_diagonal.append(current_fisher_diagonal)
+            self.compute_diag_fisher(batch, labels)
         return predictions, labels
-
-    def update_ewc(self, batch=None, labels=None):
-        self.means = {
-            n: p.clone().detach() for n, p in self.model.named_parameters()
-        }
-        self.compute_diag_fisher(batch, labels)
 
     def ewc_loss(self):
         loss = 0
-        for n, p in self.model.named_parameters():
-            loss += (self.fisher_diagonals[n] * (p - self.means[n]) ** 2).sum()
+        for old_param, old_fisher in zip(self.old_params, self.old_fisher_diagonal):
+            for n, p in self.model.named_parameters():
+                diff = p - old_param[n]
+                loss += (old_fisher[n] * (diff * diff)).sum()
         return loss
 
     def compute_diag_fisher(self, batch=None, labels=None):
@@ -345,7 +363,7 @@ class GPUTrainer:
         according to the formula F = E[(d(log(L)/d(theta))(d(log(L)/d(theta))^T)]
         """
         self.model.eval()
-        fisher_diagonals = {
+        batch_fisher_diagonal = {
             n: torch.zeros_like(p) for n, p in self.model.named_parameters()
         }
         if batch is not None:
@@ -362,6 +380,5 @@ class GPUTrainer:
             loss.backward()
             for n, p in self.model.named_parameters():
                 if p.requires_grad:
-                    fisher_diagonals[n] += p.grad.detach() ** 2
-            self.model.zero_grad()
-        self.fisher_diagonals = fisher_diagonals
+                    batch_fisher_diagonal[n] += p.grad.detach() ** 2
+        return batch_fisher_diagonal
