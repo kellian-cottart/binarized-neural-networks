@@ -70,9 +70,6 @@ class DNN(torch.nn.Module):
         """
         self.layers.append(Flatten())
         for i, _ in enumerate(layers[:-1]):
-            # Linear layers with BatchNorm
-            if self.dropout and i != 0:
-                self.layers.append(torch.nn.Dropout(p=0.2))
             self.layers.append(torch.nn.Linear(
                 layers[i],
                 layers[i+1],
@@ -83,6 +80,8 @@ class DNN(torch.nn.Module):
             self.layers.append(self._norm_init(layers[i+1]))
             if i < len(layers)-2:
                 self.layers.append(self._activation_init())
+            if self.dropout and i < len(layers)-2:
+                self.layers.append(torch.nn.Dropout(p=0.5))
         self.layers = torch.nn.Sequential(*self.layers).to(self.device)
 
     def forward(self, x, *args, **kwargs):

@@ -55,11 +55,8 @@ class MidVGG(Module):
         self.activation_function = activation_function
         self.gnnum_groups = gnnum_groups
         # retrieve weights from VGG16
-        self.features = Sequential(
-            *list(
-                vgg16(weights=VGG16_Weights.IMAGENET1K_V1).features.children()
-            )
-        ).to(self.device)
+        VGG = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
+        self.features = VGG.features.to(device)
         # freeze feature extractor
         if frozen == True:
             for param in self.features.parameters():

@@ -36,9 +36,6 @@ class BayesianNN(DNN):
         self.layers = MetaBayesSequential(*self.layers)
         self.layers.append(nn.Flatten(start_dim=1).to(self.device))
         for i, _ in enumerate(layers[:-1]):
-            # BiBayesian layers with BatchNorm
-            if self.dropout and i != 0:
-                self.layers.append(Dropout(p=0.2))
             self.layers.append(MetaBayesLinearParallel(
                 in_features=layers[i],
                 out_features=layers[i+1],
@@ -50,6 +47,8 @@ class BayesianNN(DNN):
             self.layers.append(self._norm_init(layers[i+1]))
             if i < len(layers)-2:
                 self.layers.append(self._activation_init())
+            if self.dropout and i < len(layers)-2:
+                self.layers.append(Dropout(p=0.5))
 
     def _weight_init(self, init='normal', std=0.1):
         pass

@@ -278,8 +278,8 @@ class GPUTrainer:
         return predictions, labels
 
     def epoch_step(self, batch_size, test_batch_size, task_train_dataset, test_dataset, task_id, permutations, epoch, pbar, epochs, continual=False, batch_params=None):
-        num_batches = len(task_train_dataset) // batch_size + (1 if len(
-            task_train_dataset) % batch_size != 0 else 0)
+        num_batches = len(task_train_dataset) // batch_size + \
+            (len(task_train_dataset) % batch_size != 0)
         task_train_dataset.shuffle()
         for n_batch in range(num_batches):
             ### TRAINING ###
@@ -314,9 +314,10 @@ class GPUTrainer:
             self.model.load_bn_states(batch_params[task_id])
         ### UPDATING EWC ###
         if hasattr(self, "ewc") and self.ewc == True and epoch == epochs-1:
-            batch_size_fisher = 1
-            num_batches = len(task_train_dataset) // batch_size_fisher + (1 if len(
-                task_train_dataset) % batch_size_fisher != 0 else 0)
+            batch_size_fisher = 32
+            num_batches = len(task_train_dataset) // batch_size_fisher + (
+                len(task_train_dataset) % batch_size_fisher != 0
+            )
             task_train_dataset.shuffle()
             # compute fisher diagonal
             current_fisher_diagonal = {
@@ -372,10 +373,10 @@ class GPUTrainer:
             forward = torch.nn.functional.log_softmax(forward, dim=1)
             if self.fisher_mode == "empirical":
                 loss = torch.nn.functional.nll_loss(
-                    forward, labels)
+                    forward, labels, reduction=self.reduction)
             else:
                 loss = torch.nn.functional.nll_loss(
-                    forward, forward.max(1)[1])
+                    forward, forward.max(1)[1], reduction=self.reduction)
             self.model.zero_grad()
             loss.backward()
             for n, p in self.model.named_parameters():
