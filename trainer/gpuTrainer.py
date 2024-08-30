@@ -41,6 +41,7 @@ class GPUTrainer:
         if "regularizer" in kwargs and kwargs["regularizer"]["type"].lower() == "ewc":
             self.ewc = True
             self.lbda = kwargs["regularizer"]["lambda"]
+            self.fisher_mode = kwargs["regularizer"]["fisher"]
             self.means = {}
             self.fisher_diagonals = {}
             self.dataset = None
@@ -313,7 +314,7 @@ class GPUTrainer:
         ### UPDATING EWC ###
         if hasattr(self, "ewc") and self.ewc == True and epoch == epochs-1:
             task_train_dataset.shuffle()
-            batch, _ = batch_yielder(
+            batch, labels = batch_yielder(
                 dataset=task_train_dataset,
                 task=self.task,
                 batch_size=batch_size,
@@ -324,15 +325,14 @@ class GPUTrainer:
                 epoch=0,
                 continual=False
             )
-            self.dataset = deepcopy(batch)
-            self.update_ewc()
+            self.update_ewc(batch, labels)
         return predictions, labels
 
-    def update_ewc(self):
+    def update_ewc(self, batch=None, labels=None):
         self.means = {
             n: p.clone().detach() for n, p in self.model.named_parameters()
         }
-        self.compute_diag_fisher()
+        self.compute_diag_fisher(batch, labels)
 
     def ewc_loss(self):
         loss = 0
@@ -340,7 +340,7 @@ class GPUTrainer:
             loss += (self.fisher_diagonals[n] * (p - self.means[n]) ** 2).sum()
         return loss
 
-    def compute_diag_fisher(self):
+    def compute_diag_fisher(self, batch=None, labels=None):
         """ This function computes the diagonal of the fisher matrix by doing a forward pass on the old tasks and computing the gradient, then squaring it
         according to the formula F = E[(d(log(L)/d(theta))(d(log(L)/d(theta))^T)]
         """
@@ -348,19 +348,20 @@ class GPUTrainer:
         fisher_diagonals = {
             n: torch.zeros_like(p) for n, p in self.model.named_parameters()
         }
-        if self.dataset is not None:
+        if batch is not None:
             self.optimizer.zero_grad()
-            forward = self.model.forward(self.dataset).to(self.device)
+            forward = self.model.forward(batch).to(self.device)
             forward = torch.nn.functional.log_softmax(forward, dim=1)
-            labels = torch.argmax(forward, dim=1)
-            forward = forward[range(len(labels)), labels]
-            log_grads = []
-            for sample in forward:
-                log_grads.append(
-                    grad(sample, self.model.parameters(), retain_graph=True))
-            log_grad = zip(*log_grads)
-            log_grad = [torch.stack(grads) for grads in log_grad]
-            fisher_diag = [(grads ** 2).mean(dim=0) for grads in log_grad]
+            if self.fisher_mode == "empirical":
+                loss = torch.nn.functional.nll_loss(
+                    forward, labels)
+            else:
+                loss = torch.nn.functional.nll_loss(
+                    forward, forward.max(1)[1])
+            self.model.zero_grad()
+            loss.backward()
             for n, p in self.model.named_parameters():
-                fisher_diagonals[n] = fisher_diag.pop(0).detach()
+                if p.requires_grad:
+                    fisher_diagonals[n] += p.grad.detach() ** 2
+            self.model.zero_grad()
         self.fisher_diagonals = fisher_diagonals
