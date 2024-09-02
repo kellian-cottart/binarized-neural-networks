@@ -33,7 +33,7 @@ class MESU(Optimizer):
             - Individual priors for each synapse
     """
 
-    def __init__(self, params, sigma_prior=0.1, N=1e5, clamp_grad=0):
+    def __init__(self, params, lr=1, sigma_prior=0.1, N=1e5, clamp_grad=0):
 
         if sigma_prior <= 0:
             raise ValueError(
@@ -44,7 +44,8 @@ class MESU(Optimizer):
         defaults = dict(
             sigma_prior=sigma_prior,
             N=N,
-            clamp_grad=clamp_grad
+            clamp_grad=clamp_grad,
+            lr=lr,
         )
 
         super().__init__(params, defaults)
@@ -72,10 +73,11 @@ class MESU(Optimizer):
                 sigma_prior=group['sigma_prior'],
                 N=group['N'],
                 clamp_grad=group['clamp_grad'],
+                lr=group['lr']
             )
 
 
-def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: int, clamp_grad: float):
+def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: int, clamp_grad: float, lr: float):
     if not params:
         raise ValueError('No gradients found in parameters!')
     if len(params) % 2 == 1:
@@ -86,7 +88,7 @@ def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: in
             grad_mu.clamp_(-clamp_grad, clamp_grad)
             grad_sigma.clamp_(-clamp_grad, clamp_grad)
         variance = sigma.data ** 2
-        mu.data = mu.data - variance * grad_mu - variance * \
+        mu.data = mu.data - lr * variance * grad_mu - variance * \
             mu.data / (N * sigma_prior ** 2)
         sigma.data = sigma.data - 0.5 * variance * grad_sigma + sigma.data * \
             (sigma_prior ** 2 - variance) / (N * sigma_prior ** 2)

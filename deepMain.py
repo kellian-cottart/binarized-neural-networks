@@ -11,7 +11,7 @@ from torch.optim import SGD, Adam
 import tqdm
 
 SEED = 1000  # Random seed
-N_NETWORKS = 1  # Number of networks to train
+N_NETWORKS = 10  # Number of networks to train
 DEVICE = device("cuda:0")
 GRAPHS = False
 MODULO = 10
@@ -42,7 +42,7 @@ if __name__ == "__main__":
                 "device": DEVICE,
                 "dropout": True,
                 "init": "gaussian",
-                "std": 0.1,
+                "std": 0.01,
                 "bias": True,
                 "n_samples_test": 3,
                 "n_samples_train": 3,
@@ -58,7 +58,7 @@ if __name__ == "__main__":
                 "running_stats": False,
                 "affine": False,
                 "frozen": False,
-                "sigma_multiplier": 1e-1,
+                "sigma_multiplier": 1e-3,
                 "version": 0,
             },
             "training_parameters": {
@@ -89,9 +89,10 @@ if __name__ == "__main__":
             # },
             "optimizer": MESU,
             "optimizer_parameters": {
+                "lr": 1,
                 "sigma_prior": 1e-1,
                 "N": 1e5,
-                "clamp_grad": 0.1,
+                "clamp_grad": 1,
             },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
@@ -108,7 +109,7 @@ if __name__ == "__main__":
             # "optimizer": SGD,
             # "optimizer_parameters": {"lr": 1e-3},
             "task": "core50-ni",
-            "n_tasks": 10,
+            "n_tasks": 8,
             "n_classes": 1,
         }
     ]
