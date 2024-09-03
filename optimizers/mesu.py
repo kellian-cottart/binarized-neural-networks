@@ -6,10 +6,9 @@ Created on Wed Jul 31 16:10:54 2024
 @author: Dr Djo ;)
 """
 
-import torch
 from torch import Tensor
 from torch.optim.optimizer import Optimizer
-from typing import List, Optional
+from typing import List
 
 __all__ = ['MESU', 'mesu']
 

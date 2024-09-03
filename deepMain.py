@@ -31,21 +31,21 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "image_padding": 0,
-            "nn_type": models.MidVGGBayesian,
+            "image_padding": 2,
+            "nn_type": models.BayesianNN,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [8192, 2048, 2048],
+                "layers": [512],
                 # "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
                 "device": DEVICE,
-                "dropout": True,
+                "dropout": False,
                 "init": "gaussian",
-                "std": 0.01,
+                "std": 0.1,
                 "bias": True,
-                "n_samples_test": 3,
-                "n_samples_train": 3,
+                "n_samples_test": 5,
+                "n_samples_train": 5,
                 "tau": 1,
                 "activation_function": "relu",
                 "activation_parameters": {
@@ -58,13 +58,13 @@ if __name__ == "__main__":
                 "running_stats": False,
                 "affine": False,
                 "frozen": False,
-                "sigma_multiplier": 1e-3,
+                "sigma_multiplier": 1,
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 5,
-                'batch_size': 32,
-                'test_batch_size': 32,
+                'n_epochs': 20,
+                'batch_size': 64,
+                'test_batch_size': 64,
                 'feature_extraction': False,
                 'data_aug_it': 1,
                 "continual": False,
@@ -75,8 +75,8 @@ if __name__ == "__main__":
             "criterion": functional.F.nll_loss,
             "regularizer": {
                 "type": "",
-                "fisher": "empirical",
-                "lambda": 500,
+                "fisher": "",
+                "lambda": 100,
             },
             "reduction": "sum",
             # "optimizer": BHUparallel,
@@ -87,12 +87,17 @@ if __name__ == "__main__":
             #     "mesuified": False,
             #     "N": 20_000,
             # },
-            "optimizer": MESU,
+            # "optimizer": MESU,
+            # "optimizer_parameters": {
+            #     "lr": 1,
+            #     "sigma_prior": 1e-1,
+            #     "N": 5e5,
+            #     "clamp_grad": 0,
+            # },
+            "optimizer": BGD,
             "optimizer_parameters": {
                 "lr": 1,
-                "sigma_prior": 1e-1,
-                "N": 1e5,
-                "clamp_grad": 1,
+                "clamp_grad": 0,
             },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
@@ -108,8 +113,10 @@ if __name__ == "__main__":
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
             # "optimizer": SGD,
             # "optimizer_parameters": {"lr": 1e-3},
-            "task": "core50-ni",
-            "n_tasks": 8,
+            # "optimizer": Adam,
+            # "optimizer_parameters": {"lr": 1e-3},
+            "task": "PermutedMNIST",
+            "n_tasks": 10,
             "n_classes": 1,
         }
     ]
@@ -224,10 +231,10 @@ if __name__ == "__main__":
                  os.path.join(sub_folder, "accuracy.pt"))
             accuracies.append(stack(net_trainer.testing_accuracy))
             if "training_accuracy" in dir(net_trainer) and len(net_trainer.training_accuracy) > 0:
-                save(net_trainer.training_accuracy,
-                     os.path.join(sub_folder, "training_accuracy.pt"))
                 training_accuracies.append(
                     stack(net_trainer.training_accuracy))
+                save(stack(net_trainer.training_accuracy),
+                     os.path.join(sub_folder, "training_accuracy.pt"))
         accuracies = stack(accuracies)
         ### SAVE GRAPHS ###
         title = "tasks"
