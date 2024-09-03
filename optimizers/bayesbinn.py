@@ -230,3 +230,6 @@ class BayesBiNN(Optimizer):
             prediction = forward_function(inputs)
             predictions.append(prediction)
         return predictions
+
+    def update_prior_lambda(self):
+        self.state["prior_lambda"] = self.state["lambda"]

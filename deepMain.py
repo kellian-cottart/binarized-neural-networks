@@ -31,18 +31,18 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "image_padding": 2,
-            "nn_type": models.BayesianNN,
+            "image_padding": 0,
+            "nn_type": models.MidVGG,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [512],
+                "layers": [8192, 2048, 2048],
                 # "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
                 "device": DEVICE,
-                "dropout": False,
+                "dropout": True,
                 "init": "gaussian",
-                "std": 0.1,
+                "std": 0.01,
                 "bias": True,
                 "n_samples_test": 5,
                 "n_samples_train": 5,
@@ -62,9 +62,9 @@ if __name__ == "__main__":
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 20,
-                'batch_size': 64,
-                'test_batch_size': 64,
+                'n_epochs': 5,
+                'batch_size': 32,
+                'test_batch_size': 32,
                 'feature_extraction': False,
                 'data_aug_it': 1,
                 "continual": False,
@@ -74,8 +74,8 @@ if __name__ == "__main__":
             "output_function": "log_softmax",
             "criterion": functional.F.nll_loss,
             "regularizer": {
-                "type": "",
-                "fisher": "",
+                "type": "EWC",
+                "fisher": "empirical",
                 "lambda": 100,
             },
             "reduction": "sum",
@@ -94,11 +94,11 @@ if __name__ == "__main__":
             #     "N": 5e5,
             #     "clamp_grad": 0,
             # },
-            "optimizer": BGD,
-            "optimizer_parameters": {
-                "lr": 1,
-                "clamp_grad": 0,
-            },
+            # "optimizer": BGD,
+            # "optimizer_parameters": {
+            #     "lr": 1,
+            #     "clamp_grad": 0,
+            # },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
             #     "train_set_size": 10000,
@@ -111,12 +111,12 @@ if __name__ == "__main__":
             # },
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
-            # "optimizer": SGD,
-            # "optimizer_parameters": {"lr": 1e-3},
+            "optimizer": SGD,
+            "optimizer_parameters": {"lr": 0.0001},
             # "optimizer": Adam,
             # "optimizer_parameters": {"lr": 1e-3},
-            "task": "PermutedMNIST",
-            "n_tasks": 10,
+            "task": "core50-ni",
+            "n_tasks": 8,
             "n_classes": 1,
         }
     ]
