@@ -19,7 +19,7 @@ class MetaBayesLinearParallel(Module):
         self.out_features = out_features
 
         # Initialize weight parameters
-        self.bound = sqrt(2/in_features)
+        self.bound = 2*sqrt(1/in_features)
         self.sigma_init = sigma_init
         self.weight = GaussianParameter(out_features=out_features,
                                         in_features=in_features,
