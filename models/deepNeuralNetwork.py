@@ -1,6 +1,7 @@
 import copy
 from .layers import *
 from .layers.activation import *
+from torch.nn import InstanceNorm1d
 
 
 class DNN(torch.nn.Module):
@@ -68,7 +69,7 @@ class DNN(torch.nn.Module):
             layers (list): List of layer sizes (including input and output layers)
             bias (bool): Whether to use bias
         """
-        self.layers.append(Flatten())
+        self.layers.append(Flatten().to(self.device))
         for i, _ in enumerate(layers[:-1]):
             self.layers.append(torch.nn.Linear(
                 layers[i],
@@ -83,19 +84,6 @@ class DNN(torch.nn.Module):
             if self.dropout and i < len(layers)-2:
                 self.layers.append(torch.nn.Dropout(p=0.5))
         self.layers = torch.nn.Sequential(*self.layers).to(self.device)
-
-    def forward(self, x, *args, **kwargs):
-        """ Forward pass of DNN
-
-        Args:
-            x (torch.Tensor): Input tensor
-
-        Returns:
-            torch.Tensor: Output tensor
-
-        """
-        ### FORWARD PASS ###
-        return self.layers(x)
 
     def load_bn_states(self, state_dict):
         """ Load batch normalization states
@@ -153,7 +141,7 @@ class DNN(torch.nn.Module):
         normalization_layers = {
             "batchnorm": lambda: torch.nn.BatchNorm1d(n_features, eps=self.eps, momentum=self.momentum, affine=self.affine, track_running_stats=self.running_stats),
             "layernorm": lambda: torch.nn.LayerNorm(n_features),
-            "instancenorm": lambda: torch.nn.InstanceNorm1d(n_features, eps=self.eps, affine=self.affine, track_running_stats=self.running_stats),
+            "instancenorm": lambda: torch.nn.InstanceNorm1d(1, eps=self.eps, affine=self.affine, track_running_stats=self.running_stats),
             "groupnorm": lambda: torch.nn.GroupNorm(self.gnnum_groups, n_features),
         }
         return normalization_layers.get(self.normalization, torch.nn.Identity)().to(self.device)
@@ -174,6 +162,26 @@ class DNN(torch.nn.Module):
                         layer.weight.data, a=-std/2, b=std/2)
                 elif init == 'xavier':
                     torch.nn.init.xavier_normal_(layer.weight.data)
+
+    def forward(self, x, *args, **kwargs):
+        """ Forward pass of DNN
+
+        Args:
+            x (torch.Tensor): Input tensor
+
+        Returns:
+            torch.Tensor: Output tensor
+
+        """
+        ### FORWARD PASS ###
+        for layer in self.layers:
+            if isinstance(layer, InstanceNorm1d):
+                x = x.unsqueeze(1)
+                x = layer(x)
+                x = x.squeeze(1)
+            else:
+                x = layer(x)
+        return x
 
     def _extra_repr(self):
         return f"layers={self.layers}, activation_function={self.activation_function}, normalization={self.normalization}, dropout={self.dropout}, device={self.device}"

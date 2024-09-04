@@ -1,8 +1,9 @@
-import torch
 from .activation.sign import Sign, SignWeights
+from torch.nn.functional import linear
+from torch.nn import Linear
 
 
-class BinarizedLinear(torch.nn.Linear):
+class BinarizedLinear(Linear):
     """ Binarized Linear Layer
 
     Args:
@@ -20,4 +21,4 @@ class BinarizedLinear(torch.nn.Linear):
 
     def forward(self, input):
         """Forward propagation of the binarized linear layer"""
-        return torch.nn.functional.linear(input, SignWeights.apply(self.weight), None if not self.bias else SignWeights.apply(self.bias))
+        return linear(input, SignWeights.apply(self.weight), None if not self.bias else SignWeights.apply(self.bias))

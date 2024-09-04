@@ -278,8 +278,7 @@ class GPUTrainer:
         return predictions, labels
 
     def epoch_step(self, batch_size, test_batch_size, task_train_dataset, test_dataset, task_id, permutations, epoch, pbar, epochs, continual=False, batch_params=None):
-        num_batches = len(task_train_dataset) // batch_size + \
-            (len(task_train_dataset) % batch_size != 0)
+        num_batches = len(task_train_dataset) // batch_size
         task_train_dataset.shuffle()
         for n_batch in range(num_batches):
             ### TRAINING ###
@@ -295,7 +294,7 @@ class GPUTrainer:
                 continual=continual
             )
             self.batch_step(batch, labels)
-        if self.optimizer in [MetaplasticAdam] and self.model.affine:
+        if batch_params is not None:
             batch_params[task_id] = self.model.save_bn_states()
         ### TESTING ###
         # Depending on the task, we also need to use the framework on the test set and show training or not
@@ -315,9 +314,7 @@ class GPUTrainer:
         ### UPDATING EWC ###
         if hasattr(self, "ewc") and self.ewc == True and epoch == epochs-1:
             batch_size_fisher = 32
-            num_batches = len(task_train_dataset) // batch_size_fisher + (
-                len(task_train_dataset) % batch_size_fisher != 0
-            )
+            num_batches = len(task_train_dataset) // batch_size_fisher
             task_train_dataset.shuffle()
             # compute fisher diagonal
             current_fisher_diagonal = {

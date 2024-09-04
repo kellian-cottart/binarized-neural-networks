@@ -1,5 +1,5 @@
 
-import torch
+from torch.nn import Sequential, Flatten, Dropout
 from .layers import *
 from .deepNeuralNetwork import *
 
@@ -18,7 +18,8 @@ class BiNN(DNN):
     """
 
     def _layer_init(self, layers, bias=False):
-        self.layers.append(nn.Flatten().to(self.device))
+        self.layers = Sequential(*self.layers)
+        self.layers.append(Flatten().to(self.device))
         for i, _ in enumerate(layers[:-1]):
             # Linear layers with BatchNorm
             if self.dropout and i != 0:
@@ -28,11 +29,11 @@ class BiNN(DNN):
                 layers[i+1],
                 bias=bias,
                 device=self.device))
-            if self.squared_inputs == True:
-                self.layers.append(SquaredActivation().to(self.device))
             self.layers.append(self._norm_init(layers[i+1]))
             if i < len(layers)-2:
                 self.layers.append(self._activation_init())
+            if self.dropout and i < len(layers)-2:
+                self.layers.append(Dropout(p=0.5))
 
     def __repr__(self):
         return f"BNN({self.layers}, dropout={self.dropout}, device={self.device}, normalization={self.normalization})"

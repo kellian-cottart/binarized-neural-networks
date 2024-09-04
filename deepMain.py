@@ -32,7 +32,7 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 2,
-            "nn_type": models.BayesianNN,
+            "nn_type": models.BiBayesianNN,
             "nn_parameters": {
                 # NETWORK ###
                 "layers": [512],
@@ -42,12 +42,12 @@ if __name__ == "__main__":
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
-                "std": 0.1,
+                "std": 0.01,
                 "bias": False,
                 "n_samples_test": 5,
                 "n_samples_train": 5,
                 "tau": 1,
-                "activation_function": "relu",
+                "activation_function": "gate",
                 "activation_parameters": {
                     "width": 1,
                     "power": 4
@@ -55,7 +55,7 @@ if __name__ == "__main__":
                 "normalization": "batchnorm",
                 "eps": 1e-5,
                 "momentum": 0.1,
-                "running_stats": True,
+                "running_stats": False,
                 "affine": False,
                 "frozen": False,
                 "sigma_multiplier": 1,
@@ -67,33 +67,31 @@ if __name__ == "__main__":
                 'test_batch_size': 64,
                 'feature_extraction': False,
                 'data_aug_it': 1,
-                "continual": True,
+                "continual": False,
                 "task_boundaries": False,
             },
             "label_trick": False,
             "output_function": "log_softmax",
             "criterion": functional.F.nll_loss,
+            "reduction": "sum",
             # "regularizer": {
             #     "type": "EWC",
             #     "fisher": "empirical",
-            #     "lambda": 500,
+            #     "lambda": 100,
             # },
-            "reduction": "sum",
-            # "optimizer": BHUparallel,
-            # "optimizer_parameters": {
-            #     "lr_max": 6,
-            #     "metaplasticity": 1,
-            #     "ratio_coeff": 0.1,
-            #     "mesuified": False,
-            #     "N": 20_000,
-            # },
-            "optimizer": MESU,
+            "optimizer": BHUparallel,
             "optimizer_parameters": {
-                "lr": 1,
-                "sigma_prior": 1e-1,
-                "N": 1e6,
-                "clamp_grad": 0,
+                "lr_max": 6.5,
+                "metaplasticity": 1,
+                "ratio_coeff": 0.1,
             },
+            # "optimizer": MESU,
+            # "optimizer_parameters": {
+            #     "lr": 1,
+            #     "sigma_prior": 1e-1,
+            #     "N": 5e5,
+            #     "clamp_grad": 0,
+            # },
             # "optimizer": BGD,
             # "optimizer_parameters": {
             #     "lr": 1,
@@ -101,20 +99,19 @@ if __name__ == "__main__":
             # },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
-            #     "train_set_size": 10000,
+            #     "train_set_size": 60000,
             #     "betas": 0.0,
-            #     "lr": 1e-5,
-            #     "prior_lambda": None,
-            #     "num_samples": 10,
-            #     "temperature": 1e-5,
-            #     "reweight": 0,
+            #     "lr": 1e-3,
+            #     "num_samples": 5,
+            #     "temperature": 1e-2,
+            #     "lamda_init": 10,
             # },
             # "optimizer": MetaplasticAdam,
-            # "optimizer_parameters": {"lr": 0.008, "metaplasticity": 3},
+            # "optimizer_parameters": {"lr": 1e-5, "metaplasticity": 3},
             # "optimizer": SGD,
             # "optimizer_parameters": {"lr": 0.0001},
             # "optimizer": Adam,
-            # "optimizer_parameters": {"lr": 1e-4},
+            # "optimizer_parameters": {"lr": 1e-3},
             "task": "PermutedMNIST",
             "n_tasks": 10,
             "n_classes": 1,
@@ -163,7 +160,7 @@ if __name__ == "__main__":
             else:
                 net_trainer = trainer.GPUTrainer(batch_size=batch_size,
                                                  model=model, **data, device=DEVICE)
-            if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine:
+            if isinstance(net_trainer.optimizer, MetaplasticAdam) and net_trainer.model.affine and data["training_parameters"]["task_boundaries"]:
                 batch_params = []
                 for i in range(data["n_tasks"]):
                     batch_params.append(net_trainer.model.save_bn_states())
@@ -209,13 +206,14 @@ if __name__ == "__main__":
                                                                  pbar=pbar,
                                                                  epochs=epochs,
                                                                  continual=data["training_parameters"]["continual"],
-                                                                 batch_params=batch_params if data["optimizer"] in [MetaplasticAdam] and net_trainer.model.affine else None)
+                                                                 batch_params=batch_params if data["optimizer"] in [
+                                                                     MetaplasticAdam] and net_trainer.model.affine and data["training_parameters"]["task_boundaries"] else None)
                     ### EXPORT VISUALIZATION OF PARAMETERS ###
                     if GRAPHS:
                         graphs(main_folder=main_folder, net_trainer=net_trainer, task=i,
                                n_tasks=data["n_tasks"], epoch=epoch, predictions=predictions, labels=labels, modulo=MODULO)
                 ### TASK BOUNDARIES ###
-                if data["training_parameters"]["task_boundaries"] == True:
+                if data["training_parameters"]["task_boundaries"] == True and isinstance(net_trainer.optimizer, BayesBiNN):
                     net_trainer.optimizer.update_prior_lambda()
             ### SAVING DATA ###
             os.makedirs(main_folder, exist_ok=True)

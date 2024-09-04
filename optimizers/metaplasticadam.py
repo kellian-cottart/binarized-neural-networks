@@ -1,8 +1,9 @@
-import torch
 from torch.optim.optimizer import _dispatch_sqrt
+from torch.optim import Optimizer
+from torch import zeros_like, max, mul, where, tanh, sign, abs
 
 
-class MetaplasticAdam(torch.optim.Optimizer):
+class MetaplasticAdam(Optimizer):
 
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), metaplasticity=0, eps=1e-8,
                  weight_decay=0, amsgrad=False):
@@ -50,13 +51,13 @@ class MetaplasticAdam(torch.optim.Optimizer):
                 if len(state) == 0:
                     state['step'] = 0
                     # Exponential moving average of gradient values
-                    state['exp_avg'] = torch.zeros_like(p.data)
+                    state['exp_avg'] = zeros_like(p.data)
                     # Exponential moving average of squared gradient values
-                    state['exp_avg_sq'] = torch.zeros_like(p.data)
+                    state['exp_avg_sq'] = zeros_like(p.data)
 
                     if amsgrad:
                         # Maintains max of all exp. moving avg. of sq. grad. values
-                        state['max_exp_avg_sq'] = torch.zeros_like(p.data)
+                        state['max_exp_avg_sq'] = zeros_like(p.data)
                 exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
                 if amsgrad:
                     max_exp_avg_sq = state['max_exp_avg_sq']
@@ -70,7 +71,7 @@ class MetaplasticAdam(torch.optim.Optimizer):
                 exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
                 if amsgrad:
                     # Maintains the maximum of all 2nd moment running avg. till now
-                    torch.max(max_exp_avg_sq, exp_avg_sq, out=max_exp_avg_sq)
+                    max(max_exp_avg_sq, exp_avg_sq, out=max_exp_avg_sq)
                     # Use the max. for normalizing running avg. of gradient
                     denom = max_exp_avg_sq.sqrt().add_(group['eps'])
                 else:
@@ -79,13 +80,12 @@ class MetaplasticAdam(torch.optim.Optimizer):
                 bias_correction2 = 1 - beta2 ** state['step']
                 step_size = group['lr'] * \
                     _dispatch_sqrt(bias_correction2) / bias_correction1
-
                 # Metaplastic Update
-                condition_consolidation = torch.mul(
-                    torch.sign(p.data), exp_avg) > 0.0
+                condition_consolidation = mul(
+                    sign(p.data), exp_avg) > 0.0
                 metaplasticity = 1 - \
-                    torch.tanh(group['metaplasticity'] * torch.abs(p.data))**2
+                    tanh(group['metaplasticity'] * abs(p.data))**2
                 lr = step_size * exp_avg / denom
-                p.data = torch.where(
+                p.data = where(
                     condition_consolidation, p.data - lr * metaplasticity, p.data - lr)
         return loss

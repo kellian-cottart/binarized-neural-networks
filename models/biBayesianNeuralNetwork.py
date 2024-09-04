@@ -85,6 +85,10 @@ class BinarizedSequential(torch.nn.Sequential):
                     x = layer(x, samples)
                 else:
                     x = layer.sample(x, samples)
+            elif isinstance(layer, InstanceNorm1d):
+                x = x.unsqueeze(1)
+                x = layer(x)
+                x = x.squeeze(1)
             else:
                 x = layer(x)
         return x
