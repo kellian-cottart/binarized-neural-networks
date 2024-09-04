@@ -90,4 +90,6 @@ class BayesianNN(DNN):
         if x.dim() == 4 and not hasattr(self, "classifier"):
             x = x.repeat(samples, *(1,)*len(x.size()[1:]))
         out = self.layers(x, samples)
-        return out.reshape(repeat_samples, out.size(0)//repeat_samples, *out.size()[1:])
+        out = out.reshape(repeat_samples, out.size(
+            0)//repeat_samples, *out.size()[1:])
+        return out

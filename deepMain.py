@@ -31,11 +31,11 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "image_padding": 2,
-            "nn_type": models.BiBayesianNN,
+            "image_padding": 0,
+            "nn_type": models.MidVGGBayesian,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [512],
+                "layers": [8192, 2048, 2048],
                 # "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
@@ -43,28 +43,28 @@ if __name__ == "__main__":
                 "dropout": False,
                 "init": "gaussian",
                 "std": 0.01,
-                "bias": False,
-                "n_samples_test": 5,
-                "n_samples_train": 5,
+                "bias": True,
+                "n_samples_test": 2,
+                "n_samples_train": 2,
                 "tau": 1,
-                "activation_function": "gate",
+                "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
                     "power": 4
                 },
-                "normalization": "batchnorm",
+                "normalization": "",
                 "eps": 1e-5,
                 "momentum": 0.1,
                 "running_stats": False,
                 "affine": False,
                 "frozen": False,
-                "sigma_multiplier": 1,
+                "sigma_multiplier": 0.1,
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 20,
-                'batch_size': 64,
-                'test_batch_size': 64,
+                'n_epochs': 5,
+                'batch_size': 32,
+                'test_batch_size': 32,
                 'feature_extraction': False,
                 'data_aug_it': 1,
                 "continual": False,
@@ -79,19 +79,19 @@ if __name__ == "__main__":
             #     "fisher": "empirical",
             #     "lambda": 100,
             # },
-            "optimizer": BHUparallel,
-            "optimizer_parameters": {
-                "lr_max": 6.5,
-                "metaplasticity": 1,
-                "ratio_coeff": 0.1,
-            },
-            # "optimizer": MESU,
+            # "optimizer": BHUparallel,
             # "optimizer_parameters": {
-            #     "lr": 1,
-            #     "sigma_prior": 1e-1,
-            #     "N": 5e5,
-            #     "clamp_grad": 0,
+            #     "lr_max": 6.5,
+            #     "metaplasticity": 1,
+            #     "ratio_coeff": 0.1,
             # },
+            "optimizer": MESU,
+            "optimizer_parameters": {
+                "lr": 1,
+                "sigma_prior": 1e-1,
+                "N": 10_000,
+                "clamp_grad": 0,
+            },
             # "optimizer": BGD,
             # "optimizer_parameters": {
             #     "lr": 1,
@@ -101,7 +101,7 @@ if __name__ == "__main__":
             # "optimizer_parameters": {
             #     "train_set_size": 60000,
             #     "betas": 0.0,
-            #     "lr": 1e-3,
+            #     "lr": 0.0005,
             #     "num_samples": 5,
             #     "temperature": 1e-2,
             #     "lamda_init": 10,
@@ -112,8 +112,8 @@ if __name__ == "__main__":
             # "optimizer_parameters": {"lr": 0.0001},
             # "optimizer": Adam,
             # "optimizer_parameters": {"lr": 1e-3},
-            "task": "PermutedMNIST",
-            "n_tasks": 10,
+            "task": "core50-ni",
+            "n_tasks": 8,
             "n_classes": 1,
         }
     ]

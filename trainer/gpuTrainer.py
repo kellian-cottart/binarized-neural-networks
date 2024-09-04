@@ -304,12 +304,11 @@ class GPUTrainer:
             permutations=permutations,
             batch_size=test_batch_size,
             train_dataset=task_train_dataset,
-            batch_params=batch_params if self.optimizer in [
-                MetaplasticAdam] and self.model.affine else None
+            batch_params=batch_params if batch_params is not None else None
         )
         self.pbar_update(
             pbar, epoch, n_epochs=epochs, n_tasks=self.n_tasks, task_id=task_id)
-        if self.optimizer in [MetaplasticAdam] and self.model.affine:
+        if batch_params is not None:
             self.model.load_bn_states(batch_params[task_id])
         ### UPDATING EWC ###
         if hasattr(self, "ewc") and self.ewc == True and epoch == epochs-1:

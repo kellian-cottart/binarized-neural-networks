@@ -88,7 +88,8 @@ class MidVGGBayesian(Module):
                                      eps=eps,
                                      momentum=momentum,
                                      gnnum_groups=gnnum_groups,
-                                     activation_function=activation_function
+                                     activation_function=activation_function,
+                                     classifier=True,
                                      )
 
     def replace_conv(self, module_list):
@@ -151,7 +152,7 @@ class MidVGGBayesian(Module):
         """
         x = x.repeat(self.n_samples_train, *([1] * (len(x.size())-1)))
         x = self.features(x, self.n_samples_train)
-        return self.classifier.forward(x, self.n_samples_train)
+        return self.classifier(x)
 
     # add number of parameters total
 
