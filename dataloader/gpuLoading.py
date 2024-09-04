@@ -200,7 +200,6 @@ class GPULoading:
 
         # Normalize the pixels to 0, 1
         transform = v2.Compose([
-            v2.ToDtype(float32, scale=True),
             v2.Pad(self.padding, fill=0, padding_mode='constant'),
         ])
         return transform(train_x), transform(test_x)

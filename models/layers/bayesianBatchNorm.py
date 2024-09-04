@@ -161,6 +161,8 @@ class MetaBayesBatchNorm(MetaBayesNorm):
             # Sample the weights
             weights = self.weight.sample(samples)
             biases = self.bias.sample(samples)
+            weights = weights.reshape(weights.size(0)*weights.size(1))
+            biases = biases.reshape(biases.size(0)*biases.size(1))
         samples = samples if samples > 1 else 1
         x = x.reshape(x.size(0)//samples,
                       samples*x.size(1), *x.size()[2:])
@@ -190,6 +192,8 @@ class MetaBayesBatchNorm(MetaBayesNorm):
                 None,
                 weights if self.affine else None,
                 biases if self.affine else None,
+                bn_training,
+                exponential_average_factor,
                 self.eps,
             )
         return out.reshape(out.size(0)*samples, out.size(1)//samples, *out.size()[2:])
