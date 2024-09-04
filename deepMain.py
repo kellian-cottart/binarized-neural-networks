@@ -56,7 +56,7 @@ if __name__ == "__main__":
                 "eps": 1e-5,
                 "momentum": 0.1,
                 "running_stats": True,
-                "affine": True,
+                "affine": False,
                 "frozen": False,
                 "sigma_multiplier": 1,
                 "version": 0,

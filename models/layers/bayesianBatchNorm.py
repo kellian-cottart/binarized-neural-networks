@@ -161,8 +161,10 @@ class MetaBayesBatchNorm(MetaBayesNorm):
             # Sample the weights
             weights = self.weight.sample(samples)
             biases = self.bias.sample(samples)
-            weights = weights.reshape(weights.size(0)*weights.size(1))
-            biases = biases.reshape(biases.size(0)*biases.size(1))
+            weights = weights.reshape(weights.size(
+                0)*weights.size(1), *weights.size()[1:])
+            biases = biases.reshape(biases.size(
+                0)*biases.size(1), *biases.size()[1:])
         samples = samples if samples > 1 else 1
         x = x.reshape(x.size(0)//samples,
                       samples*x.size(1), *x.size()[2:])
