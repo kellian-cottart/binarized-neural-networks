@@ -74,8 +74,7 @@ class BHUparallel(torch.optim.Optimizer):
                 # Update rule for lambda with Hessian correction
                 kl = 1/torch.cosh(lambda_)**2
                 likelihood = 2*p.grad.data*torch.tanh(lambda_)
-                hessian = 2*torch.abs(p.grad.data)
-
+                hessian = 2*p.grad.data.abs()
                 lr_asymmetry = 1/(metaplasticity*(ratio_coeff*kl +
                                   likelihood + hessian) + 1/lr_max)
                 # Update the weights

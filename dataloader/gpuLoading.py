@@ -450,9 +450,6 @@ class CORe50:
             train_x = train_x.permute(0, 3, 1, 2) / 255
             train_y = tensor(
                 self.labels[self.scenario][self.run][i]).to("cpu")
-            # normalize the data between 0 and 1
-            v2.Normalize(train_x.mean(dim=(0, 2, 3)),
-                         train_x.std(dim=(0, 2, 3)), inplace=True)(train_x, train_x)
             train_loader.append(
                 GPUTensorDataset(train_x, train_y, device=self.device))
         return train_loader, test_dataset

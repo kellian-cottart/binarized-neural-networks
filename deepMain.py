@@ -11,7 +11,7 @@ from torch.optim import SGD, Adam
 import tqdm
 
 SEED = 1000  # Random seed
-N_NETWORKS = 1  # Number of networks to train
+N_NETWORKS = 10  # Number of networks to train
 DEVICE = device("cuda:0")
 GRAPHS = False
 MODULO = 10
@@ -31,21 +31,21 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "image_padding": 0,
-            "nn_type": models.MidVGGBayesian,
+            "image_padding": 2,
+            "nn_type": models.BayesianNN,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [8192, 2048, 2048],
+                "layers": [512],
                 # "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
                 "init": "gaussian",
-                "std": 0.01,
+                "std": 0.1,
                 "bias": True,
-                "n_samples_test": 2,
-                "n_samples_train": 2,
+                "n_samples_test": 5,
+                "n_samples_train": 5,
                 "tau": 1,
                 "activation_function": "relu",
                 "activation_parameters": {
@@ -58,13 +58,13 @@ if __name__ == "__main__":
                 "running_stats": False,
                 "affine": False,
                 "frozen": False,
-                "sigma_multiplier": 0.1,
+                "sigma_multiplier": 1,
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 5,
-                'batch_size': 32,
-                'test_batch_size': 32,
+                'n_epochs': 20,
+                'batch_size': 64,
+                'test_batch_size': 64,
                 'feature_extraction': False,
                 'data_aug_it': 1,
                 "continual": False,
@@ -88,9 +88,8 @@ if __name__ == "__main__":
             "optimizer": MESU,
             "optimizer_parameters": {
                 "lr": 1,
-                "sigma_prior": 1e-1,
-                "N": 10_000,
-                "clamp_grad": 0,
+                "sigma_prior": 0.1,
+                "N": 1_000_000,
             },
             # "optimizer": BGD,
             # "optimizer_parameters": {
@@ -109,11 +108,11 @@ if __name__ == "__main__":
             # "optimizer": MetaplasticAdam,
             # "optimizer_parameters": {"lr": 1e-5, "metaplasticity": 3},
             # "optimizer": SGD,
-            # "optimizer_parameters": {"lr": 0.0001},
+            # "optimizer_parameters": {"lr": 1e-3},
             # "optimizer": Adam,
             # "optimizer_parameters": {"lr": 1e-3},
-            "task": "core50-ni",
-            "n_tasks": 8,
+            "task": "PermutedMNIST",
+            "n_tasks": 10,
             "n_classes": 1,
         }
     ]
