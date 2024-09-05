@@ -103,15 +103,9 @@ class GPULoading:
         transform_train = v2.Compose([
             v2.feature_extraction(220, antialias=True),
             v2.RandomHorizontalFlip(),
-            v2.ToImage(),
-            v2.ToDtype(float32, scale=True),
-            v2.Normalize(mean=(0.0,), std=(1.0,))
         ])
         transform_test = v2.Compose([
             v2.feature_extraction(220, antialias=True),
-            v2.ToImage(),
-            v2.ToDtype(float32, scale=True),
-            v2.Normalize(mean=(0.0,), std=(1.0,))
         ])
         # Extract the features
         features_train = []
@@ -190,19 +184,19 @@ class GPULoading:
             tensor, tensor: Normalized training and testing data
         """
         # Completely convert train_x and test_x to float torch tensors
-        # division by 255 is only scaling from uint to float
         train_x = from_numpy(train_x).float() / 255
         test_x = from_numpy(test_x).float() / 255
-
         if len(train_x.size()) == 3:
             train_x = train_x.unsqueeze(1)
             test_x = test_x.unsqueeze(1)
-
-        # Normalize the pixels to 0, 1
         transform = v2.Compose([
+            # compute per channel mean-std
+            v2.Normalize(mean=train_x.mean(dim=(0, 2, 3)),
+                         std=train_x.std(dim=(0, 2, 3))),
             v2.Pad(self.padding, fill=0, padding_mode='constant'),
         ])
-        return transform(train_x), transform(test_x)
+        train_x, test_x = transform(train_x), transform(test_x)
+        return train_x, test_x
 
     def fashion_mnist(self, *args, **kwargs):
         if not os.path.exists(PATH_FASHION_MNIST_X_TRAIN):
@@ -457,8 +451,8 @@ class CORe50:
             train_y = tensor(
                 self.labels[self.scenario][self.run][i]).to("cpu")
             # normalize the data between 0 and 1
-            v2.Normalize((0,), (1,), inplace=True)(
-                train_x, train_x)
+            v2.Normalize(train_x.mean(dim=(0, 2, 3)),
+                         train_x.std(dim=(0, 2, 3)), inplace=True)(train_x, train_x)
             train_loader.append(
                 GPUTensorDataset(train_x, train_y, device=self.device))
         return train_loader, test_dataset
