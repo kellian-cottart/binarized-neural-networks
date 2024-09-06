@@ -312,7 +312,7 @@ class GPUTrainer:
             self.model.load_bn_states(batch_params[task_id])
         ### UPDATING EWC ###
         if hasattr(self, "ewc") and self.ewc == True and epoch == epochs-1:
-            batch_size_fisher = 32
+            batch_size_fisher = batch_size
             num_batches = len(task_train_dataset) // batch_size_fisher
             task_train_dataset.shuffle()
             # compute fisher diagonal
