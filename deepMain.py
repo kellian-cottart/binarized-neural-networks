@@ -11,14 +11,13 @@ from torch.optim import SGD, Adam
 import tqdm
 
 SEED = 1000  # Random seed
-N_NETWORKS = 10  # Number of networks to train
+N_NETWORKS = 1  # Number of networks to train
 DEVICE = device("cuda:0")
 GRAPHS = False
 MODULO = 10
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
 DATASETS_PATH = "datasets"
-RUN_ID = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-")
 
 if __name__ == "__main__":
     ### SEED ###
@@ -32,7 +31,7 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 2,
-            "nn_type": models.BayesianNN,
+            "nn_type": models.BiBayesianNN,
             "nn_parameters": {
                 # NETWORK ###
                 "layers": [512],
@@ -41,20 +40,19 @@ if __name__ == "__main__":
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
-                "init": "gaussian",
-                "std": 0.1,
-                "bias": True,
+                "bias": False,
                 "n_samples_test": 5,
                 "n_samples_train": 5,
                 "tau": 1,
-                "activation_function": "relu",
+                "std": 1e-1,
+                "activation_function": "gate",
                 "activation_parameters": {
-                    "width": 1,
-                    "power": 4
+                    "width": 1.25,
+                    "power": 1,
                 },
-                "normalization": "",
+                "normalization": "instancenorm",
                 "eps": 1e-5,
-                "momentum": 0.1,
+                "momentum": 0.15,
                 "running_stats": False,
                 "affine": False,
                 "frozen": False,
@@ -63,8 +61,8 @@ if __name__ == "__main__":
             },
             "training_parameters": {
                 'n_epochs': 20,
-                'batch_size': 64,
-                'test_batch_size': 64,
+                'batch_size': 128,
+                'test_batch_size': 128,
                 'feature_extraction': False,
                 'data_aug_it': 1,
                 "continual": False,
@@ -74,53 +72,56 @@ if __name__ == "__main__":
             "output_function": "log_softmax",
             "criterion": functional.F.nll_loss,
             "reduction": "sum",
-            # "regularizer": {
-            #     "type": "EWC",
-            #     "fisher": "empirical",
-            #     "lambda": 100,
-            # },
-            # "optimizer": BHUparallel,
-            # "optimizer_parameters": {
-            #     "lr_max": 6.5,
-            #     "metaplasticity": 1,
-            #     "ratio_coeff": 0.1,
-            # },
-            "optimizer": MESU,
-            "optimizer_parameters": {
-                "lr": 1,
-                "sigma_prior": 0.1,
-                "N": 1_000_000,
+            "regularizer": {
+                "type": "l2",
+                "lambda": lbda,
+                # "fisher": "empirical",
+                # "batch_size": 32,
+                # "mode": "all",  # for last, best lambda is 7000
             },
+            "optimizer": BHUparallel,
+            "optimizer_parameters": {
+                "lr_max": 5,
+                "metaplasticity": 1,
+                "ratio_coeff": 0.1,
+            },
+            # "optimizer": MESU,
+            # "optimizer_parameters": {
+            #     "lr": 1,
+            #     "sigma_prior": 1e-1,
+            #     "N": 100_000,
+            # },
             # "optimizer": BGD,
             # "optimizer_parameters": {
             #     "lr": 1,
-            #     "clamp_grad": 0,
+            #     "clamp_grad": 1,
             # },
             # "optimizer": BayesBiNN,
             # "optimizer_parameters": {
-            #     "train_set_size": 60000,
-            #     "betas": 0.0,
-            #     "lr": 0.0005,
+            #     "train_set_size": 60_000,
+            #     "lr": 500/60_000,
             #     "num_samples": 5,
-            #     "temperature": 1e-2,
-            #     "lamda_init": 10,
+            #     "temperature": 0.0001,
+            #     "lamda_init": 0,
+            #     "reweight": 0.0001,
             # },
             # "optimizer": MetaplasticAdam,
-            # "optimizer_parameters": {"lr": 1e-5, "metaplasticity": 3},
-            # "optimizer": SGD,
-            # "optimizer_parameters": {"lr": 1e-3},
+            # "optimizer_parameters": {"lr": 0.004, "metaplasticity": 1.3, "weight_decay": 1e-7},
             # "optimizer": Adam,
             # "optimizer_parameters": {"lr": 1e-3},
             "task": "PermutedMNIST",
             "n_tasks": 10,
             "n_classes": 1,
-        }
+        } for lbda in [1e-5, 1e-4, 1e-3, 1e-2, 1e-1]
     ]
 
     for index, data in enumerate(networks_data):
+        RUN_ID = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-")
         ### FOLDER INITIALIZATION ###
         name = f"{data['optimizer'].__name__}-" + f"{data['nn_type'].__name__}" + \
             f"-BS{data['training_parameters']['batch_size']}-{'-'.join([str(layer) for layer in data['nn_parameters']['layers']])}-{data['task']}-{data['nn_parameters']['activation_function']}"
+        if "regularizer" in data:
+            name += f"-{data['regularizer']['type']}"
         ### ACCURACY INITIALIZATION ###
         accuracies, training_accuracies = [], []
         batch_size = data['training_parameters']['batch_size']

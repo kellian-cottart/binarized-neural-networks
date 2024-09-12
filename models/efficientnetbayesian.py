@@ -104,7 +104,8 @@ class EfficientNetBayesian(Module):
             eps=eps,
             momentum=momentum,
             gnnum_groups=gnnum_groups,
-            activation_function=activation_function
+            activation_function=activation_function,
+            classifier=True,
         )
 
     def conv_to_bayesian(self, layer):
@@ -220,7 +221,7 @@ class EfficientNetBayesian(Module):
         x = self.transform(x)
         x = x.repeat(repeat_samples, *([1] * (len(x.size())-1)))
         x = self.features(x, samples)
-        return self.classifier(x, classifier=True)
+        return self.classifier(x)
 
     # add number of parameters total
 

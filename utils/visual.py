@@ -22,10 +22,10 @@ def graphs(main_folder, net_trainer, task, n_tasks, epoch, predictions=None, lab
             log=True,
         )
         params = [p for p in net_trainer.optimizer.param_groups[0]
-                  ['params'] if p.requires_grad]
+                  ['params'] if p.requires_grad and p.grad is not None]
         grad = [p.grad for p in net_trainer.optimizer.param_groups[0]
-                ['params'] if p.requires_grad]
-        if grad[0] is not None:
+                ['params'] if p.requires_grad and p.grad is not None]
+        if grad != []:
             visualize_grad(
                 parameters=params,
                 grad=grad,

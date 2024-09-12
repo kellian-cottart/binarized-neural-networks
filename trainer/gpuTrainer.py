@@ -38,15 +38,21 @@ class GPUTrainer:
         self.output_function = output_function
         self.hessian = []
         self.gradient = []
-        if "regularizer" in kwargs and kwargs["regularizer"]["type"].lower() == "ewc":
-            self.ewc = True
-            self.lbda = kwargs["regularizer"]["lambda"]
-            self.fisher_mode = kwargs["regularizer"]["fisher"]
-            self.old_fisher_diagonal = []
-            self.old_params = []
-            self.dataset = None
-            self.compute_diag_fisher()
-        # Label trick
+        if "regularizer" in kwargs:
+            if kwargs["regularizer"]["type"].lower() == "ewc":
+                self.ewc = True
+                self.lbda = kwargs["regularizer"]["lambda"]
+                self.fisher_mode = kwargs["regularizer"]["fisher"]
+                self.old_fisher_diagonal = []
+                self.old_params = []
+                self.dataset = None
+                self.mode = kwargs["regularizer"]["mode"]
+                self.ewc_batch_size = kwargs["regularizer"]["batch_size"]
+                self.compute_diag_fisher()
+            elif kwargs["regularizer"]["type"].lower() == "l2":
+                self.l2 = True
+                self.lbda = kwargs["regularizer"]["lambda"]
+                # Label trick
         if "label_trick" in kwargs:
             self.label_trick = kwargs["label_trick"]
         # Scheduler addition
@@ -115,6 +121,12 @@ class GPUTrainer:
             targets.to(self.device),
             reduction=self.reduction,
         )
+        # add l2 regularization
+        if hasattr(self, "l2") and self.l2 == True:
+            l2_reg = torch.tensor(0.).to(self.device)
+            for param in self.model.parameters():
+                l2_reg += torch.norm(param)
+            self.loss += self.lbda * l2_reg
         if hasattr(self, "ewc") and self.ewc == True:
             self.loss += 1/2 * self.lbda * self.ewc_loss()
         ### BACKWARD PASS ###
@@ -312,8 +324,7 @@ class GPUTrainer:
             self.model.load_bn_states(batch_params[task_id])
         ### UPDATING EWC ###
         if hasattr(self, "ewc") and self.ewc == True and epoch == epochs-1:
-            batch_size_fisher = batch_size
-            num_batches = len(task_train_dataset) // batch_size_fisher
+            num_batches = len(task_train_dataset) // self.ewc_batch_size
             task_train_dataset.shuffle()
             # compute fisher diagonal
             current_fisher_diagonal = {
@@ -324,7 +335,7 @@ class GPUTrainer:
                 batch, labels = batch_yielder(
                     dataset=task_train_dataset,
                     task=self.task,
-                    batch_size=batch_size_fisher,
+                    batch_size=self.ewc_batch_size,
                     task_id=task_id,
                     iteration=n_batch,
                     max_iterations=epochs*num_batches,
@@ -348,8 +359,19 @@ class GPUTrainer:
         return predictions, labels
 
     def ewc_loss(self):
+        if len(self.old_params) == 0:
+            return 0
         loss = 0
-        for old_param, old_fisher in zip(self.old_params, self.old_fisher_diagonal):
+        if self.mode == "all":
+            for i, old_param, old_fisher in zip(range(len(self.old_params)), self.old_params, self.old_fisher_diagonal):
+                # old_param = self.old_params[-1]
+                # old_fisher = self.old_fisher_diagonal[-1]
+                for n, p in self.model.named_parameters():
+                    diff = p - old_param[n]
+                    loss += (old_fisher[n] * (diff * diff)).sum()
+        elif self.mode == "last":
+            old_param = self.old_params[-1]
+            old_fisher = self.old_fisher_diagonal[-1]
             for n, p in self.model.named_parameters():
                 diff = p - old_param[n]
                 loss += (old_fisher[n] * (diff * diff)).sum()
@@ -369,10 +391,10 @@ class GPUTrainer:
             forward = torch.nn.functional.log_softmax(forward, dim=1)
             if self.fisher_mode == "empirical":
                 loss = torch.nn.functional.nll_loss(
-                    forward, labels, reduction=self.reduction)
+                    forward, labels)
             else:
                 loss = torch.nn.functional.nll_loss(
-                    forward, forward.max(1)[1], reduction=self.reduction)
+                    forward, forward.max(1)[1])
             self.model.zero_grad()
             loss.backward()
             for n, p in self.model.named_parameters():

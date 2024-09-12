@@ -76,8 +76,22 @@ class EfficientNet(Module):
                 param.requires_grad = False
                 param.grad = None
         ## CLASSIFIER INITIALIZATION ##
-        self.classifier = DNN(layers, init, std, device, dropout, normalization, bias,
-                              running_stats, affine, eps, momentum, gnnum_groups, activation_function)
+        self.classifier = DNN(layers=layers,
+                              init=init,
+                              std=std,
+                              device=device,
+                              dropout=dropout,
+                              normalization=normalization,
+                              bias=bias,
+                              running_stats=running_stats,
+                              affine=affine,
+                              eps=eps,
+                              momentum=momentum,
+                              activation_function=activation_function,
+                              gnnum_groups=gnnum_groups,
+                              classifier=True,
+                              *args,
+                              **kwargs)
 
     def _activation_init(self):
         """
@@ -125,7 +139,7 @@ class EfficientNet(Module):
         x = self.transform(x)
         x = self.features(x)
         x = self.avgpool(x)
-        return self.classifier.forward(x)
+        return self.classifier(x)
 
     # add number of parameters total
 

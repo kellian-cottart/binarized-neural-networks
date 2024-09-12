@@ -28,7 +28,7 @@ class BayesBiNN(Optimizer):
 
     """
 
-    def __init__(self, model, train_set_size, lr=1e-9, betas=0.0, prior_lambda=None, num_samples=5, lamda_init=10, lamda_std=0, temperature=1, reweight=1):
+    def __init__(self, model, train_set_size, lr=1e-9, betas=0.0, prior_lambda=None, num_samples=5, lamda_init=10, temperature=1, reweight=1):
         if lr <= 0.0:
             raise ValueError("Invalid learning rate: {}".format(lr))
         if prior_lambda is not None and not torch.is_tensor(prior_lambda):
@@ -63,13 +63,8 @@ class BayesBiNN(Optimizer):
         device = parameters[0].device
 
         p = parameters_to_vector(self.param_groups[0]['params'])
-
-        # natural parameter of Bernoulli distribution.
-        mixtures_coeff = torch.randint_like(p, 2)
-        # torch.log(1+p_value) - torch.log(1-p_value)  #torch.randn_like(p) # 100*torch.randn_like(p) # math.sqrt(train_set_size)*torch.randn_like(p)  #such initialization is empirically good, others are OK of course
-        self.state['lambda'] = mixtures_coeff * (lamda_init + np.sqrt(lamda_std) * torch.randn_like(
-            p)) + (1-mixtures_coeff) * (-lamda_init + np.sqrt(lamda_std) * torch.randn_like(p))
-
+        self.state['lambda'] = torch.empty_like(
+            p).uniform_(-lamda_init, lamda_init).to(device)
         # expecttion parameter of Bernoulli distribution.
         if defaults['num_samples'] <= 0:  # BCVI-D optimizer
             self.state['mu'] = torch.tanh(self.state['lambda'])
@@ -84,7 +79,7 @@ class BayesBiNN(Optimizer):
         if torch.is_tensor(defaults['prior_lambda']):
             self.state['prior_lambda'] = defaults['prior_lambda'].to(device)
         else:
-            self.state['prior_lambda'] = torch.zeros_like(p, device=device)
+            self.state['prior_lambda'] = self.state['lambda'].clone().detach()
 
         # step initilization
         self.state['step'] = 0
@@ -168,19 +163,21 @@ class BayesBiNN(Optimizer):
                 defaults['train_set_size'] / defaults['num_samples'])
 
         # Add momentum
-        self.state['momentum'] = momentum_beta * self.state['momentum'] + (1-momentum_beta)*(
-            grad_hat + reweight*(self.state['lambda'] - self.state['prior_lambda']))
+        # self.state['momentum'] = momentum_beta * self.state['momentum'] + (1-momentum_beta)*(
+        #     grad_hat + reweight*(self.state['lambda'] - self.state['prior_lambda']))
 
         # Get the mean loss over the number of samples
         loss = torch.mean(torch.stack(loss_list))
 
-        # Bias correction of momentum as adam
-        bias_correction1 = 1 - momentum_beta ** self.state['step']
+        # # Bias correction of momentum as adam
+        # bias_correction1 = 1 - momentum_beta ** self.state['step']
 
         # Update lamda vector
-        self.state['lambda'] = self.state['lambda'] - \
-            self.param_groups[0]['lr'] * \
-            self.state['momentum']/bias_correction1
+        # self.state['lambda'] = self.state['lambda'] - \
+        #     self.param_groups[0]['lr'] * \
+        #     self.state['momentum']/bias_correction1
+        self.state['lambda'] = self.state['lambda'] - lr * grad_hat - reweight * \
+            (self.state['lambda'] - self.state['prior_lambda'])
         self.state['mu'] = torch.tanh(lamda)
         return loss
 
@@ -232,4 +229,4 @@ class BayesBiNN(Optimizer):
         return predictions
 
     def update_prior_lambda(self):
-        self.state["prior_lambda"] = self.state["lambda"]
+        self.state["prior_lambda"] = self.state["lambda"].clone().detach()

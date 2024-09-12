@@ -9,9 +9,6 @@ class BHUparallel(torch.optim.Optimizer):
                  metaplasticity: float = 1.0,
                  lr_max: float = 30,
                  ratio_coeff: float = 1.0,
-                 normalize_gradients: bool = False,
-                 eps: float = 1e-7,
-                 clamp: float = 0.1,
                  mesuified: bool = False,
                  N: int = 1):
         """ Binary Bayesian optimizer for continual learning
@@ -30,9 +27,6 @@ class BHUparallel(torch.optim.Optimizer):
         defaults = dict(metaplasticity=metaplasticity,
                         lr_max=lr_max,
                         ratio_coeff=ratio_coeff,
-                        normalize_gradients=normalize_gradients,
-                        eps=eps,
-                        clamp=clamp,
                         mesuified=mesuified,
                         N=N)
         super(BHUparallel, self).__init__(params, defaults)
@@ -59,18 +53,10 @@ class BHUparallel(torch.optim.Optimizer):
                 state['step'] += 1
                 lr_max = group['lr_max']
                 ratio_coeff = group['ratio_coeff']
-                normalize_gradients = group['normalize_gradients']
-                eps = group['eps']
-                clamp = group['clamp']
                 mesuified = group['mesuified']
                 N = group['N']
                 metaplasticity = group['metaplasticity']
                 lambda_ = p.data
-                # Normalize gradients if specified
-                if normalize_gradients:
-                    p.grad.data = p.grad.data / \
-                        (torch.norm(p.grad.data, p=2) + eps)
-                    p.grad.data = torch.clamp(p.grad.data, -clamp, clamp)
                 # Update rule for lambda with Hessian correction
                 kl = 1/torch.cosh(lambda_)**2
                 likelihood = 2*p.grad.data*torch.tanh(lambda_)

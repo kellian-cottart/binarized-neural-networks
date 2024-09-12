@@ -27,7 +27,6 @@ class DNN(torch.nn.Module):
 
     def __init__(self,
                  layers: list = [1024, 1024, 10],
-                 init: str = "uniform",
                  std: float = 0.01,
                  device: str = "cuda:0",
                  dropout: bool = False,
@@ -59,8 +58,6 @@ class DNN(torch.nn.Module):
             self.activation_parameters = kwargs["activation_parameters"]
         ### LAYER INITIALIZATION ###
         self._layer_init(layers, bias)
-        ### WEIGHT INITIALIZATION ###
-        self._weight_init(init, std)
 
     def _layer_init(self, layers, bias=False):
         """ Initialize layers of NN
@@ -93,7 +90,7 @@ class DNN(torch.nn.Module):
 
         """
         for i, layer in enumerate(self.layers):
-            if isinstance(layer, torch.nn.BatchNorm1d):
+            if isinstance(layer, torch.nn.BatchNorm1d or torch.nn.InstanceNorm1d):
                 layer.load_state_dict(state_dict[f"layers.{i}"])
 
     def save_bn_states(self):
@@ -104,7 +101,7 @@ class DNN(torch.nn.Module):
         """
         state_dict = {}
         for i, layer in enumerate(self.layers):
-            if isinstance(layer, torch.nn.BatchNorm1d):
+            if isinstance(layer, torch.nn.BatchNorm1d or torch.nn.InstanceNorm1d):
                 state_dict[f"layers.{i}"] = copy.deepcopy(layer.state_dict())
         return state_dict
 
@@ -145,23 +142,6 @@ class DNN(torch.nn.Module):
             "groupnorm": lambda: torch.nn.GroupNorm(self.gnnum_groups, n_features),
         }
         return normalization_layers.get(self.normalization, torch.nn.Identity)().to(self.device)
-
-    def _weight_init(self, init='normal', std=0.1):
-        """ Initialize weights of each layer
-        Args:
-            init (str): Initialization method for weights
-            std (float): Standard deviation for initialization
-        """
-        for layer in self.layers:
-            if isinstance(layer, torch.nn.Module) and hasattr(layer, 'weight') and layer.weight is not None:
-                if init == 'gaussian':
-                    torch.nn.init.normal_(
-                        layer.weight.data, mean=0.0, std=std)
-                elif init == 'uniform':
-                    torch.nn.init.uniform_(
-                        layer.weight.data, a=-std/2, b=std/2)
-                elif init == 'xavier':
-                    torch.nn.init.xavier_normal_(layer.weight.data)
 
     def forward(self, x, *args, **kwargs):
         """ Forward pass of DNN

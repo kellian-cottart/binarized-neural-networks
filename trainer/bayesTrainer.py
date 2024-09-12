@@ -30,7 +30,7 @@ class BayesTrainer(GPUTrainer):
             loss = self.criterion(
                 forward,
                 targets.to(self.device),
-                reduction='sum')
+                reduction=self.reduction)
             return loss, forward
         ### LOSS ###
         self.loss = self.optimizer.step(closure=closure)
