@@ -201,8 +201,8 @@ class MetaBayesConv2d(MetaBayesConvNd):
         samples = samples if samples > 1 else 1
         weights = weights.reshape(weights.size(
             0)*weights.size(1), *weights.size()[2:])
-        x = x.reshape(x.size(0)//samples, samples*x.size(1),
-                      x.size(2), *x.size()[3:])
+        x = x.reshape(x.size(0)//samples, samples*x.size(1), *x.size()[2:])
         out = self._conv_forward(x, weights, B, samples)
-        return out.reshape(out.size(0)*samples, out.size(1) //
-                           samples, *out.size()[2:])
+        out = out.reshape(out.size(0)*samples, out.size(1) //
+                          samples, *out.size()[2:])
+        return out

@@ -22,6 +22,11 @@ PATH_FASHION_MNIST_Y_TRAIN = "datasets/FashionMNIST/raw/train-labels-idx1-ubyte"
 PATH_FASHION_MNIST_X_TEST = "datasets/FashionMNIST/raw/t10k-images-idx3-ubyte"
 PATH_FASHION_MNIST_Y_TEST = "datasets/FashionMNIST/raw/t10k-labels-idx1-ubyte"
 
+PATH_EMNIST_X_TRAIN = "datasets/EMNIST/raw/emnist-balanced-train-images-idx3-ubyte"
+PATH_EMNIST_Y_TRAIN = "datasets/EMNIST/raw/emnist-balanced-train-labels-idx1-ubyte"
+PATH_EMNIST_X_TEST = "datasets/EMNIST/raw/emnist-balanced-test-images-idx3-ubyte"
+PATH_EMNIST_Y_TEST = "datasets/EMNIST/raw/emnist-balanced-test-labels-idx1-ubyte"
+
 PATH_CIFAR10 = "datasets/cifar-10-batches-py"
 PATH_CIFAR10_DATABATCH = [
     f"{PATH_CIFAR10}/data_batch_{i}" for i in range(1, 6)]
@@ -57,7 +62,10 @@ class GPULoading:
             task (str): Name of the task
         """
         self.padding = padding
-        if "mnist" in task.lower():
+
+        if "emnist" in task.lower():
+            train, test = self.emnist(*args, **kwargs)
+        elif "mnist" in task.lower():
             train, test = self.mnist(*args, **kwargs)
         elif "fashion" in task.lower():
             train, test = self.fashion_mnist(*args, **kwargs)
@@ -190,7 +198,7 @@ class GPULoading:
             train_x = train_x.unsqueeze(1)
             test_x = test_x.unsqueeze(1)
         transform = v2.Compose([
-            # compute per channel mean-std
+            # compute mean and std on shape except channels
             v2.Normalize(mean=train_x.mean(dim=(0, 2, 3)),
                          std=train_x.std(dim=(0, 2, 3))),
             v2.Pad(self.padding, fill=0, padding_mode='constant'),
@@ -209,6 +217,12 @@ class GPULoading:
             datasets.MNIST("datasets", download=True)
         return self.mnist_like(PATH_MNIST_X_TRAIN, PATH_MNIST_Y_TRAIN,
                                PATH_MNIST_X_TEST, PATH_MNIST_Y_TEST, *args, **kwargs)
+
+    def emnist(self, *args, **kwargs):
+        if not os.path.exists(PATH_EMNIST_X_TRAIN):
+            datasets.EMNIST("datasets", download=True, split="balanced")
+        return self.mnist_like(PATH_EMNIST_X_TRAIN, PATH_EMNIST_Y_TRAIN,
+                               PATH_EMNIST_X_TEST, PATH_EMNIST_Y_TEST, *args, **kwargs)
 
     def mnist_like(self, path_train_x, path_train_y, path_test_x, path_test_y, *args, **kwargs):
         """ Load a local dataset on GPU corresponding either to MNIST or FashionMNIST

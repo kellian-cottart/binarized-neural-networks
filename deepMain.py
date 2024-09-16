@@ -30,27 +30,27 @@ if __name__ == "__main__":
     ### NETWORK CONFIGURATION ###
     networks_data = [
         {
-            "image_padding": 2,
-            "nn_type": models.BiBayesianNN,
+            "image_padding": 0,
+            "nn_type": models.CifarNetBayesian,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [512],
+                "layers": [1024],
                 # "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
-                "bias": False,
+                "bias": True,
                 "n_samples_test": 5,
                 "n_samples_train": 5,
                 "tau": 1,
-                "std": 1e-1,
-                "activation_function": "gate",
+                "std": 0.05,
+                "activation_function": "relu",
                 "activation_parameters": {
-                    "width": 1.25,
-                    "power": 1,
+                    "width": 1,
+                    "power": 2,
                 },
-                "normalization": "instancenorm",
+                "normalization": "",
                 "eps": 1e-5,
                 "momentum": 0.15,
                 "running_stats": False,
@@ -60,7 +60,7 @@ if __name__ == "__main__":
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 20,
+                'n_epochs': 200,
                 'batch_size': 128,
                 'test_batch_size': 128,
                 'feature_extraction': False,
@@ -72,47 +72,20 @@ if __name__ == "__main__":
             "output_function": "log_softmax",
             "criterion": functional.F.nll_loss,
             "reduction": "sum",
-            "regularizer": {
-                "type": "l2",
-                "lambda": lbda,
-                # "fisher": "empirical",
-                # "batch_size": 32,
-                # "mode": "all",  # for last, best lambda is 7000
-            },
-            "optimizer": BHUparallel,
+            "optimizer": MESU,
             "optimizer_parameters": {
-                "lr_max": 5,
-                "metaplasticity": 1,
-                "ratio_coeff": 0.1,
+                "lr": 1,
+                "sigma_prior": 0.05,
+                "N": 1_000_000,
             },
-            # "optimizer": MESU,
+            # "optimizer": SGD,
             # "optimizer_parameters": {
-            #     "lr": 1,
-            #     "sigma_prior": 1e-1,
-            #     "N": 100_000,
+            #     "lr": 0.001,
             # },
-            # "optimizer": BGD,
-            # "optimizer_parameters": {
-            #     "lr": 1,
-            #     "clamp_grad": 1,
-            # },
-            # "optimizer": BayesBiNN,
-            # "optimizer_parameters": {
-            #     "train_set_size": 60_000,
-            #     "lr": 500/60_000,
-            #     "num_samples": 5,
-            #     "temperature": 0.0001,
-            #     "lamda_init": 0,
-            #     "reweight": 0.0001,
-            # },
-            # "optimizer": MetaplasticAdam,
-            # "optimizer_parameters": {"lr": 0.004, "metaplasticity": 1.3, "weight_decay": 1e-7},
-            # "optimizer": Adam,
-            # "optimizer_parameters": {"lr": 1e-3},
-            "task": "PermutedMNIST",
-            "n_tasks": 10,
+            "task": "CIFAR10",
+            "n_tasks": 1,
             "n_classes": 1,
-        } for lbda in [1e-5, 1e-4, 1e-3, 1e-2, 1e-1]
+        },
     ]
 
     for index, data in enumerate(networks_data):
@@ -142,11 +115,7 @@ if __name__ == "__main__":
                 task=data["task"], n_tasks=data["n_tasks"], batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"], run=iteration)
             if iteration == 0:
                 data['nn_parameters']['layers'].append(target_size)
-                if "conv" in data["nn_type"].__name__.lower():
-                    data['nn_parameters']['features'].insert(
-                        0, shape[0])  # Add the input size
-                # Add the input size
-                elif not "VGG" in data["nn_type"].__name__ and not "EfficientNet" in data["nn_type"].__name__:
+                if not "VGG" in data["nn_type"].__name__ and not "EfficientNet" in data["nn_type"].__name__ and not "cifar" in data["nn_type"].__name__.lower():
                     data['nn_parameters']['layers'].insert(
                         0, prod(tensor(shape)))
 
@@ -234,14 +203,16 @@ if __name__ == "__main__":
                 save(stack(net_trainer.training_accuracy),
                      os.path.join(sub_folder, "training_accuracy.pt"))
         accuracies = stack(accuracies)
+        if len(training_accuracies) > 0:
+            training_accuracies = stack(training_accuracies)
         ### SAVE GRAPHS ###
         title = "tasks"
         visualize_sequential(title,
                              accuracies,
                              folder=main_folder,
                              epochs=data["training_parameters"]["n_epochs"],
-                             training_accuracies=training_accuracies if "show_train" in data and data[
-                                 "show_train"] else None)
+                             training_accuracies=training_accuracies if len(
+                                 training_accuracies) > 0 else None)
 
         # if number of tasks is 100, export the accuracy of the first 10 and last 10 tasks
         if data['n_tasks'] >= 10:

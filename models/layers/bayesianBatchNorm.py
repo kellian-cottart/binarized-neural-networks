@@ -168,7 +168,7 @@ class MetaBayesBatchNorm(MetaBayesNorm):
         samples = samples if samples > 1 else 1
         x = x.reshape(x.size(0)//samples,
                       samples*x.size(1), *x.size()[2:])
-        if self.track_running_stats or not self.training:
+        if self.track_running_stats or (not self.training and self.track_running_stats):
             running_mean = self.running_mean.repeat(
                 samples, *([1] * (len(self.running_mean.size())-1)))
             running_var = self.running_var.repeat(

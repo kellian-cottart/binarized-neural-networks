@@ -129,7 +129,7 @@ def visualize_sequential(title, l_accuracies, folder, epochs=None, training_accu
                  fontsize=9, ha='center', va='center', transform=ax.transAxes, fontweight='bold')
     ### PLOT TRAINING ACCURACIES ###
     if training_accuracies is not None:
-        training_accuracies = torch.tensor(training_accuracies).detach().cpu()
+        training_accuracies = training_accuracies.detach().cpu()
         mean_training_accuracies = training_accuracies.mean(dim=0)*100
         std_training_accuracies = training_accuracies.std(dim=0)*100
 

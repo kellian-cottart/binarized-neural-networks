@@ -91,5 +91,5 @@ def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: in
             second_order_mu - variance * mu.data / \
             (forgetting * second_order_mu)
         sigma.data = sigma.data - 0.5 * variance * grad_sigma / \
-            second_order_sigma + sigma.data * (sigma_prior **
-                                               2 - variance) / (forgetting * second_order_sigma)
+            second_order_sigma + 0.5 * sigma.data * (sigma_prior **
+                                                     2 - variance) / (forgetting * second_order_sigma)

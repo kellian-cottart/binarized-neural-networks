@@ -12,3 +12,5 @@ from .midvggbayesian import *
 from .efficientnet import *
 from .efficientnetbayesian import *
 from .efficientnetbibayesian import *
+from .cifarnetbayesian import *
+from .cifarnet import *

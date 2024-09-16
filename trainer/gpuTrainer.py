@@ -168,8 +168,7 @@ class GPUTrainer:
                 self.model.load_bn_states(batch_params[i])
             batch = []
             target_batch = []
-            n_batches = len(dataset) // batch_size + \
-                (len(dataset) % batch_size != 0)
+            n_batches = len(dataset) // batch_size
             for i in range(n_batches):
                 inputs, targets = dataset.__getbatch__(
                     i*batch_size, batch_size)
@@ -184,19 +183,23 @@ class GPUTrainer:
         self.testing_accuracy.append(test)
         self.mean_testing_accuracy.append(test.mean())
         # ### TRAINING SET ###
-        # # Conditional, we only compute the training accuracy if the training data is provided
-        # if train_loader is not None:
-        #     train = []
-        #     for i, dataloader in enumerate(train_loader):
-        #         if batch_params is not None:
-        #             self.model.load_bn_states(batch_params[i])
-        #         batch = []
-        #         for inputs, targets in dataloader:
-        #             accuracy, predictions = self.test(inputs, targets)
-        #             batch.append(accuracy)
-        #         train.append(torch.mean(torch.tensor(batch)))
-        #     self.training_accuracy.append(train)
-        # # Return the prediction, and the corresponding labels.
+        # Conditional, we only compute the training accuracy if the training data is provided
+        if train_loader is not None:
+            train = []
+            for i, dataset in enumerate(train_loader):
+                batch = []
+                target_batch = []
+                n_batches = len(dataset) // batch_size
+                for i in range(n_batches):
+                    inputs, targets = dataset.__getbatch__(
+                        i*batch_size, batch_size)
+                    accuracy, predictions = self.test(
+                        inputs.to(self.device), targets.to(self.device))
+                    batch.append(accuracy)
+                    target_batch.append(targets)
+                train.append(torch.mean(torch.tensor(batch)))
+            train = torch.tensor(train)
+            self.training_accuracy.append(train)
         return test_predictions, labels
 
     def predict(self, inputs):
@@ -208,7 +211,7 @@ class GPUTrainer:
         Returns:
             torch.Tensor: Predictions
         """
-        self.model.eval()
+        # self.model.eval()
         with torch.no_grad():
             # Specifying backwards=False in case the forward and the backward are different
             predictions = self.output_apply(self.model.forward(
@@ -280,11 +283,17 @@ class GPUTrainer:
                     test_dataset=dataset,
                     permutations=permutations
                 ),
+                train_loader=test_permuted_dataset(
+                    test_dataset=[train_dataset],
+                    permutations=permutations
+                ) if train_dataset is not None else None,
                 batch_size=dataset.data.shape[0],
                 batch_params=batch_params)
         else:
             predictions, labels = self.evaluate(
                 dataset,
+                train_loader=[
+                    train_dataset] if train_dataset is not None else None,
                 batch_size=batch_size,
                 batch_params=batch_params)
         return predictions, labels
@@ -312,10 +321,10 @@ class GPUTrainer:
         # Depending on the task, we also need to use the framework on the test set and show training or not
         predictions, labels = self.evaluate_tasks(
             dataset=test_dataset,
+            train_dataset=task_train_dataset,
             task=self.task,
             permutations=permutations,
             batch_size=test_batch_size,
-            train_dataset=task_train_dataset,
             batch_params=batch_params if batch_params is not None else None
         )
         self.pbar_update(
