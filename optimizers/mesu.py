@@ -32,7 +32,7 @@ class MESU(Optimizer):
             - Individual priors for each synapse
     """
 
-    def __init__(self, params, lr=1, sigma_prior=0.1, N=1e5):
+    def __init__(self, params, lr=1, sigma_prior=0.1, N=1e5, sigma_grad_divide=1):
 
         if sigma_prior <= 0:
             raise ValueError(
@@ -44,6 +44,7 @@ class MESU(Optimizer):
             sigma_prior=sigma_prior,
             N=N,
             lr=lr,
+            sigma_grad_divide=sigma_grad_divide,
         )
 
         super().__init__(params, defaults)
@@ -70,11 +71,12 @@ class MESU(Optimizer):
                 d_p_list,
                 sigma_prior=group['sigma_prior'],
                 N=group['N'],
-                lr=group['lr']
+                lr=group['lr'],
+                sigma_grad_divide=group['sigma_grad_divide'],
             )
 
 
-def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: int, lr: float):
+def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: int, lr: float, sigma_grad_divide: float):
     if not params:
         raise ValueError('No gradients found in parameters!')
     if len(params) % 2 == 1:
@@ -85,11 +87,11 @@ def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: in
         forgetting = N * (sigma_prior ** 2)
         second_order_mu = (N - 1)/N + variance * \
             (grad_mu ** 2) + variance/forgetting
-        second_order_sigma = (N - 1)/N + variance * \
+        second_order_sigma = (N - 1)/N + sigma_grad_divide*variance * \
             (grad_sigma ** 2) + variance/forgetting
         mu.data = mu.data - lr * variance * grad_mu / \
             second_order_mu - variance * mu.data / \
             (forgetting * second_order_mu)
         sigma.data = sigma.data - 0.5 * variance * grad_sigma / \
-            second_order_sigma + 0.5 * sigma.data * (sigma_prior **
-                                                     2 - variance) / (forgetting * second_order_sigma)
+            second_order_sigma + 0.5 * sigma.data * \
+            (sigma_prior ** 2 - variance) / (forgetting * second_order_sigma)

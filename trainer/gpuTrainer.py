@@ -211,7 +211,7 @@ class GPUTrainer:
         Returns:
             torch.Tensor: Predictions
         """
-        # self.model.eval()
+        self.model.eval()
         with torch.no_grad():
             # Specifying backwards=False in case the forward and the backward are different
             predictions = self.output_apply(self.model.forward(

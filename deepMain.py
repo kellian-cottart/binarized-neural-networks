@@ -77,6 +77,7 @@ if __name__ == "__main__":
                 "lr": 1,
                 "sigma_prior": 0.05,
                 "N": 1_000_000,
+                "sigma_grad_divide": 10,
             },
             # "optimizer": SGD,
             # "optimizer_parameters": {
@@ -85,7 +86,7 @@ if __name__ == "__main__":
             "task": "CIFAR10",
             "n_tasks": 1,
             "n_classes": 1,
-        },
+        }
     ]
 
     for index, data in enumerate(networks_data):
