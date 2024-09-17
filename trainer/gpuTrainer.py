@@ -284,7 +284,7 @@ class GPUTrainer:
                     permutations=permutations
                 ),
                 train_loader=test_permuted_dataset(
-                    test_dataset=[train_dataset],
+                    test_dataset=train_dataset,
                     permutations=permutations
                 ) if train_dataset is not None else None,
                 batch_size=dataset.data.shape[0],
