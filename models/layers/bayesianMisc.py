@@ -4,6 +4,7 @@ from typing import Callable, Optional
 from torch.nn import Flatten, Module, AdaptiveAvgPool2d, Sigmoid, ReLU
 from torch import Tensor, no_grad
 from .bayesianConv import MetaBayesConv2d
+from .bayesianLinear import MetaBayesLinearParallel
 
 
 class MetaBayesSequential(Sequential):
@@ -15,6 +16,9 @@ class MetaBayesSequential(Sequential):
     def forward(self, x, samples):
         for module in self:
             if "Meta" in module.__class__.__name__:
+
+                # if isinstance(module, MetaBayesConv2d) or isinstance(module, MetaBayesLinearParallel):
+                #     print(f"{module.__class__.__name__}\t{module.weight.sigma.data.min().item()}\t{module.weight.sigma.data.max().item()}\t{module.weight.sigma.data.mean().item()}")
                 x = module(x, samples)
             else:
                 x = module(x)

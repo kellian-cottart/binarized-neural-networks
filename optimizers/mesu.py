@@ -32,7 +32,7 @@ class MESU(Optimizer):
             - Individual priors for each synapse
     """
 
-    def __init__(self, params, lr=1, sigma_prior=0.1, N=1e5, sigma_grad_divide=1):
+    def __init__(self, params, lr=1, sigma_prior=0.1, N=1e5, sigma_grad_divide=1, eps=1e-4):
 
         if sigma_prior <= 0:
             raise ValueError(
@@ -45,6 +45,7 @@ class MESU(Optimizer):
             N=N,
             lr=lr,
             sigma_grad_divide=sigma_grad_divide,
+            eps=eps,
         )
 
         super().__init__(params, defaults)
@@ -73,10 +74,11 @@ class MESU(Optimizer):
                 N=group['N'],
                 lr=group['lr'],
                 sigma_grad_divide=group['sigma_grad_divide'],
+                eps=group['eps'],
             )
 
 
-def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: int, lr: float, sigma_grad_divide: float):
+def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: int, lr: float, sigma_grad_divide: float, eps: float = 1e-4):
     if not params:
         raise ValueError('No gradients found in parameters!')
     if len(params) % 2 == 1:
@@ -85,13 +87,12 @@ def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: in
     for sigma, mu, grad_sigma, grad_mu in zip(params[::2], params[1::2], d_p_list[::2], d_p_list[1::2]):
         variance = sigma.data ** 2
         forgetting = N * (sigma_prior ** 2)
-        second_order_mu = (N - 1)/N + variance * \
+        second_order = (N - 1)/N + variance * \
             (grad_mu ** 2) + variance/forgetting
-        second_order_sigma = (N - 1)/N + sigma_grad_divide*variance * \
-            (grad_sigma ** 2) + variance/forgetting
         mu.data = mu.data - lr * variance * grad_mu / \
-            second_order_mu - variance * mu.data / \
-            (forgetting * second_order_mu)
-        sigma.data = sigma.data - 0.5 * variance * grad_sigma / \
-            second_order_sigma + 0.5 * sigma.data * \
-            (sigma_prior ** 2 - variance) / (forgetting * second_order_sigma)
+            second_order - variance * mu.data / \
+            (forgetting * second_order)
+        sigma.data = sigma.data - 0.5 * variance * grad_sigma / second_order + \
+            0.5 * sigma * (sigma_prior ** 2 - variance) / \
+            (forgetting * second_order)
+        sigma.data.clamp_(min=1e-8, max=None)

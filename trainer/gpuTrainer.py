@@ -276,7 +276,20 @@ class GPUTrainer:
         self.model.load_state_dict(torch.load(path))
 
     def evaluate_tasks(self, dataset, task, permutations, batch_size=128, train_dataset=None, batch_params=None):
-        if "Permuted" in task:
+        if "PermutedLabels" in task:
+            dataset = dataset[0]
+            predictions, labels = self.evaluate(
+                test_permuted_labels(
+                    test_dataset=dataset,
+                    permutations=permutations
+                ),
+                train_loader=test_permuted_labels(
+                    test_dataset=train_dataset,
+                    permutations=permutations
+                ) if train_dataset is not None else None,
+                batch_size=dataset.data.shape[0],
+                batch_params=batch_params)
+        elif "Permuted" in task:
             dataset = dataset[0]
             predictions, labels = self.evaluate(
                 test_permuted_dataset(

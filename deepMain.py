@@ -44,7 +44,7 @@ if __name__ == "__main__":
                 "n_samples_test": 5,
                 "n_samples_train": 5,
                 "tau": 1,
-                "std": 0.05,
+                "std": 0.032,
                 "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
@@ -75,9 +75,9 @@ if __name__ == "__main__":
             "optimizer": MESU,
             "optimizer_parameters": {
                 "lr": 1,
-                "sigma_prior": 0.05,
-                "N": 1_000_000,
-                "sigma_grad_divide": 10,
+                "sigma_prior":  0.032,
+                "N": 100_000,
+                "sigma_grad_divide": 1,
             },
             # "optimizer": SGD,
             # "optimizer_parameters": {
@@ -137,7 +137,10 @@ if __name__ == "__main__":
 
             ### CREATING PERMUTATIONS ###
             permutations = None
-            if "Permuted" in data["task"]:
+            if "PermutedLabels" in data["task"]:
+                permutations = [randperm(target_size)
+                                for _ in range(data["n_tasks"])]
+            elif "Permuted" in data["task"]:
                 permutations = [randperm(prod(tensor(shape)))
                                 for _ in range(data["n_tasks"])]
             if "CIL" in data["task"]:
