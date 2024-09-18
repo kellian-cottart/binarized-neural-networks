@@ -164,8 +164,8 @@ class CifarNetBayesian(Module):
         x = self.transform(x)
         x = x.repeat(repeat_samples, *([1] * (len(x.size())-1)))
         x = self.features(x, samples)
-        return self.classifier(x)
-
+        x = self.classifier(x)
+        return x
     # add number of parameters total
 
     def number_parameters(self):

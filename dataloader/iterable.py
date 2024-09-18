@@ -42,7 +42,8 @@ def permuted_labels(dataset, batch_size, task_id, permutations, iteration):
     batch_data, targets = dataset.__getbatch__(
         batch_size * iteration, batch_size)
     targets = targets.to(permutation.device)
-    targets = targets[permutation]
+    # the list of permutation give us the new labels for each class, we need to map the old labels to the new ones
+    targets = permutation[targets]
     return batch_data, targets
 
 
@@ -51,10 +52,10 @@ def batch_yielder(dataset, task, batch_size=128, continual=None, task_id=None, i
 
     if "PermutedLabels" in task:
         batch_data, targets = permuted_labels(
-            dataset, batch_size, task_id, permutations, iteration)
+            dataset=dataset, batch_size=batch_size, task_id=task_id, permutations=permutations, iteration=iteration)
     elif "Permuted" in task:
-        batch_data, targets = permuted_dataset(dataset, batch_size, continual,
-                                               task_id, iteration, max_iterations, permutations, epoch)
+        batch_data, targets = permuted_dataset(dataset=dataset, batch_size=batch_size, continual=continual,
+                                               task_id=task_id, iteration=iteration, max_iterations=max_iterations, permutations=permutations, epoch=epoch)
     else:
         batch_data, targets = dataset.__getbatch__(
             batch_size * iteration, batch_size)

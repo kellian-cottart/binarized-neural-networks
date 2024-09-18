@@ -31,7 +31,7 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 0,
-            "nn_type": models.CifarNetBayesian,
+            "nn_type": models.CifarNet,
             "nn_parameters": {
                 # NETWORK ###
                 "layers": [1024],
@@ -60,7 +60,7 @@ if __name__ == "__main__":
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 200,
+                'n_epochs': 50,
                 'batch_size': 128,
                 'test_batch_size': 128,
                 'feature_extraction': False,
@@ -72,19 +72,19 @@ if __name__ == "__main__":
             "output_function": "log_softmax",
             "criterion": functional.F.nll_loss,
             "reduction": "sum",
-            "optimizer": MESU,
-            "optimizer_parameters": {
-                "lr": 1,
-                "sigma_prior":  0.032,
-                "N": 100_000,
-                "sigma_grad_divide": 1,
-            },
-            # "optimizer": SGD,
+            # "optimizer": MESU,
             # "optimizer_parameters": {
-            #     "lr": 0.001,
+            #     "lr": 1,
+            #     "sigma_prior":  0.032,
+            #     "N": 100_000,
+            #     "sigma_grad_divide": 1,
             # },
-            "task": "CIFAR10",
-            "n_tasks": 1,
+            "optimizer": SGD,
+            "optimizer_parameters": {
+                "lr": 0.001,
+            },
+            "task": "PermutedLabelsCIFAR10",
+            "n_tasks": 5,
             "n_classes": 1,
         }
     ]
