@@ -251,15 +251,12 @@ class GPUTrainer:
         kwargs = {}
         if len(self.testing_accuracy) > 0:
             if "training_accuracy" in dir(self) and len(self.training_accuracy) > 0:
-                kwargs = {
-                    f"task {i+1}": f"Test: {test_acc:.2%} - Train: {train_acc:.2%}" for i, test_acc, train_acc in zip(range(len(self.testing_accuracy[-1])), self.testing_accuracy[-1], self.training_accuracy[-1])
-                }
+                for i, test_acc, train_acc in zip(range(len(self.testing_accuracy[-1])), self.testing_accuracy[-1], self.training_accuracy[-1]):
+                    kwargs[f"task {i+1}"] = f"Test: {test_acc:.2%} - Train: {train_acc:.2%}"
             else:
-                kwargs = {
-                    f"task {i+1}": f"Test: {accuracy:.2%}" for i, accuracy in enumerate(self.testing_accuracy[-1])
-                }
+                for i, test_acc in enumerate(self.testing_accuracy[-1]):
+                    kwargs[f"task {i+1}"] = f"{test_acc:.2%}"
             pbar.set_postfix(loss=self.loss.item())
-            # Do a pretty print of our results
             pbar.write("==================================")
             pbar.write("Accuracies: ")
             for key, value in kwargs.items():
@@ -284,7 +281,8 @@ class GPUTrainer:
                     permutations=permutations
                 ),
                 train_loader=test_permuted_labels(
-                    test_dataset=train_dataset,
+                    test_dataset=train_dataset[0] if isinstance(
+                        train_dataset, list) else train_dataset,
                     permutations=permutations
                 ) if train_dataset is not None else None,
                 batch_size=dataset.data.shape[0],
@@ -297,7 +295,8 @@ class GPUTrainer:
                     permutations=permutations
                 ),
                 train_loader=test_permuted_dataset(
-                    test_dataset=train_dataset,
+                    test_dataset=train_dataset[0] if isinstance(
+                        train_dataset, list) else train_dataset,
                     permutations=permutations
                 ) if train_dataset is not None else None,
                 batch_size=dataset.data.shape[0],
@@ -305,13 +304,15 @@ class GPUTrainer:
         else:
             predictions, labels = self.evaluate(
                 dataset,
-                train_loader=[
-                    train_dataset] if train_dataset is not None else None,
+                train_loader=train_dataset if isinstance(
+                    train_dataset, list) else [train_dataset],
                 batch_size=batch_size,
                 batch_params=batch_params)
         return predictions, labels
 
-    def epoch_step(self, batch_size, test_batch_size, task_train_dataset, test_dataset, task_id, permutations, epoch, pbar, epochs, continual=False, batch_params=None):
+    def epoch_step(self, batch_size, test_batch_size, train_dataset, test_dataset, task_id, permutations, epoch, pbar, epochs, continual=False, batch_params=None):
+        task_train_dataset = train_dataset[task_id] if isinstance(
+            train_dataset, list) else train_dataset
         num_batches = len(task_train_dataset) // batch_size
         task_train_dataset.shuffle()
         for n_batch in range(num_batches):
@@ -334,7 +335,7 @@ class GPUTrainer:
         # Depending on the task, we also need to use the framework on the test set and show training or not
         predictions, labels = self.evaluate_tasks(
             dataset=test_dataset,
-            train_dataset=task_train_dataset,
+            train_dataset=train_dataset,
             task=self.task,
             permutations=permutations,
             batch_size=test_batch_size,

@@ -9,6 +9,7 @@ import datetime
 from torch import device, cuda, functional, stack, save, prod, set_default_device, set_default_dtype, manual_seed, randperm
 from torch.optim import SGD, Adam
 import tqdm
+from numpy.random import seed as npseed
 
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
@@ -21,6 +22,7 @@ DATASETS_PATH = "datasets"
 
 if __name__ == "__main__":
     ### SEED ###
+    npseed(SEED)
     manual_seed(SEED)
     cuda.manual_seed(SEED)
     set_default_device(DEVICE)
@@ -31,7 +33,7 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 0,
-            "nn_type": models.CifarNet,
+            "nn_type": models.CifarNetBayesian,
             "nn_parameters": {
                 # NETWORK ###
                 "layers": [1024],
@@ -44,7 +46,7 @@ if __name__ == "__main__":
                 "n_samples_test": 5,
                 "n_samples_train": 5,
                 "tau": 1,
-                "std": 0.032,
+                "std": 0.05,
                 "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
@@ -60,7 +62,7 @@ if __name__ == "__main__":
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 50,
+                'n_epochs': 200,
                 'batch_size': 128,
                 'test_batch_size': 128,
                 'feature_extraction': False,
@@ -72,18 +74,18 @@ if __name__ == "__main__":
             "output_function": "log_softmax",
             "criterion": functional.F.nll_loss,
             "reduction": "sum",
-            # "optimizer": MESU,
-            # "optimizer_parameters": {
-            #     "lr": 1,
-            #     "sigma_prior":  0.032,
-            #     "N": 100_000,
-            #     "sigma_grad_divide": 1,
-            # },
-            "optimizer": SGD,
+            "optimizer": MESU,
             "optimizer_parameters": {
-                "lr": 0.001,
+                "lr": 1,
+                "sigma_prior":  0.05,
+                "N": 1_000_000,
+                "sigma_grad_divide": 1,
             },
-            "task": "PermutedLabelsCIFAR10",
+            # "optimizer": SGD,
+            # "optimizer_parameters": {
+            #     "lr": 0.001,
+            # },
+            "task": "DILCIFAR100",
             "n_tasks": 5,
             "n_classes": 1,
         }
@@ -165,13 +167,11 @@ if __name__ == "__main__":
             for i in range(data["n_tasks"]):
                 epochs = data["training_parameters"]["n_epochs"][i] if isinstance(
                     data["training_parameters"]["n_epochs"], list) else data["training_parameters"]["n_epochs"]
-                task_train_dataset = train_dataset[i] if isinstance(
-                    train_dataset, list) else train_dataset
                 pbar = tqdm.tqdm(range(epochs))
                 for epoch in pbar:
                     predictions, labels = net_trainer.epoch_step(batch_size=batch_size,
                                                                  test_batch_size=data["training_parameters"]["test_batch_size"],
-                                                                 task_train_dataset=task_train_dataset,
+                                                                 train_dataset=train_dataset,
                                                                  test_dataset=test_dataset,
                                                                  task_id=i,
                                                                  permutations=permutations,

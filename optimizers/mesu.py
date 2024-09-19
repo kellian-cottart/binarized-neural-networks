@@ -92,7 +92,7 @@ def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: in
         mu.data = mu.data - lr * variance * grad_mu / \
             second_order - variance * mu.data / \
             (forgetting * second_order)
-        sigma.data = sigma.data - 0.5 * variance * grad_sigma / second_order + \
+        sigma.data = sigma.data - 0.5 * variance * grad_sigma / (sigma_grad_divide*second_order) + \
             0.5 * sigma * (sigma_prior ** 2 - variance) / \
             (forgetting * second_order)
         sigma.data.clamp_(min=1e-8, max=None)

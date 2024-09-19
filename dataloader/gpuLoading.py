@@ -11,6 +11,7 @@ import hashlib
 from .structures import *
 from torch import tensor, load, save, cat, from_numpy, LongTensor, Tensor, float32
 from torch.nn import Sequential
+from collections import defaultdict
 
 PATH_MNIST_X_TRAIN = "datasets/MNIST/raw/train-images-idx3-ubyte"
 PATH_MNIST_Y_TRAIN = "datasets/MNIST/raw/train-labels-idx1-ubyte"
@@ -35,6 +36,7 @@ PATH_CIFAR10_TESTBATCH = f"{PATH_CIFAR10}/test_batch"
 PATH_CIFAR100 = "datasets/cifar-100-python"
 PATH_CIFAR100_DATABATCH = [f"{PATH_CIFAR100}/train"]
 PATH_CIFAR100_TESTBATCH = f"{PATH_CIFAR100}/test"
+PATH_CIFAR100_META = f"{PATH_CIFAR100}/meta"
 
 REPOSITORY_CORE50_NPZ_128 = "http://bias.csr.unibo.it/maltoni/download/core50/core50_imgs.npz"
 REPOSITORY_CORE50_PATHS = "https://vlomonaco.github.io/core50/data/paths.pkl"
@@ -69,6 +71,8 @@ class GPULoading:
             train, test = self.mnist(*args, **kwargs)
         elif "fashion" in task.lower():
             train, test = self.fashion_mnist(*args, **kwargs)
+        elif "dilcifar100" in task.lower():
+            train, test = self.domain_incremental_cifar100(*args, **kwargs)
         elif "cifar100" in task.lower():
             train, test = self.cifar100(*args, **kwargs)
         elif "cifar10" in task.lower():
@@ -310,7 +314,7 @@ class GPULoading:
     def cifar100(self, iterations=10, *args, **kwargs):
         """ Load a local dataset on GPU corresponding to CIFAR100 """
         if not os.path.exists("datasets/CIFAR100/raw"):
-            datasets.CIFAR10("datasets", download=True)
+            datasets.CIFAR100("datasets", download=True)
         if "feature_extraction" in kwargs and kwargs["feature_extraction"] == True:
             folder = "datasets/cifar100_resnet18"
             os.makedirs(folder, exist_ok=True)
@@ -353,6 +357,78 @@ class GPULoading:
             # Normalize and pad the data
             train_x, test_x = self.normalization(train_x, test_x)
         return self.to_dataset(train_x, train_y, test_x, test_y)
+
+    def domain_incremental_cifar100(
+        self, *args, **kwargs
+    ):
+        if not os.path.exists("datasets/CIFAR100/raw"):
+            datasets.CIFAR100("datasets", download=True)
+        path_databatch = PATH_CIFAR100_DATABATCH
+        path_testbatch = PATH_CIFAR100_TESTBATCH
+        with open(path_databatch[0], "rb") as f:
+            data = pickle.load(f, encoding="bytes")
+            training_data = data[b"data"]
+            fine_labels = data[b"fine_labels"]
+            coarse_labels = data[b"coarse_labels"]
+        with open(path_testbatch, "rb") as f:
+            data = pickle.load(f, encoding="bytes")
+            test_data = data[b"data"]
+            test_fine_labels = data[b"fine_labels"]
+        # I want to retrieve the class number for each fine label, and sort them by coarse label
+        fine_to_coarse = {}
+        for (fine, coarse) in zip(fine_labels, coarse_labels):
+            if fine not in fine_to_coarse:
+                fine_to_coarse[fine] = coarse
+        fine_to_coarse = dict(sorted(fine_to_coarse.items()))
+
+        # Organize fine labels by coarse labels (superclasses)
+        coarse_to_fine = defaultdict(list)
+        for fine, coarse in fine_to_coarse.items():
+            coarse_to_fine[coarse].append(fine)
+        coarse_to_fine = dict(sorted(coarse_to_fine.items()))
+
+        selected_classes = set()
+        datasets_class_mapping = []
+        for i in range(5):
+            dataset_fine_classes = []
+            for coarse, fine_list in coarse_to_fine.items():
+                available_fine_classes = [
+                    fine for fine in fine_list if fine not in selected_classes]
+                if available_fine_classes:
+                    chosen_fine = np.random.choice(available_fine_classes)
+                    dataset_fine_classes.append(chosen_fine)
+                    selected_classes.add(chosen_fine)
+            datasets_class_mapping.append(dataset_fine_classes)
+
+        train_datasets = []
+        test_datasets = []
+        for i, dataset_fine_classes in enumerate(datasets_class_mapping):
+            train_x = []
+            train_y = []
+            test_x = []
+            test_y = []
+            # training data
+            for j, fine in enumerate(fine_labels):
+                if fine in dataset_fine_classes:
+                    train_x.append(training_data[j])
+                    train_y.append(coarse_labels[j])
+
+            train_x = np.array(train_x).reshape(-1, 3, 32, 32)
+            train_y = np.array(train_y)
+            # testing data
+            for j, fine in enumerate(test_fine_labels):
+                if fine in dataset_fine_classes:
+                    test_x.append(test_data[j])
+                    test_y.append(coarse_labels[j])
+            test_x = np.array(test_x).reshape(-1, 3, 32, 32)
+            test_y = np.array(test_y)
+            # normalize and pad the data
+            train_x, test_x = self.normalization(train_x, test_x)
+            train_dataset, test_dataset = self.to_dataset(
+                train_x, train_y, test_x, test_y)
+            train_datasets.append(train_dataset)
+            test_datasets.append(test_dataset)
+        return train_datasets, test_datasets
 
     def core50(self, scenario="ni", run=0, download=True, *args, **kwargs):
         return CORe50(scenario=scenario, run=run, download=download,
