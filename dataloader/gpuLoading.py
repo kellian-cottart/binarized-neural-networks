@@ -374,6 +374,7 @@ class GPULoading:
             data = pickle.load(f, encoding="bytes")
             test_data = data[b"data"]
             test_fine_labels = data[b"fine_labels"]
+            test_coarse_labels = data[b"coarse_labels"]
         # I want to retrieve the class number for each fine label, and sort them by coarse label
         fine_to_coarse = {}
         for (fine, coarse) in zip(fine_labels, coarse_labels):
@@ -419,7 +420,7 @@ class GPULoading:
             for j, fine in enumerate(test_fine_labels):
                 if fine in dataset_fine_classes:
                     test_x.append(test_data[j])
-                    test_y.append(coarse_labels[j])
+                    test_y.append(test_coarse_labels[j])
             test_x = np.array(test_x).reshape(-1, 3, 32, 32)
             test_y = np.array(test_y)
             # normalize and pad the data

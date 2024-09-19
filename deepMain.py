@@ -14,7 +14,7 @@ from numpy.random import seed as npseed
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = device("cuda:0")
-GRAPHS = False
+GRAPHS = True
 MODULO = 10
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
@@ -33,10 +33,10 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 0,
-            "nn_type": models.CifarNetBayesian,
+            "nn_type": models.BayesianNN,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [1024],
+                "layers": [512],
                 # "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
@@ -46,7 +46,7 @@ if __name__ == "__main__":
                 "n_samples_test": 5,
                 "n_samples_train": 5,
                 "tau": 1,
-                "std": 0.05,
+                "std": 0.1,
                 "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
@@ -62,7 +62,7 @@ if __name__ == "__main__":
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 200,
+                'n_epochs': 20,
                 'batch_size': 128,
                 'test_batch_size': 128,
                 'feature_extraction': False,
@@ -77,16 +77,17 @@ if __name__ == "__main__":
             "optimizer": MESU,
             "optimizer_parameters": {
                 "lr": 1,
-                "sigma_prior":  0.05,
-                "N": 1_000_000,
-                "sigma_grad_divide": 1,
+                "sigma_prior":  0.1,
+                "N": 500_000,
+                "sigma_grad_divide": 10,
+                "mu_grad_divide": 10,
             },
             # "optimizer": SGD,
             # "optimizer_parameters": {
             #     "lr": 0.001,
             # },
-            "task": "DILCIFAR100",
-            "n_tasks": 5,
+            "task": "PermutedMNIST",
+            "n_tasks": 10,
             "n_classes": 1,
         }
     ]

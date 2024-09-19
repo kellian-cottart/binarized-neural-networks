@@ -97,7 +97,7 @@ class GPUTrainer:
         elif self.output_function == "softmax":
             return torch.nn.functional.softmax(forward, dim=1 if forward.dim() == 2 else 2)
         elif self.output_function == "log_softmax":
-            return torch.nn.functional.log_softmax(forward, dim=1 if forward.dim() == 2 else 2)
+            return torch.clamp(torch.nn.functional.log_softmax(forward, dim=1 if forward.dim() == 2 else 2), -1e1, -1e-4)
         else:
             return forward
 
