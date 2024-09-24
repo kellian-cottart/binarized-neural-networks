@@ -14,7 +14,7 @@ from numpy.random import seed as npseed
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = device("cuda:0")
-GRAPHS = True
+GRAPHS = False
 MODULO = 10
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
@@ -33,16 +33,16 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 0,
-            "nn_type": models.BayesianNN,
+            "nn_type": models.CifarNetBayesian,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [512],
+                "layers": [1024],
                 # "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
-                "bias": True,
+                "bias": False,
                 "n_samples_test": 5,
                 "n_samples_train": 5,
                 "tau": 1,
@@ -62,7 +62,7 @@ if __name__ == "__main__":
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 20,
+                'n_epochs': 200,
                 'batch_size': 128,
                 'test_batch_size': 128,
                 'feature_extraction': False,
@@ -77,17 +77,18 @@ if __name__ == "__main__":
             "optimizer": MESU,
             "optimizer_parameters": {
                 "lr": 1,
-                "sigma_prior":  0.1,
-                "N": 500_000,
-                "sigma_grad_divide": 10,
-                "mu_grad_divide": 10,
+                "sigma_prior": 0.1,
+                "N": 100000,
+                "sigma_grad_divide": 1,
+                "mu_grad_divide": 1,
+                "norm_term": False,
             },
             # "optimizer": SGD,
             # "optimizer_parameters": {
             #     "lr": 0.001,
             # },
-            "task": "PermutedMNIST",
-            "n_tasks": 10,
+            "task": "CIFAR100",
+            "n_tasks": 1,
             "n_classes": 1,
         }
     ]
@@ -199,7 +200,7 @@ if __name__ == "__main__":
                 x, "__name__") else str(x), indent=4)
             with open(os.path.join(sub_folder, "config.json"), "w") as f:
                 f.write(string)
-            save(net_trainer.testing_accuracy,
+            save(stack(net_trainer.testing_accuracy),
                  os.path.join(sub_folder, "accuracy.pt"))
             accuracies.append(stack(net_trainer.testing_accuracy))
             if "training_accuracy" in dir(net_trainer) and len(net_trainer.training_accuracy) > 0:

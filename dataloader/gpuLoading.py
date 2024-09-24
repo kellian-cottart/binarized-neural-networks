@@ -9,9 +9,10 @@ import sys
 from tqdm import tqdm
 import hashlib
 from .structures import *
-from torch import tensor, load, save, cat, from_numpy, LongTensor, Tensor, float32
+from torch import tensor, load, save, cat, from_numpy, LongTensor, Tensor, float32, no_grad
 from torch.nn import Sequential
 from collections import defaultdict
+from torch.cuda import empty_cache
 
 PATH_MNIST_X_TRAIN = "datasets/MNIST/raw/train-images-idx3-ubyte"
 PATH_MNIST_Y_TRAIN = "datasets/MNIST/raw/train-labels-idx1-ubyte"
@@ -363,18 +364,37 @@ class GPULoading:
     ):
         if not os.path.exists("datasets/CIFAR100/raw"):
             datasets.CIFAR100("datasets", download=True)
-        path_databatch = PATH_CIFAR100_DATABATCH
-        path_testbatch = PATH_CIFAR100_TESTBATCH
-        with open(path_databatch[0], "rb") as f:
+        train_datasets, test_datasets = self.cifar100_cil_dataset_generation()
+        if "feature_extraction" in kwargs and kwargs["feature_extraction"] == True:
+            efficient_net = models.efficientnet_b0(
+                weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
+            features = efficient_net.features
+            avgpool = efficient_net.avgpool
+            transform = models.EfficientNet_B0_Weights.IMAGENET1K_V1.transforms()
+            for i in range(len(train_datasets)):
+                train_dataset = train_datasets[i]
+                test_dataset = test_datasets[i]
+                train_datasets[i] = self.set_to_feature_set(
+                    train_dataset, features, transform, avgpool)
+                test_datasets[i] = self.set_to_feature_set(
+                    test_dataset, features, transform, avgpool)
+        return train_datasets, test_datasets
+
+    def cifar100_cil_dataset_generation(self):
+        with open(PATH_CIFAR100_DATABATCH[0], "rb") as f:
             data = pickle.load(f, encoding="bytes")
             training_data = data[b"data"]
             fine_labels = data[b"fine_labels"]
             coarse_labels = data[b"coarse_labels"]
-        with open(path_testbatch, "rb") as f:
+        with open(PATH_CIFAR100_TESTBATCH, "rb") as f:
             data = pickle.load(f, encoding="bytes")
             test_data = data[b"data"]
             test_fine_labels = data[b"fine_labels"]
             test_coarse_labels = data[b"coarse_labels"]
+        with open(PATH_CIFAR100_META, "rb") as f:
+            meta = pickle.load(f, encoding="bytes")
+            fine_label_names = meta[b"fine_label_names"]
+            coarse_label_names = meta[b"coarse_label_names"]
         # I want to retrieve the class number for each fine label, and sort them by coarse label
         fine_to_coarse = {}
         for (fine, coarse) in zip(fine_labels, coarse_labels):
@@ -400,20 +420,16 @@ class GPULoading:
                     dataset_fine_classes.append(chosen_fine)
                     selected_classes.add(chosen_fine)
             datasets_class_mapping.append(dataset_fine_classes)
-
         train_datasets = []
         test_datasets = []
         for i, dataset_fine_classes in enumerate(datasets_class_mapping):
-            train_x = []
-            train_y = []
-            test_x = []
-            test_y = []
+            train_x, train_y = [], []
+            test_x, test_y = [], []
             # training data
             for j, fine in enumerate(fine_labels):
                 if fine in dataset_fine_classes:
                     train_x.append(training_data[j])
                     train_y.append(coarse_labels[j])
-
             train_x = np.array(train_x).reshape(-1, 3, 32, 32)
             train_y = np.array(train_y)
             # testing data
@@ -427,19 +443,36 @@ class GPULoading:
             train_x, test_x = self.normalization(train_x, test_x)
             train_dataset, test_dataset = self.to_dataset(
                 train_x, train_y, test_x, test_y)
+            # extract the features from each dataset
             train_datasets.append(train_dataset)
             test_datasets.append(test_dataset)
         return train_datasets, test_datasets
+
+    def set_to_feature_set(self, dataset, features, transform, avgpool):
+        batch_size = 64
+        number_of_batches = len(dataset) // batch_size if len(
+            dataset) % batch_size == 0 else len(dataset) // batch_size + 1
+        storage = []
+        for i in range(number_of_batches):
+            with no_grad():
+                batch, targets = dataset[i * batch_size:(i + 1) * batch_size]
+                batch = transform(batch)
+                batch = features(batch)
+                batch = avgpool(batch)
+                storage.append((batch.to("cpu"), targets.to("cpu")))
+        # turn storage into a dataset
+        features, targets = zip(*storage)
+        features, targets = cat(features), cat(targets)
+        return GPUTensorDataset(features, targets, device=self.device)
 
     def core50(self, scenario="ni", run=0, download=True, *args, **kwargs):
         return CORe50(scenario=scenario, run=run, download=download,
                       device=self.device).get_dataset()
 
-### INSPIRED BY Vincenzo Lomonaco ###
-
 
 class CORe50:
     """ Load the CORe50 dataset
+    INSPIRED BY Vincenzo Lomonaco 
 
     Args:
         root (str, optional): Root folder for the dataset. Defaults to "datasets".
