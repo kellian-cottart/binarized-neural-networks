@@ -32,7 +32,7 @@ class MESU(Optimizer):
             - Individual priors for each synapse
     """
 
-    def __init__(self, params, lr=1, sigma_prior=0.1, N=1e5, sigma_grad_divide=1, mu_grad_divide=1, norm_term=False):
+    def __init__(self, params, lr=1, sigma_prior=0.1, mu_prior=0.1, N=1e5, sigma_grad_divide=1, mu_grad_divide=1, norm_term=False):
 
         if sigma_prior <= 0:
             raise ValueError(
@@ -42,6 +42,7 @@ class MESU(Optimizer):
 
         defaults = dict(
             sigma_prior=sigma_prior,
+            mu_prior=mu_prior,
             N=N,
             lr=lr,
             sigma_grad_divide=sigma_grad_divide,
@@ -72,6 +73,7 @@ class MESU(Optimizer):
                 params_with_grad,
                 d_p_list,
                 sigma_prior=group['sigma_prior'],
+                mu_prior=group['mu_prior'],
                 N=group['N'],
                 lr=group['lr'],
                 sigma_grad_divide=group['sigma_grad_divide'],
@@ -80,7 +82,7 @@ class MESU(Optimizer):
             )
 
 
-def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: int, lr: float, sigma_grad_divide: float, mu_grad_divide: float, norm_term: bool = False):
+def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, mu_prior: float, N: int, lr: float, sigma_grad_divide: float, mu_grad_divide: float, norm_term: bool = False):
     if not params:
         raise ValueError('No gradients found in parameters!')
     if len(params) % 2 == 1:
@@ -94,6 +96,6 @@ def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, N: in
         second_order = (N - 1)/N + variance * \
             (grad_mu ** 2) + variance/forgetting
         mu.data = mu.data + (- lr * variance * grad_mu /
-                             (mu_grad_divide*square_root) - variance * mu.data / forgetting) / second_order
+                             (mu_grad_divide*square_root) + variance * (mu_prior - mu.data) / forgetting) / second_order
         sigma.data = sigma.data + (- 0.5 * variance * grad_sigma / (sigma_grad_divide*square_root) +
                                    0.5 * sigma * (sigma_prior ** 2 - variance) / forgetting) / second_order

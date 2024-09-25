@@ -13,6 +13,7 @@ from torch import tensor, load, save, cat, from_numpy, LongTensor, Tensor, float
 from torch.nn import Sequential
 from collections import defaultdict
 from torch.cuda import empty_cache
+from models.cifarnet import *
 
 PATH_MNIST_X_TRAIN = "datasets/MNIST/raw/train-images-idx3-ubyte"
 PATH_MNIST_Y_TRAIN = "datasets/MNIST/raw/train-labels-idx1-ubyte"
@@ -368,16 +369,22 @@ class GPULoading:
         if "feature_extraction" in kwargs and kwargs["feature_extraction"] == True:
             efficient_net = models.efficientnet_b0(
                 weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
-            features = efficient_net.features
-            avgpool = efficient_net.avgpool
+            weights = torch.load(
+                "./saved_deep_models/20240924-124457-SGD-EfficientNet-BS64-1280-CIFAR10-relu/params-network-0/weights.pt")
+            weights["classifier.1.weight"] = efficient_net.classifier[1].weight
+            weights["classifier.1.bias"] = efficient_net.classifier[1].bias
+            weights.pop("classifier.layers.1.weight")
+            efficient_net.load_state_dict(weights)
+            features = efficient_net.features + \
+                Sequential(efficient_net.avgpool)
             transform = models.EfficientNet_B0_Weights.IMAGENET1K_V1.transforms()
             for i in range(len(train_datasets)):
                 train_dataset = train_datasets[i]
                 test_dataset = test_datasets[i]
                 train_datasets[i] = self.set_to_feature_set(
-                    train_dataset, features, transform, avgpool)
+                    train_dataset, features, transform)
                 test_datasets[i] = self.set_to_feature_set(
-                    test_dataset, features, transform, avgpool)
+                    test_dataset, features, transform)
         return train_datasets, test_datasets
 
     def cifar100_cil_dataset_generation(self):
@@ -395,6 +402,10 @@ class GPULoading:
             meta = pickle.load(f, encoding="bytes")
             fine_label_names = meta[b"fine_label_names"]
             coarse_label_names = meta[b"coarse_label_names"]
+        # Normalize and pad the data
+        training_data = training_data.reshape(-1, 3, 32, 32)
+        test_data = test_data.reshape(-1, 3, 32, 32)
+        training_data, test_data = self.normalization(training_data, test_data)
         # I want to retrieve the class number for each fine label, and sort them by coarse label
         fine_to_coarse = {}
         for (fine, coarse) in zip(fine_labels, coarse_labels):
@@ -430,17 +441,16 @@ class GPULoading:
                 if fine in dataset_fine_classes:
                     train_x.append(training_data[j])
                     train_y.append(coarse_labels[j])
-            train_x = np.array(train_x).reshape(-1, 3, 32, 32)
-            train_y = np.array(train_y)
+            train_x = from_numpy(np.array(train_x).reshape(-1, 3, 32, 32))
+            train_y = from_numpy(np.array(train_y))
             # testing data
             for j, fine in enumerate(test_fine_labels):
                 if fine in dataset_fine_classes:
                     test_x.append(test_data[j])
                     test_y.append(test_coarse_labels[j])
-            test_x = np.array(test_x).reshape(-1, 3, 32, 32)
-            test_y = np.array(test_y)
+            test_x = from_numpy(np.array(test_x).reshape(-1, 3, 32, 32))
+            test_y = from_numpy(np.array(test_y))
             # normalize and pad the data
-            train_x, test_x = self.normalization(train_x, test_x)
             train_dataset, test_dataset = self.to_dataset(
                 train_x, train_y, test_x, test_y)
             # extract the features from each dataset
@@ -448,7 +458,7 @@ class GPULoading:
             test_datasets.append(test_dataset)
         return train_datasets, test_datasets
 
-    def set_to_feature_set(self, dataset, features, transform, avgpool):
+    def set_to_feature_set(self, dataset, features, transform):
         batch_size = 64
         number_of_batches = len(dataset) // batch_size if len(
             dataset) % batch_size == 0 else len(dataset) // batch_size + 1
@@ -458,7 +468,6 @@ class GPULoading:
                 batch, targets = dataset[i * batch_size:(i + 1) * batch_size]
                 batch = transform(batch)
                 batch = features(batch)
-                batch = avgpool(batch)
                 storage.append((batch.to("cpu"), targets.to("cpu")))
         # turn storage into a dataset
         features, targets = zip(*storage)

@@ -14,7 +14,7 @@ from numpy.random import seed as npseed
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = device("cuda:0")
-GRAPHS = False
+GRAPHS = True
 MODULO = 10
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
@@ -33,10 +33,10 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 0,
-            "nn_type": models.CifarNetBayesian,
+            "nn_type": models.BayesianNN,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [1024],
+                "layers": [],
                 # "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
@@ -62,10 +62,10 @@ if __name__ == "__main__":
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 200,
+                'n_epochs': 100,
                 'batch_size': 128,
                 'test_batch_size': 128,
-                'feature_extraction': False,
+                'feature_extraction': True,
                 'data_aug_it': 1,
                 "continual": False,
                 "task_boundaries": False,
@@ -77,18 +77,25 @@ if __name__ == "__main__":
             "optimizer": MESU,
             "optimizer_parameters": {
                 "lr": 1,
-                "sigma_prior": 0.1,
-                "N": 100000,
+                "mu_prior": 0,
+                "sigma_prior": 0.01,
+                "N": 10_000_000,
                 "sigma_grad_divide": 1,
                 "mu_grad_divide": 1,
                 "norm_term": False,
             },
             # "optimizer": SGD,
             # "optimizer_parameters": {
-            #     "lr": 0.001,
+            #     "lr": 0.000005,
             # },
-            "task": "CIFAR100",
-            "n_tasks": 1,
+            # "optimizer": BHUparallel,
+            # "optimizer_parameters": {
+            #     "lr_max": 5,
+            #     "ratio_coeff": 0.25,
+            #     "metaplasticity": 1,
+            # },
+            "task": "DILCIFAR100",
+            "n_tasks": 5,
             "n_classes": 1,
         }
     ]

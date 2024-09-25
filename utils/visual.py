@@ -493,7 +493,7 @@ def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoc
     ax.yaxis.set_minor_locator(AutoMinorLocator(5))
     ax.tick_params(which='both', width=1)
     ax.tick_params(which='major', length=6)
-    ax.set_ylim(0, 20)
+    ax.set_ylim(0, 50)
     # save output
     fig.savefig(versionning(
         path, f"alea-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "alea-certainty"),  bbox_inches='tight')
@@ -526,7 +526,7 @@ def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoc
     ax.yaxis.set_minor_locator(AutoMinorLocator(5))
     ax.tick_params(which='both', width=1)
     ax.tick_params(which='major', length=6)
-    ax.set_ylim(0, 20)
+    ax.set_ylim(0, 50)
     # save output
     fig.savefig(versionning(
         path, f"epi-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "epi-certainty"),  bbox_inches='tight')
