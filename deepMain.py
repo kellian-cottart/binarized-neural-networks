@@ -36,7 +36,7 @@ if __name__ == "__main__":
             "nn_type": models.BayesianNN,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [],
+                "layers": [512],
                 # "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
@@ -67,6 +67,7 @@ if __name__ == "__main__":
                 'test_batch_size': 128,
                 'feature_extraction': True,
                 'data_aug_it': 1,
+                'full': True,
                 "continual": False,
                 "task_boundaries": False,
             },
@@ -76,26 +77,26 @@ if __name__ == "__main__":
             "reduction": "sum",
             "optimizer": MESU,
             "optimizer_parameters": {
-                "lr": 1,
+                "sigma_prior": 0.1,
                 "mu_prior": 0,
-                "sigma_prior": 0.01,
-                "N": 10_000_000,
-                "sigma_grad_divide": 1,
-                "mu_grad_divide": 1,
-                "norm_term": False,
+                "N_mu": 1_000_000,
+                "N_sigma": 1_000_000,
+                "lr_mu": 1,
+                "lr_sigma": 1,
+                "norm_term": True,
             },
-            # "optimizer": SGD,
-            # "optimizer_parameters": {
-            #     "lr": 0.000005,
-            # },
             # "optimizer": BHUparallel,
             # "optimizer_parameters": {
             #     "lr_max": 5,
-            #     "ratio_coeff": 0.25,
+            #     "ratio_coeff": 1,
             #     "metaplasticity": 1,
             # },
+            # "optimizer": SGD,
+            # "optimizer_parameters": {
+            #     "lr": 0.00001,
+            # },
             "task": "DILCIFAR100",
-            "n_tasks": 5,
+            "n_tasks": 1,
             "n_classes": 1,
         }
     ]
@@ -124,7 +125,7 @@ if __name__ == "__main__":
             cuda.manual_seed(SEED + iteration)
             ### LOADING DATASET ###
             train_dataset, test_dataset, shape, target_size = loader.task_selection(
-                task=data["task"], n_tasks=data["n_tasks"], batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"], run=iteration)
+                task=data["task"], n_tasks=data["n_tasks"], batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"], run=iteration, full=data["training_parameters"]["full"] if "full" in data["training_parameters"] else False)
             if iteration == 0:
                 data['nn_parameters']['layers'].append(target_size)
                 if not "VGG" in data["nn_type"].__name__ and not "EfficientNet" in data["nn_type"].__name__ and not "cifar" in data["nn_type"].__name__.lower():

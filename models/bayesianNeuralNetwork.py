@@ -1,7 +1,7 @@
 from .layers import *
 from .deepNeuralNetwork import *
 from .layers.activation import *
-from torch.nn import Dropout, LayerNorm, InstanceNorm1d, GroupNorm, Identity
+from torch.nn import Dropout, LayerNorm, InstanceNorm1d, GroupNorm, Identity, Flatten, BatchNorm1d
 
 
 class BayesianNN(DNN):
@@ -34,7 +34,7 @@ class BayesianNN(DNN):
             bias (bool): Whether to use bias
         """
         self.layers = MetaBayesSequential(*self.layers)
-        self.layers.append(nn.Flatten(start_dim=1).to(self.device))
+        self.layers.append(Flatten(start_dim=1).to(self.device))
         for i, _ in enumerate(layers[:-1]):
             print(layers[i], layers[i+1])
             self.layers.append(MetaBayesLinearParallel(

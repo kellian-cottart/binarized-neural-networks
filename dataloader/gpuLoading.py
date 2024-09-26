@@ -361,12 +361,13 @@ class GPULoading:
         return self.to_dataset(train_x, train_y, test_x, test_y)
 
     def domain_incremental_cifar100(
-        self, *args, **kwargs
+        self, feature_extraction=False, full=False, *args, **kwargs
     ):
         if not os.path.exists("datasets/CIFAR100/raw"):
             datasets.CIFAR100("datasets", download=True)
-        train_datasets, test_datasets = self.cifar100_cil_dataset_generation()
-        if "feature_extraction" in kwargs and kwargs["feature_extraction"] == True:
+        train_datasets, test_datasets = self.cifar100_cil_dataset_generation(
+            full=full)
+        if feature_extraction:
             efficient_net = models.efficientnet_b0(
                 weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
             weights = torch.load(
@@ -387,7 +388,7 @@ class GPULoading:
                     test_dataset, features, transform)
         return train_datasets, test_datasets
 
-    def cifar100_cil_dataset_generation(self):
+    def cifar100_cil_dataset_generation(self, full=False):
         with open(PATH_CIFAR100_DATABATCH[0], "rb") as f:
             data = pickle.load(f, encoding="bytes")
             training_data = data[b"data"]
@@ -456,6 +457,23 @@ class GPULoading:
             # extract the features from each dataset
             train_datasets.append(train_dataset)
             test_datasets.append(test_dataset)
+        if full:
+            # blend all the datasets
+            train_x, train_y = [], []
+            test_x, test_y = [], []
+            for i in range(len(train_datasets)):
+                train_x.append(train_datasets[i].data)
+                train_y.append(train_datasets[i].targets)
+                test_x.append(test_datasets[i].data)
+                test_y.append(test_datasets[i].targets)
+            train_x = cat(train_x)
+            train_y = cat(train_y)
+            test_x = cat(test_x)
+            test_y = cat(test_y)
+            train_datasets = [GPUTensorDataset(
+                train_x, train_y, device=self.device)]
+            test_datasets = [GPUTensorDataset(
+                test_x, test_y, device=self.device)]
         return train_datasets, test_datasets
 
     def set_to_feature_set(self, dataset, features, transform):
