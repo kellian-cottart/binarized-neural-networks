@@ -69,6 +69,9 @@ class GPULoading:
 
         if "emnist" in task.lower():
             train, test = self.emnist(*args, **kwargs)
+        elif "fullpmnist" in task.lower():
+            train, test = self.permuted_mnist_full(
+                *args, **kwargs)
         elif "mnist" in task.lower():
             train, test = self.mnist(*args, **kwargs)
         elif "fashion" in task.lower():
@@ -90,6 +93,174 @@ class GPULoading:
             shape = train[0].data[0].shape
             target_size = len(train[0].targets.unique())
         return train, test, shape, target_size
+
+    def fashion_mnist(self, *args, **kwargs):
+        if not os.path.exists(PATH_FASHION_MNIST_X_TRAIN):
+            datasets.FashionMNIST("datasets", download=True)
+        return self.mnist_like(PATH_FASHION_MNIST_X_TRAIN, PATH_FASHION_MNIST_Y_TRAIN,
+                               PATH_FASHION_MNIST_X_TEST, PATH_FASHION_MNIST_Y_TEST, *args, **kwargs)
+
+    def mnist(self, *args, **kwargs):
+        if not os.path.exists(PATH_MNIST_X_TRAIN):
+            datasets.MNIST("datasets", download=True)
+        return self.mnist_like(PATH_MNIST_X_TRAIN, PATH_MNIST_Y_TRAIN,
+                               PATH_MNIST_X_TEST, PATH_MNIST_Y_TEST, *args, **kwargs)
+
+    def emnist(self, *args, **kwargs):
+        if not os.path.exists(PATH_EMNIST_X_TRAIN):
+            datasets.EMNIST("datasets", download=True, split="balanced")
+        return self.mnist_like(PATH_EMNIST_X_TRAIN, PATH_EMNIST_Y_TRAIN,
+                               PATH_EMNIST_X_TEST, PATH_EMNIST_Y_TEST, *args, **kwargs)
+
+    def mnist_like(self, path_train_x, path_train_y, path_test_x, path_test_y, *args, **kwargs):
+        """ Load a local dataset on GPU corresponding either to MNIST or FashionMNIST
+
+        Args:
+            batch_size (int): Batch size
+            path_train_x (str): Path to the training data
+            path_train_y (str): Path to the training labels
+            path_test_x (str): Path to the testing data
+            path_test_y (str): Path to the testing labels
+        """
+        # load ubyte dataset
+        train_x = idx2numpy.convert_from_file(
+            path_train_x).astype(np.float32)
+        train_y = idx2numpy.convert_from_file(
+            path_train_y).astype(np.float32)
+        test_x = idx2numpy.convert_from_file(
+            path_test_x).astype(np.float32)
+        test_y = idx2numpy.convert_from_file(
+            path_test_y).astype(np.float32)
+        # Normalize and pad the data
+        train_x, test_x = self.normalization(train_x, test_x)
+        return self.to_dataset(train_x, train_y, test_x, test_y)
+
+    def permuted_mnist_full(self, *args, **kwargs):
+        if not os.path.exists(PATH_MNIST_X_TRAIN):
+            datasets.MNIST("datasets", download=True)
+        n_tasks = 10
+        train_dataset, test_dataset = self.mnist_like(PATH_MNIST_X_TRAIN, PATH_MNIST_Y_TRAIN,
+                                                      PATH_MNIST_X_TEST, PATH_MNIST_Y_TEST, *args, **kwargs)
+        permutations = [torch.randperm(784).cpu() for _ in range(n_tasks)]
+        # create a dataset with n tasks all blended together
+        train_x, train_y = train_dataset.data, train_dataset.targets
+        test_x, test_y = test_dataset.data, test_dataset.targets
+        test_data, test_labels, train_data, train_labels = [], [], [], []
+        for i in range(n_tasks):
+            perm = permutations[i]
+            train_x_new = train_x.view(-1,
+                                       784)[:, perm].view(-1, 1, 28, 28).clone()
+            test_x_new = test_x.view(-1,
+                                     784)[:, perm].view(-1, 1, 28, 28).clone()
+            train_data.append(train_x_new)
+            test_data.append(test_x_new)
+            train_labels.append(train_y)
+            test_labels.append(test_y)
+        train_data = cat(train_data)
+        test_data = cat(test_data)
+        train_labels = cat(train_labels)
+        test_labels = cat(test_labels)
+        return train_dataset, test_dataset
+
+    def cifar10(self, iterations=10, *args, **kwargs):
+        """ Load a local dataset on GPU corresponding to CIFAR10 """
+        # Deal with the training data
+        if not os.path.exists("datasets/CIFAR10/raw"):
+            datasets.CIFAR10("datasets", download=True)
+        path_databatch = PATH_CIFAR10_DATABATCH
+        path_testbatch = PATH_CIFAR10_TESTBATCH
+        if "feature_extraction" in kwargs and kwargs["feature_extraction"] == True:
+            folder = "datasets/cifar10_resnet18"
+            os.makedirs(folder, exist_ok=True)
+            if not os.listdir(folder) or not os.path.exists(f"{folder}/cifar10_{iterations}_features_train.pt"):
+                train_x = []
+                train_y = []
+                for path in path_databatch:
+                    with open(path, 'rb') as f:
+                        dict = pickle.load(f, encoding='bytes')
+                    train_x.append(dict[b'data'])
+                    train_y.append(dict[b'labels'])
+                train_x = np.concatenate(train_x)
+                train_y = np.concatenate(train_y)
+                # Deal with the test data
+                with open(path_testbatch, 'rb') as f:
+                    dict = pickle.load(f, encoding='bytes')
+                test_x = dict[b'data']
+                test_y = dict[b'labels']
+                # Deflatten the data
+                train_x = train_x.reshape(-1, 3, 32, 32)
+                test_x = test_x.reshape(-1, 3, 32, 32)
+                self.feature_extraction(
+                    folder, train_x, train_y, test_x, test_y, task="cifar10", iterations=iterations)
+            train_x = load(
+                f"{folder}/cifar10_{iterations}_features_train.pt")
+            train_y = load(
+                f"{folder}/cifar10_{iterations}_target_train.pt")
+            test_x = load(
+                f"{folder}/cifar10_{iterations}_features_test.pt")
+            test_y = load(
+                f"{folder}/cifar10_{iterations}_target_test.pt")
+        else:
+            train_x = []
+            train_y = []
+            for path in path_databatch:
+                with open(path, 'rb') as f:
+                    dict = pickle.load(f, encoding='bytes')
+                train_x.append(dict[b'data'])
+                train_y.append(dict[b'labels'])
+            train_x = np.concatenate(train_x)
+            train_y = np.concatenate(train_y)
+            # Deal with the test data
+            with open(path_testbatch, 'rb') as f:
+                dict = pickle.load(f, encoding='bytes')
+            test_x = dict[b'data']
+            test_y = dict[b'labels']
+            # Deflatten the data
+            train_x = train_x.reshape(-1, 3, 32, 32)
+            test_x = test_x.reshape(-1, 3, 32, 32)
+            # Normalize and pad the data
+            train_x, test_x = self.normalization(train_x, test_x)
+        return self.to_dataset(train_x, train_y, test_x, test_y)
+
+    def cifar100(self, iterations=10, *args, **kwargs):
+        """ Load a local dataset on GPU corresponding to CIFAR100 """
+        if not os.path.exists("datasets/CIFAR100/raw"):
+            datasets.CIFAR100("datasets", download=True)
+        if "feature_extraction" in kwargs and kwargs["feature_extraction"] == True:
+            folder = "datasets/cifar100_resnet18"
+            os.makedirs(folder, exist_ok=True)
+            if not os.listdir(folder) or not os.path.exists(f"{folder}/cifar100_{iterations}_features_train.pt"):
+                path_databatch = PATH_CIFAR100_DATABATCH
+                path_testbatch = PATH_CIFAR100_TESTBATCH
+                with open(path_databatch[0], "rb") as f:
+                    data = pickle.load(f, encoding="bytes")
+                    train_x = data[b"data"]
+                    train_y = data[b"fine_labels"]
+                with open(path_testbatch, "rb") as f:
+                    data = pickle.load(f, encoding="bytes")
+                    test_x = data[b"data"]
+                    test_y = data[b"fine_labels"]
+                train_x = train_x.reshape(-1, 3, 32, 32)
+                test_x = test_x.reshape(-1, 3, 32, 32)
+                self.feature_extraction(
+                    folder, train_x, train_y, test_x, test_y, task="cifar100", iterations=iterations)
+            train_x = load(
+                f"{folder}/cifar100_{iterations}_features_train.pt")
+            train_y = load(
+                f"{folder}/cifar100_{iterations}_target_train.pt")
+            test_x = load(
+                f"{folder}/cifar100_{iterations}_features_test.pt")
+            test_y = load(
+                f"{folder}/cifar100_{iterations}_target_test.pt")
+        else:
+            train_x, fine_labels, test_x, test_fine_labels, coarse_labels, test_coarse_labels = self.read_cifar100()
+            train_x = train_x.reshape(-1, 3, 32, 32)
+            test_x = test_x.reshape(-1, 3, 32, 32)
+            train_y = fine_labels
+            test_y = test_fine_labels
+            # Normalize and pad the data
+            train_x, test_x = self.normalization(train_x, test_x)
+        return self.to_dataset(train_x, train_y, test_x, test_y)
 
     def feature_extraction(self, folder, train_x, train_y, test_x, test_y, task="cifar100", iterations=10):
         """ Extract features using a resnet18 model
@@ -212,183 +383,7 @@ class GPULoading:
         train_x, test_x = transform(train_x), transform(test_x)
         return train_x, test_x
 
-    def fashion_mnist(self, *args, **kwargs):
-        if not os.path.exists(PATH_FASHION_MNIST_X_TRAIN):
-            datasets.FashionMNIST("datasets", download=True)
-        return self.mnist_like(PATH_FASHION_MNIST_X_TRAIN, PATH_FASHION_MNIST_Y_TRAIN,
-                               PATH_FASHION_MNIST_X_TEST, PATH_FASHION_MNIST_Y_TEST, *args, **kwargs)
-
-    def mnist(self, *args, **kwargs):
-        if not os.path.exists(PATH_MNIST_X_TRAIN):
-            datasets.MNIST("datasets", download=True)
-        return self.mnist_like(PATH_MNIST_X_TRAIN, PATH_MNIST_Y_TRAIN,
-                               PATH_MNIST_X_TEST, PATH_MNIST_Y_TEST, *args, **kwargs)
-
-    def emnist(self, *args, **kwargs):
-        if not os.path.exists(PATH_EMNIST_X_TRAIN):
-            datasets.EMNIST("datasets", download=True, split="balanced")
-        return self.mnist_like(PATH_EMNIST_X_TRAIN, PATH_EMNIST_Y_TRAIN,
-                               PATH_EMNIST_X_TEST, PATH_EMNIST_Y_TEST, *args, **kwargs)
-
-    def mnist_like(self, path_train_x, path_train_y, path_test_x, path_test_y, *args, **kwargs):
-        """ Load a local dataset on GPU corresponding either to MNIST or FashionMNIST
-
-        Args:
-            batch_size (int): Batch size
-            path_train_x (str): Path to the training data
-            path_train_y (str): Path to the training labels
-            path_test_x (str): Path to the testing data
-            path_test_y (str): Path to the testing labels
-        """
-        # load ubyte dataset
-        train_x = idx2numpy.convert_from_file(
-            path_train_x).astype(np.float32)
-        train_y = idx2numpy.convert_from_file(
-            path_train_y).astype(np.float32)
-        test_x = idx2numpy.convert_from_file(
-            path_test_x).astype(np.float32)
-        test_y = idx2numpy.convert_from_file(
-            path_test_y).astype(np.float32)
-        # Normalize and pad the data
-        train_x, test_x = self.normalization(train_x, test_x)
-        return self.to_dataset(train_x, train_y, test_x, test_y)
-
-    def cifar10(self, iterations=10, *args, **kwargs):
-        """ Load a local dataset on GPU corresponding to CIFAR10 """
-        # Deal with the training data
-        if not os.path.exists("datasets/CIFAR10/raw"):
-            datasets.CIFAR10("datasets", download=True)
-        path_databatch = PATH_CIFAR10_DATABATCH
-        path_testbatch = PATH_CIFAR10_TESTBATCH
-        if "feature_extraction" in kwargs and kwargs["feature_extraction"] == True:
-            folder = "datasets/cifar10_resnet18"
-            os.makedirs(folder, exist_ok=True)
-            if not os.listdir(folder) or not os.path.exists(f"{folder}/cifar10_{iterations}_features_train.pt"):
-                train_x = []
-                train_y = []
-                for path in path_databatch:
-                    with open(path, 'rb') as f:
-                        dict = pickle.load(f, encoding='bytes')
-                    train_x.append(dict[b'data'])
-                    train_y.append(dict[b'labels'])
-                train_x = np.concatenate(train_x)
-                train_y = np.concatenate(train_y)
-                # Deal with the test data
-                with open(path_testbatch, 'rb') as f:
-                    dict = pickle.load(f, encoding='bytes')
-                test_x = dict[b'data']
-                test_y = dict[b'labels']
-                # Deflatten the data
-                train_x = train_x.reshape(-1, 3, 32, 32)
-                test_x = test_x.reshape(-1, 3, 32, 32)
-                self.feature_extraction(
-                    folder, train_x, train_y, test_x, test_y, task="cifar10", iterations=iterations)
-            train_x = load(
-                f"{folder}/cifar10_{iterations}_features_train.pt")
-            train_y = load(
-                f"{folder}/cifar10_{iterations}_target_train.pt")
-            test_x = load(
-                f"{folder}/cifar10_{iterations}_features_test.pt")
-            test_y = load(
-                f"{folder}/cifar10_{iterations}_target_test.pt")
-        else:
-            train_x = []
-            train_y = []
-            for path in path_databatch:
-                with open(path, 'rb') as f:
-                    dict = pickle.load(f, encoding='bytes')
-                train_x.append(dict[b'data'])
-                train_y.append(dict[b'labels'])
-            train_x = np.concatenate(train_x)
-            train_y = np.concatenate(train_y)
-            # Deal with the test data
-            with open(path_testbatch, 'rb') as f:
-                dict = pickle.load(f, encoding='bytes')
-            test_x = dict[b'data']
-            test_y = dict[b'labels']
-            # Deflatten the data
-            train_x = train_x.reshape(-1, 3, 32, 32)
-            test_x = test_x.reshape(-1, 3, 32, 32)
-            # Normalize and pad the data
-            train_x, test_x = self.normalization(train_x, test_x)
-        return self.to_dataset(train_x, train_y, test_x, test_y)
-
-    def cifar100(self, iterations=10, *args, **kwargs):
-        """ Load a local dataset on GPU corresponding to CIFAR100 """
-        if not os.path.exists("datasets/CIFAR100/raw"):
-            datasets.CIFAR100("datasets", download=True)
-        if "feature_extraction" in kwargs and kwargs["feature_extraction"] == True:
-            folder = "datasets/cifar100_resnet18"
-            os.makedirs(folder, exist_ok=True)
-            if not os.listdir(folder) or not os.path.exists(f"{folder}/cifar100_{iterations}_features_train.pt"):
-                path_databatch = PATH_CIFAR100_DATABATCH
-                path_testbatch = PATH_CIFAR100_TESTBATCH
-                with open(path_databatch[0], "rb") as f:
-                    data = pickle.load(f, encoding="bytes")
-                    train_x = data[b"data"]
-                    train_y = data[b"fine_labels"]
-                with open(path_testbatch, "rb") as f:
-                    data = pickle.load(f, encoding="bytes")
-                    test_x = data[b"data"]
-                    test_y = data[b"fine_labels"]
-                train_x = train_x.reshape(-1, 3, 32, 32)
-                test_x = test_x.reshape(-1, 3, 32, 32)
-                self.feature_extraction(
-                    folder, train_x, train_y, test_x, test_y, task="cifar100", iterations=iterations)
-            train_x = load(
-                f"{folder}/cifar100_{iterations}_features_train.pt")
-            train_y = load(
-                f"{folder}/cifar100_{iterations}_target_train.pt")
-            test_x = load(
-                f"{folder}/cifar100_{iterations}_features_test.pt")
-            test_y = load(
-                f"{folder}/cifar100_{iterations}_target_test.pt")
-        else:
-            path_databatch = PATH_CIFAR100_DATABATCH
-            path_testbatch = PATH_CIFAR100_TESTBATCH
-            with open(path_databatch[0], "rb") as f:
-                data = pickle.load(f, encoding="bytes")
-                train_x = data[b"data"]
-                train_y = data[b"fine_labels"]
-            with open(path_testbatch, "rb") as f:
-                data = pickle.load(f, encoding="bytes")
-                test_x = data[b"data"]
-                test_y = data[b"fine_labels"]
-            train_x = train_x.reshape(-1, 3, 32, 32)
-            test_x = test_x.reshape(-1, 3, 32, 32)
-            # Normalize and pad the data
-            train_x, test_x = self.normalization(train_x, test_x)
-        return self.to_dataset(train_x, train_y, test_x, test_y)
-
-    def domain_incremental_cifar100(
-        self, feature_extraction=False, full=False, *args, **kwargs
-    ):
-        if not os.path.exists("datasets/CIFAR100/raw"):
-            datasets.CIFAR100("datasets", download=True)
-        train_datasets, test_datasets = self.cifar100_cil_dataset_generation(
-            full=full)
-        if feature_extraction:
-            efficient_net = models.efficientnet_b0(
-                weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
-            weights = torch.load(
-                "./saved_deep_models/20240924-124457-SGD-EfficientNet-BS64-1280-CIFAR10-relu/params-network-0/weights.pt")
-            weights["classifier.1.weight"] = efficient_net.classifier[1].weight
-            weights["classifier.1.bias"] = efficient_net.classifier[1].bias
-            weights.pop("classifier.layers.1.weight")
-            efficient_net.load_state_dict(weights)
-            features = efficient_net.features + \
-                Sequential(efficient_net.avgpool)
-            transform = models.EfficientNet_B0_Weights.IMAGENET1K_V1.transforms()
-            for i in range(len(train_datasets)):
-                train_dataset = train_datasets[i]
-                test_dataset = test_datasets[i]
-                train_datasets[i] = self.set_to_feature_set(
-                    train_dataset, features, transform)
-                test_datasets[i] = self.set_to_feature_set(
-                    test_dataset, features, transform)
-        return train_datasets, test_datasets
-
-    def cifar100_cil_dataset_generation(self, full=False):
+    def read_cifar100(self):
         with open(PATH_CIFAR100_DATABATCH[0], "rb") as f:
             data = pickle.load(f, encoding="bytes")
             training_data = data[b"data"]
@@ -399,11 +394,32 @@ class GPULoading:
             test_data = data[b"data"]
             test_fine_labels = data[b"fine_labels"]
             test_coarse_labels = data[b"coarse_labels"]
-        with open(PATH_CIFAR100_META, "rb") as f:
-            meta = pickle.load(f, encoding="bytes")
-            fine_label_names = meta[b"fine_label_names"]
-            coarse_label_names = meta[b"coarse_label_names"]
+        return training_data, fine_labels, test_data, test_fine_labels, coarse_labels, test_coarse_labels
+
+    def domain_incremental_cifar100(
+        self, feature_extraction=False, full=False, *args, **kwargs
+    ):
+        if not os.path.exists("datasets/CIFAR100/raw"):
+            datasets.CIFAR100("datasets", download=True)
+        train_datasets, test_datasets = self.cifar100_cil_dataset_generation(
+            full=full)
+        if feature_extraction:
+            features = models.resnet18(
+                weights=models.ResNet18_Weights.DEFAULT
+            ).features
+            transform = ResNet18_Weights.IMAGENET1K_V1.transforms()
+            for i in range(len(train_datasets)):
+                train_dataset = train_datasets[i]
+                test_dataset = test_datasets[i]
+                train_datasets[i] = self.set_to_feature_set(
+                    train_dataset, features, transform)
+                test_datasets[i] = self.set_to_feature_set(
+                    test_dataset, features, transform)
+        return train_datasets, test_datasets
+
+    def cifar100_cil_dataset_generation(self, full=False):
         # Normalize and pad the data
+        training_data, fine_labels, test_data, test_fine_labels, coarse_labels, test_coarse_labels = self.read_cifar100()
         training_data = training_data.reshape(-1, 3, 32, 32)
         test_data = test_data.reshape(-1, 3, 32, 32)
         training_data, test_data = self.normalization(training_data, test_data)
@@ -413,13 +429,11 @@ class GPULoading:
             if fine not in fine_to_coarse:
                 fine_to_coarse[fine] = coarse
         fine_to_coarse = dict(sorted(fine_to_coarse.items()))
-
         # Organize fine labels by coarse labels (superclasses)
         coarse_to_fine = defaultdict(list)
         for fine, coarse in fine_to_coarse.items():
             coarse_to_fine[coarse].append(fine)
         coarse_to_fine = dict(sorted(coarse_to_fine.items()))
-
         selected_classes = set()
         datasets_class_mapping = []
         for i in range(5):
@@ -499,7 +513,7 @@ class GPULoading:
 
 class CORe50:
     """ Load the CORe50 dataset
-    INSPIRED BY Vincenzo Lomonaco 
+    INSPIRED BY Vincenzo Lomonaco
 
     Args:
         root (str, optional): Root folder for the dataset. Defaults to "datasets".

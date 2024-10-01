@@ -36,7 +36,7 @@ if __name__ == "__main__":
             "nn_type": models.BayesianNN,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [512],
+                "layers": [128],
                 # "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
@@ -62,12 +62,12 @@ if __name__ == "__main__":
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 100,
+                'n_epochs': 20,
                 'batch_size': 128,
                 'test_batch_size': 128,
                 'feature_extraction': True,
                 'data_aug_it': 1,
-                'full': True,
+                'full': False,
                 "continual": False,
                 "task_boundaries": False,
             },
@@ -83,7 +83,7 @@ if __name__ == "__main__":
                 "N_sigma": 1_000_000,
                 "lr_mu": 1,
                 "lr_sigma": 1,
-                "norm_term": True,
+                "norm_term": False,
             },
             # "optimizer": BHUparallel,
             # "optimizer_parameters": {
@@ -93,10 +93,25 @@ if __name__ == "__main__":
             # },
             # "optimizer": SGD,
             # "optimizer_parameters": {
-            #     "lr": 0.00001,
+            #     "lr": 0.001,
             # },
-            "task": "DILCIFAR100",
-            "n_tasks": 1,
+            # "optimizer": MESUDET,
+            # "optimizer_parameters": {
+            #     "mu_prior": 0,
+            #     "sigma_prior": 0.1,
+            #     "N_mu": 1_000_000,
+            #     "N_sigma": 1_000_000,
+            #     "normalise_grad_sigma": False,
+            #     "normalise_grad_mu": False,
+            #     "c_sigma": 1,
+            #     "c_mu": 1,
+            #     "second_order": True,
+            #     "clamp_sigma": 0,
+            #     "clamp_mu": 0,
+            #     "enforce_learning_sigma": False,
+            # }
+            "task": "PermutedMNIST",
+            "n_tasks": 10,
             "n_classes": 1,
         }
     ]
@@ -146,7 +161,6 @@ if __name__ == "__main__":
                 batch_params = []
                 for i in range(data["n_tasks"]):
                     batch_params.append(net_trainer.model.save_bn_states())
-
             ### CREATING PERMUTATIONS ###
             permutations = None
             if "PermutedLabels" in data["task"]:

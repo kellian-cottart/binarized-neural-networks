@@ -342,8 +342,9 @@ class GPUTrainer:
             batch_size=test_batch_size,
             batch_params=batch_params if batch_params is not None else None
         )
-        self.pbar_update(
-            pbar, epoch, n_epochs=epochs, n_tasks=self.n_tasks, task_id=task_id)
+        if pbar is not None:
+            self.pbar_update(
+                pbar, epoch, n_epochs=epochs, n_tasks=self.n_tasks, task_id=task_id)
         if batch_params is not None:
             self.model.load_bn_states(batch_params[task_id])
         ### UPDATING EWC ###

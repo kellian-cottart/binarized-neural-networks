@@ -43,11 +43,15 @@ class MetaBayesLinearParallel(Module):
         else:
             # like kaiming uniform initialisation
             init.uniform_(self.weight.mu, -self.bound, self.bound)
+            # init.uniform_(self.weight.mu2, -self.bound, self.bound)
         init.constant_(self.weight.sigma, self.sigma_init)
+        # init.constant_(self.weight.sigma2, self.sigma_init)
         if self.bias is not None:
             # bias mean value always intialize to zero
             init.constant_(self.bias.mu, 0)
+            # init.constant_(self.bias.mu2, 0)
             init.constant_(self.bias.sigma, self.sigma_init)
+            # init.constant_(self.bias.sigma2, self.sigma_init)
 
     def forward(self, x: Tensor, samples: int) -> Tensor:
         """Forward pass using sampled weights and biases."""

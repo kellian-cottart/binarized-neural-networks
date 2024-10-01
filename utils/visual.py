@@ -38,7 +38,7 @@ def graphs(main_folder, net_trainer, task, n_tasks, epoch, predictions=None, lab
             lambda_=params if not isinstance(
                 net_trainer.optimizer, BayesBiNN) else net_trainer.optimizer.state['lambda'],
             path=os.path.join(main_folder, "lambda"),
-            threshold=10,
+            threshold=None,
             task=task+1,
             epoch=epoch+1,
         )
@@ -371,7 +371,6 @@ def visualize_lambda(parameters, lambda_, path, threshold=10, task=None, epoch=N
         task (int): Task number
         epoch (int): Epoch number
     """
-
     params = [torch.zeros_like(param)
               for param in parameters if param.requires_grad]
     if isinstance(lambda_, torch.Tensor):
@@ -385,8 +384,8 @@ def visualize_lambda(parameters, lambda_, path, threshold=10, task=None, epoch=N
         current_ax = ax[i] if len(params) > 1 else ax
         title = r"$\lambda$" + \
             f"[{'x'.join([str(s) for s in lbda.shape][::-1])}]"
-
         bins = 100
+        threshold = torch.max(torch.abs(lbda)).item()
         hist = torch.histc(lbda, bins=bins, min=-threshold,
                            max=threshold).detach().cpu()
         # Save the histogram to the computer
@@ -488,7 +487,7 @@ def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoc
            unseen_hist * 100 / len(aleatoric_unseen), width=maximum/(2*bins), alpha=0.5, label="Unseen predictions", color='red')
     ax.set_xlabel('Aleatoric Uncertainty [-]')
     ax.set_ylabel('Histogram [%]')
-    ax.legend()
+    ax.legend(frameon=False)
     ax.xaxis.set_minor_locator(AutoMinorLocator(5))
     ax.yaxis.set_minor_locator(AutoMinorLocator(5))
     ax.tick_params(which='both', width=1)
@@ -521,7 +520,7 @@ def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoc
            unseen_hist * 100 / len(epistemic_unseen), width=maximum/bins, alpha=0.5, label="Unseen predictions", color='red')
     ax.set_xlabel('Epistemic Uncertainty [-]')
     ax.set_ylabel('Histogram [%]')
-    ax.legend()
+    ax.legend(frameon=False)
     ax.xaxis.set_minor_locator(AutoMinorLocator(5))
     ax.yaxis.set_minor_locator(AutoMinorLocator(5))
     ax.tick_params(which='both', width=1)
