@@ -86,6 +86,8 @@ def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, mu_pr
         raise ValueError(
             'Parameters must include both Sigma and Mu in each group.')
     for sigma, mu, grad_sigma, grad_mu in zip(params[::2], params[1::2], d_p_list[::2], d_p_list[1::2]):
+        grad_mu.data = grad_mu.data * lr_mu
+        grad_sigma.data = grad_sigma.data * lr_sigma
         variance = sigma.data ** 2
         square_root = 1 / ((grad_sigma.abs()/sigma).mean()) if norm_term else 1
         second_order_mu = 1 + variance * \
@@ -97,8 +99,8 @@ def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, mu_pr
             (mu_prior - mu.data) / N_mu * (sigma_prior ** 2)
         prior_attraction_sigma = 0.5 * sigma * \
             (sigma_prior ** 2 - variance) / (N_sigma * (sigma_prior ** 2))
-        mu.data = mu.data + (- lr_mu * variance * grad_mu +
+        mu.data = mu.data + (-variance * grad_mu +
                              prior_attraction_mu) / second_order_mu
-        sigma.data = sigma.data + (- 0.5 * lr_sigma * variance * grad_sigma *
+        sigma.data = sigma.data + (- 0.5 * variance * grad_sigma *
                                    square_root + prior_attraction_sigma) / second_order_sigma
         sigma.data.clamp_(min=1e-10, max=0.9)
