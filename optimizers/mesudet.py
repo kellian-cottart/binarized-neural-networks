@@ -84,13 +84,11 @@ def mesu(model: Module, *, mu_prior: float, sigma_prior: float, N_mu: int, N_sig
                 grad_sigma = c_sigma*grad_sigma
                 grad_mu = c_mu*grad_mu
                 denominator_sigma = 1 + second_order * \
-                    (variance * grad_sigma ** 2 -
-                     (1/(N_mu*variance) - 1/(N_mu*(sigma_prior**2))))
+                    (variance * grad_sigma ** 2)
                 sigma.data.add_(-0.5*(variance * grad_sigma + sigma.data * (
                     variance-sigma_prior ** 2) / (N_sigma * sigma_prior ** 2)) / denominator_sigma)
                 denominator_mu = 1 + second_order * \
-                    (variance * grad_mu ** 2 -
-                     (1/(N_mu*variance) - 1/(N_mu*(sigma_prior**2))))
+                    (variance * grad_mu ** 2)
 
                 mu.data.add_(-(variance * grad_mu + variance * (mu.data -
                              mu_prior) / (N_mu * sigma_prior ** 2)) / denominator_mu)
@@ -101,18 +99,17 @@ def mesu(model: Module, *, mu_prior: float, sigma_prior: float, N_mu: int, N_sig
                     mu.data = torch.clamp(mu.data, clamp_mu[0], clamp_mu[1])
             if grad_sigma == None and grad_mu != None:
                 denominator_mu = 1 + second_order * \
-                    (variance * grad_mu ** 2 -
-                     (1/(N_mu*variance) - 1/(N_mu*(sigma_prior**2))))
+                    (variance * grad_mu ** 2)
                 mu.data.add_(-(variance * grad_mu + variance * (mu.data -
-                             mu_prior) / (N_mu * sigma_prior ** 2)) / denominator_mu)
+                                                                mu_prior) / (N_mu * sigma_prior ** 2)) / denominator_mu)
                 if clamp_mu[0] != 0:
-                    mu.data = torch.clamp(mu.data, clamp_mu[0], clamp_mu[1])
+                    mu.data = torch.clamp(
+                        mu.data, clamp_mu[0], clamp_mu[1])
             if grad_sigma == None and enforce_learning_sigma == True and grad_mu != None:
                 grad_sigma = sigma * (grad_mu**2) / (grad_mu**2).mean()
                 grad_sigma = c_sigma*grad_sigma
                 denominator_sigma = 1 + second_order * \
-                    (variance * grad_sigma ** 2 -
-                     (1/(N_mu*variance) - 1/(N_mu*(sigma_prior**2))))
+                    (variance * grad_sigma ** 2)
                 sigma.data.add_(-0.5*(variance * grad_sigma + sigma.data * (
                     variance-sigma_prior ** 2) / (N_sigma * sigma_prior ** 2)) / denominator_sigma)
                 if clamp_sigma[0] != 0:
