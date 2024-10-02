@@ -14,7 +14,7 @@ from numpy.random import seed as npseed
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = device("cuda:0")
-GRAPHS = False
+GRAPHS = True
 MODULO = 10
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
@@ -46,7 +46,7 @@ if __name__ == "__main__":
                 "n_samples_test": 5,
                 "n_samples_train": 5,
                 "tau": 1,
-                "std": 0.01,
+                "std": 0.1,
                 "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
@@ -58,7 +58,7 @@ if __name__ == "__main__":
                 "running_stats": False,
                 "affine": False,
                 "frozen": False,
-                "sigma_multiplier": 1,
+                "sigma_multiplier": 0.1,
                 "version": 0,
             },
             "training_parameters": {

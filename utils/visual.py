@@ -21,35 +21,33 @@ def graphs(main_folder, net_trainer, task, n_tasks, epoch, predictions=None, lab
             epoch=epoch,
             log=True,
         )
-        params = [p for p in net_trainer.optimizer.param_groups[0]
-                  ['params'] if p.requires_grad and p.grad is not None]
-        grad = [p.grad for p in net_trainer.optimizer.param_groups[0]
-                ['params'] if p.requires_grad and p.grad is not None]
-        if grad != []:
-            visualize_grad(
-                parameters=params,
-                grad=grad,
-                path=os.path.join(main_folder, "grad"),
-                task=task+1,
-                epoch=epoch+1,
-            )
-        visualize_lambda(
-            parameters=params,
-            lambda_=params if not isinstance(
-                net_trainer.optimizer, BayesBiNN) else net_trainer.optimizer.state['lambda'],
-            path=os.path.join(main_folder, "lambda"),
-            threshold=None,
-            task=task+1,
-            epoch=epoch+1,
-        )
-        if net_trainer.optimizer.state['lr'] != {}:
-            visualize_lr(
-                parameters=params,
-                lr=net_trainer.optimizer.state['lr'],
-                path=os.path.join(main_folder, "lr"),
-                task=task+1,
-                epoch=epoch+1,
-            )
+        # params = list(net_trainer.model.parameters())
+        # grad = [param.grad for param in params if param.grad is not None]
+        # if grad != []:
+        #     visualize_grad(
+        #         parameters=params,
+        #         grad=grad,
+        #         path=os.path.join(main_folder, "grad"),
+        #         task=task+1,
+        #         epoch=epoch+1,
+        #     )
+        # visualize_lambda(
+        #     parameters=params,
+        #     lambda_=params if not isinstance(
+        #         net_trainer.optimizer, BayesBiNN) else net_trainer.optimizer.state['lambda'],
+        #     path=os.path.join(main_folder, "lambda"),
+        #     threshold=None,
+        #     task=task+1,
+        #     epoch=epoch+1,
+        # )
+        # if hasattr(net_trainer.optimizer, 'state') and net_trainer.optimizer.state['lr'] != {}:
+        #     visualize_lr(
+        #         parameters=params,
+        #         lr=net_trainer.optimizer.state['lr'],
+        #         path=os.path.join(main_folder, "lr"),
+        #         task=task+1,
+        #         epoch=epoch+1,
+        #     )
 
 
 def versionning(folder, title, format=".pdf"):
