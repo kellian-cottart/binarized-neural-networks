@@ -30,13 +30,14 @@ class MESUDET(object):
     """
 
     def __init__(self, model, **args_dict):
-
         super().__init__()
         self.model = model
         self.mu_prior = args_dict['mu_prior']
         self.sigma_prior = args_dict['sigma_prior']
         self.N_mu = args_dict['N_mu']
         self.N_sigma = args_dict['N_sigma']
+        self.normalise_grad_sigma = args_dict['normalise_grad_sigma']
+        self.normalise_grad_mu = args_dict['normalise_grad_mu']
         self.c_sigma = args_dict['c_sigma']
         self.c_mu = args_dict['c_mu']
         self.second_order = args_dict['second_order']
@@ -49,11 +50,14 @@ class MESUDET(object):
 
     def step(self,):
         """Performs a single optimization step."""
+
         mesu(model=self.model,
              mu_prior=self.mu_prior,
              sigma_prior=self.sigma_prior,
              N_mu=self.N_mu,
              N_sigma=self.N_sigma,
+             normalise_grad_sigma=self.normalise_grad_sigma,
+             normalise_grad_mu=self.normalise_grad_mu,
              c_sigma=self.c_sigma,
              c_mu=self.c_mu,
              second_order=self.second_order,
@@ -62,34 +66,42 @@ class MESUDET(object):
              enforce_learning_sigma=self.enforce_learning_sigma
              )
 
-    def zero_grad(self):
-        """Sets the gradients of all model parameters to zero."""
+    def zero_grad(self,):
+        """Zero the gradients of all optimized parameters."""
         self.model.zero_grad()
 
 
-def mesu(model: Module, *, mu_prior: float, sigma_prior: float, N_mu: int, N_sigma: int, c_sigma: float, c_mu: float, second_order: bool, clamp_sigma: list, clamp_mu: list, enforce_learning_sigma: int):
+def mesu(model: Module, *, mu_prior: float, sigma_prior: float, N_mu: int, N_sigma: int, normalise_grad_sigma: int, normalise_grad_mu: int, c_sigma: float, c_mu: float, second_order: bool, clamp_sigma: list, clamp_mu: list, enforce_learning_sigma: int):
 
     previous_param = None
     for i, (name, param) in enumerate(model.named_parameters(recurse=True)):
+
         if previous_param is None:
             sigma = param
             variance = param.data**2
             grad_sigma = param.grad
             previous_param = 'sigma'
+
         else:
             mu = param
             grad_mu = param.grad
             previous_param = None
             if grad_sigma != None and grad_mu != None:
-                grad_sigma = c_sigma*grad_sigma
-                grad_mu = c_mu*grad_mu
+                square_root_sigma = 1e-12 + (normalise_grad_sigma == 0)*1 + (normalise_grad_sigma == 1)*(grad_sigma**2).mean()**0.5\
+                    + (normalise_grad_sigma == 2)*(grad_mu**2).mean()**0.5 + (normalise_grad_sigma == 3)*((grad_sigma**2).mean()**0.5+(grad_mu**2).mean()**0.5)\
+                    + (normalise_grad_sigma == 4)*(torch.clamp(grad_sigma, 0, 1e12)/sigma).mean() + \
+                    (normalise_grad_sigma == 5) * \
+                    (((torch.clamp(grad_sigma, 0, 1e12)/sigma)**2).mean()**0.5)
+                square_root_mu = 1e-12 + (normalise_grad_mu == 0)*1 + (normalise_grad_mu == 1)*(grad_sigma**2).mean()**0.5 + (
+                    normalise_grad_mu == 2)*(grad_mu**2).mean()**0.5 + (normalise_grad_mu == 3)*((grad_sigma**2).mean()**0.5+(grad_mu**2).mean()**0.5)
+                grad_sigma = c_sigma*grad_sigma/square_root_sigma
+                # print(grad_sigma.std().detach().cpu().numpy(), grad_sigma.shape,sigma.data.mean().detach().cpu().numpy())
+                grad_mu = c_mu*grad_mu/square_root_mu
                 denominator_sigma = 1 + second_order * \
                     (variance * grad_sigma ** 2)
+                denominator_mu = 1 + second_order * (variance * grad_mu ** 2)
                 sigma.data.add_(-0.5*(variance * grad_sigma + sigma.data * (
                     variance-sigma_prior ** 2) / (N_sigma * sigma_prior ** 2)) / denominator_sigma)
-                denominator_mu = 1 + second_order * \
-                    (variance * grad_mu ** 2)
-
                 mu.data.add_(-(variance * grad_mu + variance * (mu.data -
                              mu_prior) / (N_mu * sigma_prior ** 2)) / denominator_mu)
                 if clamp_sigma[0] != 0:
@@ -97,15 +109,16 @@ def mesu(model: Module, *, mu_prior: float, sigma_prior: float, N_mu: int, N_sig
                         sigma.data, clamp_sigma[0], clamp_sigma[1])
                 if clamp_mu[0] != 0:
                     mu.data = torch.clamp(mu.data, clamp_mu[0], clamp_mu[1])
+
             if grad_sigma == None and grad_mu != None:
-                denominator_mu = 1 + second_order * \
-                    (variance * grad_mu ** 2)
+                denominator_mu = 1 + second_order*variance * grad_mu ** 2
                 mu.data.add_(-(variance * grad_mu + variance * (mu.data -
-                                                                mu_prior) / (N_mu * sigma_prior ** 2)) / denominator_mu)
+                             mu_prior) / (N_mu * sigma_prior ** 2)) / denominator_mu)
                 if clamp_mu[0] != 0:
-                    mu.data = torch.clamp(
-                        mu.data, clamp_mu[0], clamp_mu[1])
+                    mu.data = torch.clamp(mu.data, clamp_mu[0], clamp_mu[1])
+
             if grad_sigma == None and enforce_learning_sigma == True and grad_mu != None:
+
                 grad_sigma = sigma * (grad_mu**2) / (grad_mu**2).mean()
                 grad_sigma = c_sigma*grad_sigma
                 denominator_sigma = 1 + second_order * \

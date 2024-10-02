@@ -107,6 +107,8 @@ if __name__ == "__main__":
                 "clamp_sigma": [0, 0],
                 "clamp_mu": [0, 0],
                 "enforce_learning_sigma": False,
+                "normalise_grad_sigma": 0,
+                "normalise_grad_mu": 0,
             },
             "task": "DILCIFAR100",
             "n_tasks": 5,
