@@ -404,10 +404,12 @@ class GPULoading:
         train_datasets, test_datasets = self.cifar100_cil_dataset_generation(
             full=full)
         if feature_extraction:
-            features = models.resnet18(
+            resnet = models.resnet18(
                 weights=models.ResNet18_Weights.DEFAULT
-            ).features
-            transform = ResNet18_Weights.IMAGENET1K_V1.transforms()
+            )
+            features = Sequential(
+                *list(resnet.children())[:-1])
+            transform = models.ResNet18_Weights.IMAGENET1K_V1.transforms()
             for i in range(len(train_datasets)):
                 train_dataset = train_datasets[i]
                 test_dataset = test_datasets[i]

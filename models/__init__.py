@@ -14,3 +14,6 @@ from .efficientnetbayesian import *
 from .efficientnetbibayesian import *
 from .cifarnetbayesian import *
 from .cifarnet import *
+from .cifarnethybrid import *
+from .resnet18 import *
+from .resnet18bayesian import *

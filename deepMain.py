@@ -14,7 +14,7 @@ from numpy.random import seed as npseed
 SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = device("cuda:0")
-GRAPHS = True
+GRAPHS = False
 MODULO = 10
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
@@ -33,10 +33,10 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 0,
-            "nn_type": models.BayesianNN,
+            "nn_type": models.ResNet18Hybrid,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [128],
+                "layers": [],
                 # "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
@@ -46,7 +46,7 @@ if __name__ == "__main__":
                 "n_samples_test": 5,
                 "n_samples_train": 5,
                 "tau": 1,
-                "std": 0.1,
+                "std": 0.01,
                 "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
@@ -65,7 +65,7 @@ if __name__ == "__main__":
                 'n_epochs': 20,
                 'batch_size': 128,
                 'test_batch_size': 128,
-                'feature_extraction': True,
+                'feature_extraction': False,
                 'data_aug_it': 1,
                 'full': False,
                 "continual": False,
@@ -75,16 +75,16 @@ if __name__ == "__main__":
             "output_function": "log_softmax",
             "criterion": functional.F.nll_loss,
             "reduction": "sum",
-            "optimizer": MESU,
-            "optimizer_parameters": {
-                "sigma_prior": 0.1,
-                "mu_prior": 0,
-                "N_mu": 1_000_000,
-                "N_sigma": 1_000_000,
-                "lr_mu": 1,
-                "lr_sigma": 1,
-                "norm_term": False,
-            },
+            # "optimizer": MESU,
+            # "optimizer_parameters": {
+            #     "sigma_prior": 0.1,
+            #     "mu_prior": 0,
+            #     "N_mu": 1_000_000,
+            #     "N_sigma": 1_000_000,
+            #     "lr_mu": 1,
+            #     "lr_sigma": 1,
+            #     "norm_term": False,
+            # },
             # "optimizer": BHUparallel,
             # "optimizer_parameters": {
             #     "lr_max": 5,
@@ -95,23 +95,23 @@ if __name__ == "__main__":
             # "optimizer_parameters": {
             #     "lr": 0.001,
             # },
-            # "optimizer": MESUDET,
-            # "optimizer_parameters": {
-            #     "mu_prior": 0,
-            #     "sigma_prior": 0.1,
-            #     "N_mu": 1_000_000,
-            #     "N_sigma": 1_000_000,
-            #     "normalise_grad_sigma": False,
-            #     "normalise_grad_mu": False,
-            #     "c_sigma": 1,
-            #     "c_mu": 1,
-            #     "second_order": True,
-            #     "clamp_sigma": 0,
-            #     "clamp_mu": 0,
-            #     "enforce_learning_sigma": False,
-            # }
-            "task": "PermutedMNIST",
-            "n_tasks": 10,
+            "optimizer": MESUDET,
+            "optimizer_parameters": {
+                "mu_prior": 0,
+                "sigma_prior": 0.1,
+                "N_mu": 1_000_000,
+                "N_sigma": 1_000_000,
+                "normalise_grad_sigma": False,
+                "normalise_grad_mu": False,
+                "c_sigma": 1,
+                "c_mu": 1,
+                "second_order": True,
+                "clamp_sigma": [0, 0],
+                "clamp_mu": [0, 0],
+                "enforce_learning_sigma": False,
+            },
+            "task": "DILCIFAR100",
+            "n_tasks": 5,
             "n_classes": 1,
         }
     ]
@@ -143,7 +143,9 @@ if __name__ == "__main__":
                 task=data["task"], n_tasks=data["n_tasks"], batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"], run=iteration, full=data["training_parameters"]["full"] if "full" in data["training_parameters"] else False)
             if iteration == 0:
                 data['nn_parameters']['layers'].append(target_size)
-                if not "VGG" in data["nn_type"].__name__ and not "EfficientNet" in data["nn_type"].__name__ and not "cifar" in data["nn_type"].__name__.lower():
+
+                conv_type = ["VGG", "ResNet", "EfficientNet", "cifar"]
+                if not any([conv.lower() in data["nn_type"].__name__.lower() for conv in conv_type]):
                     data['nn_parameters']['layers'].insert(
                         0, prod(tensor(shape)))
 

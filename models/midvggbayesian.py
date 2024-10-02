@@ -71,7 +71,7 @@ class MidVGGBayesian(Module):
             for param in self.features.parameters():
                 param.requires_grad = False
                 param.grad = None
-
+        layers.insert(0, list(vgg.children())[-1].in_features)
         ## CLASSIFIER INITIALIZATION ##
         self.classifier = BayesianNN(layers=layers,
                                      n_samples_train=n_samples_train,
@@ -91,41 +91,6 @@ class MidVGGBayesian(Module):
                                      activation_function=activation_function,
                                      classifier=True,
                                      )
-
-    def replace_conv(self, module_list):
-        # our goal is to replace every Conv2d layer with a BayesianConv2d layer
-        # module_list is a torch.nn.ModuleList that can contain other ModuleLists or Sequential objects
-        # we need to iterate over all of them and replace the Conv2d layers
-        for i, layer in enumerate(module_list):
-            if isinstance(layer, torch.nn.Conv2d):
-                # replace the layer
-                new_layer = MetaBayesConv2d(layer.in_channels, layer.out_channels, kernel_size=layer.kernel_size, stride=layer.stride,
-                                            padding=layer.padding, bias=layer.bias is not None, sigma_init=self.sigma_init*self.sigma_multiplier, device=self.device)
-                new_layer.weight.mu.data = layer.weight.data.clone()
-                if layer.bias is not None:
-                    new_layer.bias.mu.data = layer.bias.data.clone()
-                module_list[i] = new_layer
-        return module_list
-
-    def _activation_init(self):
-        """
-        Returns:
-            torch.nn.Module: Activation function module
-        """
-        activation_functions = {
-            "relu": torch.nn.ReLU,
-            "leaky_relu": torch.nn.LeakyReLU,
-            "tanh": torch.nn.Tanh,
-            "sign": SignActivation,
-            "squared": SquaredActivation,
-            "elephant": ElephantActivation,
-            "gate": GateActivation
-        }
-        # add parameters to activation function if needed
-        try:
-            return activation_functions.get(self.activation_function, torch.nn.Identity)(**self.activation_parameters).to(self.device)
-        except:
-            return activation_functions.get(self.activation_function, torch.nn.Identity)().to(self.device)
 
     def _norm_init(self, n_features):
         """Returns a layer of normalization"""

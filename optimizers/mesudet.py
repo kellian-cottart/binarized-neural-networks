@@ -34,7 +34,7 @@ class MESUDET(object):
             - Individual priors for each synapse
     """
 
-    def __init__(self, model, args_dict):
+    def __init__(self, model, **args_dict):
 
         super().__init__()
         self.model = model
@@ -72,18 +72,20 @@ class MESUDET(object):
              enforce_learning_sigma=self.enforce_learning_sigma
              )
 
+    def zero_grad(self):
+        """Sets the gradients of all model parameters to zero."""
+        self.model.zero_grad()
+
 
 def mesu(model: Module, *, mu_prior: float, sigma_prior: float, N_mu: int, N_sigma: int, normalise_grad_sigma: int, normalise_grad_mu: int, c_sigma: float, c_mu: float, second_order: bool, clamp_sigma: list, clamp_mu: list, enforce_learning_sigma: int):
 
     previous_param = None
     for i, (name, param) in enumerate(model.named_parameters(recurse=True)):
-
         if previous_param is None:
             sigma = param
             variance = param.data**2
             grad_sigma = param.grad
             previous_param = 'sigma'
-
         else:
             mu = param
             grad_mu = param.grad
@@ -111,16 +113,13 @@ def mesu(model: Module, *, mu_prior: float, sigma_prior: float, N_mu: int, N_sig
                         sigma.data, clamp_sigma[0], clamp_sigma[1])
                 if clamp_mu[0] != 0:
                     mu.data = torch.clamp(mu.data, clamp_mu[0], clamp_mu[1])
-
             if grad_sigma == None and grad_mu != None:
                 denominator_mu = 1 + second_order*variance * grad_mu ** 2
                 mu.data.add_(-(variance * grad_mu + variance * (mu.data -
                              mu_prior) / (N_mu * sigma_prior ** 2)) / denominator_mu)
                 if clamp_mu[0] != 0:
                     mu.data = torch.clamp(mu.data, clamp_mu[0], clamp_mu[1])
-
             if grad_sigma == None and enforce_learning_sigma == True and grad_mu != None:
-
                 grad_sigma = sigma * (grad_mu**2) / (grad_mu**2).mean()
                 grad_sigma = c_sigma*grad_sigma
                 denominator_sigma = 1 + second_order * \

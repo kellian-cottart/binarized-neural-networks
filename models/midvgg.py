@@ -55,49 +55,17 @@ class MidVGG(Module):
         self.activation_function = activation_function
         self.gnnum_groups = gnnum_groups
         # retrieve weights from VGG16
-        VGG = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
-        self.features = VGG.features.to(device)
+        vgg = vgg16(weights=VGG16_Weights.IMAGENET1K_V1)
+        self.features = vgg.features.to(device)
         # freeze feature extractor
         if frozen == True:
             for param in self.features.parameters():
                 param.requires_grad = False
                 param.grad = None
+        layers.insert(0, list(vgg.children())[-1].in_features)
         ## CLASSIFIER INITIALIZATION ##
         self.classifier = DNN(layers, init, std, device, dropout, normalization, bias,
                               running_stats, affine, eps, momentum, gnnum_groups, activation_function)
-
-    def _activation_init(self):
-        """
-        Returns:
-            torch.nn.Module: Activation function module
-        """
-        activation_functions = {
-            "relu": torch.nn.ReLU,
-            "leaky_relu": torch.nn.LeakyReLU,
-            "tanh": torch.nn.Tanh,
-            "sign": SignActivation,
-            "squared": SquaredActivation,
-            "elephant": ElephantActivation,
-            "gate": GateActivation
-        }
-        # add parameters to activation function if needed
-        try:
-            return activation_functions.get(self.activation_function, torch.nn.Identity)(**self.activation_parameters).to(self.device)
-        except:
-            return activation_functions.get(self.activation_function, torch.nn.Identity)().to(self.device)
-
-    def _norm_init(self, n_features):
-        """Returns a layer of normalization"""
-        if self.normalization == "batchnorm":
-            return torch.nn.BatchNorm2d(n_features, eps=self.eps, momentum=self.momentum, affine=self.affine, track_running_stats=self.running_stats).to(self.device)
-        elif self.normalization == "layernorm":
-            return torch.nn.LayerNorm(n_features).to(self.device)
-        elif self.normalization == "instancenorm":
-            return torch.nn.InstanceNorm2d(n_features, eps=self.eps, momentum=self.momentum, affine=self.affine, track_running_stats=self.running_stats).to(self.device)
-        elif self.normalization == "groupnorm":
-            return torch.nn.GroupNorm(self.gnnum_groups, n_features).to(self.device)
-        else:
-            return torch.nn.Identity().to(self.device)
 
     def forward(self, x, *args, **kwargs):
         """ Forward pass of DNN

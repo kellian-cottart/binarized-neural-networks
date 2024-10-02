@@ -5,6 +5,7 @@ from torch.nn import Flatten, Module, AdaptiveAvgPool2d, Sigmoid, ReLU
 from torch import Tensor, no_grad
 from .bayesianConv import MetaBayesConv2d
 from .bayesianLinear import MetaBayesLinearParallel
+from torchvision.models.resnet import BasicBlock
 
 
 class MetaBayesSequential(Sequential):
@@ -35,6 +36,25 @@ class MetaBayesMBConv(MBConv):
             result = self.stochastic_depth(result)
             result += input
         return result
+
+
+class MetaBayesBasicBlock(BasicBlock):
+    def forward(self, x: Tensor, samples: int) -> Tensor:
+        identity = x
+
+        out = self.conv1(x, samples)
+        out = self.bn1(out, samples)
+        out = self.relu(out)
+
+        out = self.conv2(out, samples)
+        out = self.bn2(out, samples)
+
+        if self.downsample is not None:
+            identity = self.downsample(x, samples)
+
+        out += identity
+        out = self.relu(out)
+        return out
 
 
 class MetaBayesSqueezeExcitation(Module):

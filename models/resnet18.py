@@ -1,25 +1,14 @@
-import torch
 from torch.nn import *
-from .biBayesianNeuralNetwork import *
+from .deepNeuralNetwork import DNN
 from .layers.activation import *
 import torchvision
 
-LOOK_UP_DICT = {}
-for i in range(8):
-    LOOK_UP_DICT[str(i)] = {
-        "model": getattr(torchvision.models, f"efficientnet_b{i}"),
-        "weights": getattr(torchvision.models, f"EfficientNet_B{i}_Weights"),
-    }
 
-
-class EfficientNetBiBayesian(Module):
-    """ EfficientNet Neural Network
+class ResNet18(Module):
+    """ ResNet18 Neural Network
     """
 
     def __init__(self,
-                 n_samples_test: int = 1,
-                 n_samples_train: int = 1,
-                 tau: float = 1,
                  layers: list = [1024, 1024, 10],
                  init: str = "uniform",
                  std: float = 0.01,
@@ -34,7 +23,6 @@ class EfficientNetBiBayesian(Module):
                  activation_function: str = "relu",
                  gnnum_groups: int = 32,
                  frozen=False,
-                 version=0,
                  *args,
                  **kwargs):
         """ NN initialization
@@ -65,42 +53,34 @@ class EfficientNetBiBayesian(Module):
         self.affine = affine
         self.activation_function = activation_function
         self.gnnum_groups = gnnum_groups
-        self.version = version
-        # retrieve weights from EfficientNet
-        current = LOOK_UP_DICT[str(version)]
-        effnet = current["model"](weights=current["weights"].IMAGENET1K_V1)
+        resnet = torchvision.models.resnet18(
+            weights=torchvision.models.ResNet18_Weights.IMAGENET1K_V1)
         # remove classifier layers
-        self.features = effnet.features
-        self.avgpool = effnet.avgpool
-        self.transform = current["weights"].IMAGENET1K_V1.transforms()
+        self.features = Sequential(*list(resnet.children())[:-1])
+        layers.insert(0, list(resnet.children())[-1].in_features)
+        self.transform = torchvision.models.ResNet18_Weights.IMAGENET1K_V1.transforms()
         # freeze feature extractor
-        layers.insert(0, list(effnet.children())[-1].in_features)
         if frozen == True:
             for param in self.features.parameters():
                 param.requires_grad = False
                 param.grad = None
         ## CLASSIFIER INITIALIZATION ##
-        self.classifier = BiBayesianNN(
-            n_samples_test=n_samples_test,
-            n_samples_train=n_samples_train,
-            tau=tau,
-            layers=layers,
-            init=init,
-            std=std,
-            device=device,
-            dropout=dropout,
-            normalization=normalization,
-            bias=bias,
-            running_stats=running_stats,
-            affine=affine,
-            eps=eps,
-            momentum=momentum,
-            activation_function=activation_function,
-            gnnum_groups=gnnum_groups,
-            classifier=True,
-            * args,
-            **kwargs
-        )
+        self.classifier = DNN(layers=layers,
+                              init=init,
+                              std=std,
+                              device=device,
+                              dropout=dropout,
+                              normalization=normalization,
+                              bias=bias,
+                              running_stats=running_stats,
+                              affine=affine,
+                              eps=eps,
+                              momentum=momentum,
+                              activation_function=activation_function,
+                              gnnum_groups=gnnum_groups,
+                              classifier=True,
+                              *args,
+                              **kwargs)
 
     def forward(self, x, *args, **kwargs):
         """ Forward pass of DNN
@@ -114,8 +94,7 @@ class EfficientNetBiBayesian(Module):
         """
         x = self.transform(x)
         x = self.features(x)
-        x = self.avgpool(x)
-        return self.classifier.forward(x)
+        return self.classifier(x)
 
     # add number of parameters total
 
@@ -124,4 +103,4 @@ class EfficientNetBiBayesian(Module):
         return sum(p.numel() for p in self.parameters())
 
     def extra_repr(self):
-        return super().extra_repr() + f"version={self.version}, params={self.number_parameters()}"
+        return super().extra_repr() + f"params={self.number_parameters()}"

@@ -3,6 +3,7 @@ from copy import deepcopy
 from dataloader import *
 from optimizers import MetaplasticAdam
 from torch.autograd import grad
+import inspect
 
 
 class GPUTrainer:
@@ -23,8 +24,10 @@ class GPUTrainer:
     def __init__(self, model, optimizer, optimizer_parameters, criterion, reduction, device, output_function, task=None, n_tasks=None, *args, **kwargs):
         self.model = model
         if not hasattr(self, "optimizer"):
+            # if optimizer requires model
             self.optimizer = optimizer(
-                self.model.parameters(),
+                self.model if "model" in inspect.signature(
+                    optimizer).parameters else self.model.parameters(),
                 **optimizer_parameters
             )
         self.criterion = criterion
