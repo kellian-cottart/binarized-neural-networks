@@ -42,8 +42,6 @@ class MESUDET(object):
         self.sigma_prior = args_dict['sigma_prior']
         self.N_mu = args_dict['N_mu']
         self.N_sigma = args_dict['N_sigma']
-        self.normalise_grad_sigma = args_dict['normalise_grad_sigma']
-        self.normalise_grad_mu = args_dict['normalise_grad_mu']
         self.c_sigma = args_dict['c_sigma']
         self.c_mu = args_dict['c_mu']
         self.second_order = args_dict['second_order']
@@ -61,8 +59,6 @@ class MESUDET(object):
              sigma_prior=self.sigma_prior,
              N_mu=self.N_mu,
              N_sigma=self.N_sigma,
-             normalise_grad_sigma=self.normalise_grad_sigma,
-             normalise_grad_mu=self.normalise_grad_mu,
              c_sigma=self.c_sigma,
              c_mu=self.c_mu,
              second_order=self.second_order,

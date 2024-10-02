@@ -99,10 +99,8 @@ if __name__ == "__main__":
             "optimizer_parameters": {
                 "mu_prior": 0,
                 "sigma_prior": 0.1,
-                "N_mu": 1_000_000,
-                "N_sigma": 1_000_000,
-                "normalise_grad_sigma": False,
-                "normalise_grad_mu": False,
+                "N_mu": 100_000,
+                "N_sigma": 100_000,
                 "c_sigma": 1,
                 "c_mu": 1,
                 "second_order": True,
