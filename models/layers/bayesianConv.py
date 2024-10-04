@@ -199,7 +199,6 @@ class MetaBayesConv2d(MetaBayesConvNd):
                           self.padding, self.dilation, self.groups)
         act_sigma = F.conv2d(x**2, self.weight.sigma**2, self.bias.sigma**2 if self.bias is not None else None, self.stride,
                              self.padding, self.dilation, self.groups)
-        samples = samples if samples > 1 else 1
         epsilon = empty_like(act_mu).normal_()
         out = act_mu + act_sigma**0.5 * epsilon
         return out

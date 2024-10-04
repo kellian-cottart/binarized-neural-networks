@@ -60,10 +60,10 @@ def train_iteration(trial):
         trial (optuna.Trial): Optuna trial
     """
     ### OPTIM PARAMETERS ###
-    sigma_init = trial.suggest_float("sigma_init", 1e-3, 1e-1, log=True)
+    sigma_init = trial.suggest_float("sigma_init", 1e-4, 1e-1, log=True)
     sigma_prior = trial.suggest_float("sigma_prior", 1e-3, 1e-1, log=True)
-    N_mu = trial.suggest_int("N_mu", 100, 10_000_000)
-    N_sigma = trial.suggest_int("N_sigma", 100, 10_000_000)
+    N_mu = trial.suggest_int("N_mu", 10_000, 10_000_000)
+    N_sigma = trial.suggest_int("N_sigma", 10_000, 10_000_000)
     lr_mu = trial.suggest_float("lr_mu", 1e-3, 100, log=True)
     lr_sigma = trial.suggest_float("lr_sigma", 1e-3, 100, log=True)
 
@@ -96,7 +96,7 @@ def train_iteration(trial):
     ### NETWORK CONFIGURATION ###
     data = {
         "image_padding": 0,
-        "nn_type": models.ResNet18Hybrid,
+        "nn_type": models.ResNet18Bayesian,
         "nn_parameters": {
             # NETWORK ###
             "layers": layers,
@@ -105,7 +105,7 @@ def train_iteration(trial):
             "padding": "same",
             "device": DEVICE,
             "dropout": False,
-            "bias": True,
+            "bias": False,
             "n_samples_test": 5,
             "n_samples_train": 5,
             "tau": 1,
@@ -138,35 +138,35 @@ def train_iteration(trial):
         "output_function": "log_softmax",
         "criterion": functional.F.nll_loss,
         "reduction": "sum",
-        # "optimizer": MESU,
-        # "optimizer_parameters": {
-        #     "sigma_prior": sigma_prior,
-        #     "mu_prior": 0,
-        #     "N_mu": N_mu,
-        #     "N_sigma": N_sigma,
-        #     "lr_mu": lr_mu,
-        #     "lr_sigma": lr_sigma,
-        #     "norm_term": False,
-        # },
+        "optimizer": MESU,
+        "optimizer_parameters": {
+            "sigma_prior": sigma_prior,
+            "mu_prior": 0,
+            "N_mu": N_mu,
+            "N_sigma": N_sigma,
+            "lr_mu": lr_mu,
+            "lr_sigma": lr_sigma,
+            "norm_term": False,
+        },
         # "optimizer": SGD,
         # "optimizer_parameters": {
         #     "lr": lr_mu,
         # },
-        "optimizer": MESUDET,
-        "optimizer_parameters": {
-            "mu_prior": 0,
-            "sigma_prior": sigma_prior,
-            "N_mu": N_mu,
-            "N_sigma": N_sigma,
-            "c_sigma": lr_sigma,
-            "c_mu": lr_mu,
-            "second_order": True,
-            "clamp_sigma": [0, 0],
-            "clamp_mu": [0, 0],
-            "enforce_learning_sigma": False,
-            "normalise_grad_sigma": 0,
-            "normalise_grad_mu": 0,
-        },
+        # "optimizer": MESUDET,
+        # "optimizer_parameters": {
+        #     "mu_prior": 0,
+        #     "sigma_prior": sigma_prior,
+        #     "N_mu": N_mu,
+        #     "N_sigma": N_sigma,
+        #     "c_sigma": lr_sigma,
+        #     "c_mu": lr_mu,
+        #     "second_order": True,
+        #     "clamp_sigma": [0, 0],
+        #     "clamp_mu": [0, 0],
+        #     "enforce_learning_sigma": False,
+        #     "normalise_grad_sigma": 0,
+        #     "normalise_grad_mu": 0,
+        # },
         "task": task,
         "n_tasks": n_tasks,
         "n_classes": n_classes,
@@ -222,20 +222,19 @@ def train_iteration(trial):
     for i in range(data["n_tasks"]):
         epochs = data["training_parameters"]["n_epochs"][i] if isinstance(
             data["training_parameters"]["n_epochs"], list) else data["training_parameters"]["n_epochs"]
-        pbar = range(epochs)
-        for epoch in pbar:
-            predictions, labels = net_trainer.epoch_step(batch_size=batch_size,
-                                                         test_batch_size=data["training_parameters"]["test_batch_size"],
-                                                         train_dataset=train_dataset,
-                                                         test_dataset=test_dataset,
-                                                         task_id=i,
-                                                         permutations=permutations,
-                                                         epoch=epoch,
-                                                         pbar=None,
-                                                         epochs=epochs,
-                                                         continual=data["training_parameters"]["continual"],
-                                                         batch_params=batch_params if data["optimizer"] in [
-                                                             MetaplasticAdam] and net_trainer.model.affine and data["training_parameters"]["task_boundaries"] else None)
+        for epoch in range(epochs):
+            _, _ = net_trainer.epoch_step(batch_size=batch_size,
+                                          test_batch_size=data["training_parameters"]["test_batch_size"],
+                                          train_dataset=train_dataset,
+                                          test_dataset=test_dataset,
+                                          task_id=i,
+                                          permutations=permutations,
+                                          epoch=epoch,
+                                          pbar=False,
+                                          epochs=epochs,
+                                          continual=data["training_parameters"]["continual"],
+                                          batch_params=batch_params if data["optimizer"] in [
+                                              MetaplasticAdam] and net_trainer.model.affine and data["training_parameters"]["task_boundaries"] else None)
 
             metrics = net_trainer.mean_testing_accuracy[-1].item()
             trial.report(metrics, epoch + i * epochs)

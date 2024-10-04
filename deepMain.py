@@ -16,7 +16,7 @@ SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = device("cuda:0")
 GRAPHS = True
-PBAR = False
+PBAR = True
 MODULO = 10
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
@@ -84,7 +84,7 @@ if __name__ == "__main__":
                 "N_mu": 1_000_000,
                 "N_sigma": 1_000_000,
                 "lr_mu": 1,
-                "lr_sigma": 1,
+                "lr_sigma": 0.1,
                 "norm_term": False,
             },
             # "optimizer": BHUparallel,

@@ -176,8 +176,6 @@ class ResNet18Bayesian(Module):
         x = self.features(x, 1)
         return self.classifier(x)
 
-    # add number of parameters total
-
     def number_parameters(self):
         """Return the number of parameters of the network"""
         return sum(p.numel() for p in self.parameters())
