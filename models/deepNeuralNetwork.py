@@ -113,6 +113,8 @@ class DNN(torch.nn.Module):
         activation_functions = {
             "relu": torch.nn.ReLU,
             "leaky_relu": torch.nn.LeakyReLU,
+            "silu": torch.nn.SiLU,
+            "softplus": torch.nn.Softplus,
             "tanh": torch.nn.Tanh,
             "sign": SignActivation,
             "squared": SquaredActivation,

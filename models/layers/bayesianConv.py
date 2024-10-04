@@ -195,14 +195,29 @@ class MetaBayesConv2d(MetaBayesConvNd):
         """ The shapings are necessary to take into account that:
             - feature map are made of monte carlo samples
             - the input of the neural network is not a monte carlo sample"""
-        weights = self.weight.sample(samples)
-        B = self.bias.sample(samples).flatten(
-        ) if self.bias is not None else None
+        act_mu = F.conv2d(x, self.weight.mu, self.bias.mu if self.bias is not None else None, self.stride,
+                          self.padding, self.dilation, self.groups)
+        act_sigma = F.conv2d(x**2, self.weight.sigma**2, self.bias.sigma**2 if self.bias is not None else None, self.stride,
+                             self.padding, self.dilation, self.groups)
         samples = samples if samples > 1 else 1
-        weights = weights.reshape(weights.size(
-            0)*weights.size(1), *weights.size()[2:])
-        x = x.reshape(x.size(0)//samples, samples*x.size(1), *x.size()[2:])
-        out = self._conv_forward(x, weights, B, samples)
-        out = out.reshape(out.size(0)*samples, out.size(1) //
-                          samples, *out.size()[2:])
+        epsilon = empty_like(act_mu).normal_()
+        out = act_mu + act_sigma**0.5 * epsilon
         return out
+
+#   def forward(self, x: Tensor, samples) -> Tensor:
+#         """ The shapings are necessary to take into account that:
+#             - feature map are made of monte carlo samples
+#             - the input of the neural network is not a monte carlo sample"""
+#         weights = self.weight.sample(samples)
+#         B = self.bias.sample(samples).flatten(
+#         ) if self.bias is not None else None
+#         samples = samples if samples > 1 else 1
+#         weights = weights.reshape(weights.size(
+#             0)*weights.size(1), *weights.size()[2:])
+
+
+#         x = x.reshape(x.size(0)//samples, samples*x.size(1), *x.size()[2:])
+#         out = self._conv_forward(x, weights, B, samples)
+#         out = out.reshape(out.size(0)*samples, out.size(1) //
+#                           samples, *out.size()[2:])
+#         return out

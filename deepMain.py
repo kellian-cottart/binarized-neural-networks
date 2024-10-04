@@ -34,20 +34,20 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 0,
-            "nn_type": models.BayesianNN,
+            "nn_type": models.ResNet18Bayesian,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [512],
+                "layers": [],
                 # "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
                 "bias": False,
-                "n_samples_test": 10,
-                "n_samples_train": 10,
+                "n_samples_test": 5,
+                "n_samples_train": 5,
                 "tau": 1,
-                "std": sqrt(1e-2),
+                "std": sqrt(1e-4),
                 "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
@@ -63,9 +63,9 @@ if __name__ == "__main__":
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 1,
-                'batch_size': 1,
-                'test_batch_size': 256,
+                'n_epochs': 20,
+                'batch_size': 128,
+                'test_batch_size': 128,
                 'feature_extraction': False,
                 'data_aug_it': 1,
                 'full': False,
@@ -78,7 +78,7 @@ if __name__ == "__main__":
             "reduction": "sum",
             "optimizer": MESU,
             "optimizer_parameters": {
-                "sigma_prior": 0.1,
+                "sigma_prior": sqrt(1e-2),
                 "mu_prior": 0,
                 "N_mu": 1_000_000,
                 "N_sigma": 1_000_000,
@@ -112,8 +112,8 @@ if __name__ == "__main__":
             #     "normalise_grad_mu": 0,
             #     "noise_variance": 0,
             # },
-            "task": "PermutedMNIST",
-            "n_tasks": 10,
+            "task": "DILCIFAR100",
+            "n_tasks": 5,
             "n_classes": 1,
         }
     ]
