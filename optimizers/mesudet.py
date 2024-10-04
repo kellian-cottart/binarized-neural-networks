@@ -7,6 +7,7 @@ Created on Wed Jul 31 16:10:54 2024
 """
 
 import torch
+from torch import empty_like
 from torch.nn import Module
 
 
@@ -19,6 +20,7 @@ class MESUDET(object):
         sigma_prior: Standard deviation of the prior over the weights, typically 0.01**0.5, or 0.001**0.5 . Can vary per group.
         N: Number of batches to retain in synaptic memory in the Bayesian Forgetting framework. N acts as a weight between prior and likelihood. It should be DATASET_SIZE//BATCH_SIZE, but using larger values can yield better results.
         clamp_sigma: If >0, clamps the  sigma to this value times sigma_prior, typically 1e-3 or 1e-2.
+        noise_variance: Variance of the noise added to the parameters during optimization.
 
     Raises:
         ValueError: If input arguments are invalid.
@@ -44,6 +46,7 @@ class MESUDET(object):
         self.clamp_sigma = args_dict['clamp_sigma']
         self.clamp_mu = args_dict['clamp_mu']
         self.enforce_learning_sigma = args_dict['enforce_learning_sigma']
+        self.noise_variance = args_dict['noise_variance']
         num_params = len(list(model.parameters()))
         print(
             f'Optimizer initialized with {num_params} Gaussian variational Tensor parameters.')
@@ -63,7 +66,8 @@ class MESUDET(object):
              second_order=self.second_order,
              clamp_sigma=self.clamp_sigma,
              clamp_mu=self.clamp_mu,
-             enforce_learning_sigma=self.enforce_learning_sigma
+             enforce_learning_sigma=self.enforce_learning_sigma,
+             noise_variance=self.noise_variance
              )
 
     def zero_grad(self,):
@@ -71,7 +75,7 @@ class MESUDET(object):
         self.model.zero_grad()
 
 
-def mesu(model: Module, *, mu_prior: float, sigma_prior: float, N_mu: int, N_sigma: int, normalise_grad_sigma: int, normalise_grad_mu: int, c_sigma: float, c_mu: float, second_order: bool, clamp_sigma: list, clamp_mu: list, enforce_learning_sigma: int):
+def mesu(model: Module, *, mu_prior: float, sigma_prior: float, N_mu: int, N_sigma: int, normalise_grad_sigma: int, normalise_grad_mu: int, c_sigma: float, c_mu: float, second_order: bool, clamp_sigma: list, clamp_mu: list, enforce_learning_sigma: int, noise_variance: float):
 
     previous_param = None
     for i, (name, param) in enumerate(model.named_parameters(recurse=True)):
@@ -102,8 +106,10 @@ def mesu(model: Module, *, mu_prior: float, sigma_prior: float, N_mu: int, N_sig
                 denominator_mu = 1 + second_order * (variance * grad_mu ** 2)
                 sigma.data.add_(-0.5*(variance * grad_sigma + sigma.data * (
                     variance-sigma_prior ** 2) / (N_sigma * sigma_prior ** 2)) / denominator_sigma)
+                epsilon_t = empty_like(mu.data).normal_()*noise_variance
+                epsilon_t1 = empty_like(mu.data).normal_()*noise_variance
                 mu.data.add_(-(variance * grad_mu + variance * (mu.data -
-                             mu_prior) / (N_mu * sigma_prior ** 2)) / denominator_mu)
+                             mu_prior) / (N_mu * sigma_prior ** 2)) / denominator_mu + (epsilon_t1 - epsilon_t))
                 if clamp_sigma[0] != 0:
                     sigma.data = torch.clamp(
                         sigma.data, clamp_sigma[0], clamp_sigma[1])
@@ -112,8 +118,10 @@ def mesu(model: Module, *, mu_prior: float, sigma_prior: float, N_mu: int, N_sig
 
             if grad_sigma == None and grad_mu != None:
                 denominator_mu = 1 + second_order*variance * grad_mu ** 2
+                epsilon_t = empty_like(mu.data).normal_()*noise_variance
+                epsilon_t1 = empty_like(mu.data).normal_()*noise_variance
                 mu.data.add_(-(variance * grad_mu + variance * (mu.data -
-                             mu_prior) / (N_mu * sigma_prior ** 2)) / denominator_mu)
+                             mu_prior) / (N_mu * sigma_prior ** 2)) / denominator_mu + (epsilon_t1 - epsilon_t))
                 if clamp_mu[0] != 0:
                     mu.data = torch.clamp(mu.data, clamp_mu[0], clamp_mu[1])
 

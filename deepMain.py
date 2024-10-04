@@ -7,6 +7,7 @@ import os
 import json
 import datetime
 from torch import device, cuda, functional, stack, save, prod, set_default_device, set_default_dtype, manual_seed, randperm
+from math import sqrt
 from torch.optim import SGD, Adam
 import tqdm
 from numpy.random import seed as npseed
@@ -33,20 +34,20 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 0,
-            "nn_type": models.ResNet18Hybrid,
+            "nn_type": models.BayesianNN,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [],
+                "layers": [512],
                 # "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
                 "device": DEVICE,
                 "dropout": False,
                 "bias": False,
-                "n_samples_test": 5,
-                "n_samples_train": 5,
+                "n_samples_test": 10,
+                "n_samples_train": 10,
                 "tau": 1,
-                "std": 0.1,
+                "std": sqrt(1e-2),
                 "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
@@ -58,13 +59,13 @@ if __name__ == "__main__":
                 "running_stats": False,
                 "affine": False,
                 "frozen": False,
-                "sigma_multiplier": 0.1,
+                "sigma_multiplier": 1,
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 20,
-                'batch_size': 128,
-                'test_batch_size': 128,
+                'n_epochs': 1,
+                'batch_size': 1,
+                'test_batch_size': 256,
                 'feature_extraction': False,
                 'data_aug_it': 1,
                 'full': False,
@@ -75,16 +76,16 @@ if __name__ == "__main__":
             "output_function": "log_softmax",
             "criterion": functional.F.nll_loss,
             "reduction": "sum",
-            # "optimizer": MESU,
-            # "optimizer_parameters": {
-            #     "sigma_prior": 0.1,
-            #     "mu_prior": 0,
-            #     "N_mu": 1_000_000,
-            #     "N_sigma": 1_000_000,
-            #     "lr_mu": 1,
-            #     "lr_sigma": 1,
-            #     "norm_term": False,
-            # },
+            "optimizer": MESU,
+            "optimizer_parameters": {
+                "sigma_prior": 0.1,
+                "mu_prior": 0,
+                "N_mu": 1_000_000,
+                "N_sigma": 1_000_000,
+                "lr_mu": 1,
+                "lr_sigma": 1,
+                "norm_term": False,
+            },
             # "optimizer": BHUparallel,
             # "optimizer_parameters": {
             #     "lr_max": 5,
@@ -93,25 +94,26 @@ if __name__ == "__main__":
             # },
             # "optimizer": SGD,
             # "optimizer_parameters": {
-            #     "lr": 0.001,
+            #     "lr": 0.0001,
             # },
-            "optimizer": MESUDET,
-            "optimizer_parameters": {
-                "mu_prior": 0,
-                "sigma_prior": 0.1,
-                "N_mu": 100_000,
-                "N_sigma": 100_000,
-                "c_sigma": 1,
-                "c_mu": 1,
-                "second_order": True,
-                "clamp_sigma": [0, 0],
-                "clamp_mu": [0, 0],
-                "enforce_learning_sigma": False,
-                "normalise_grad_sigma": 0,
-                "normalise_grad_mu": 0,
-            },
-            "task": "DILCIFAR100",
-            "n_tasks": 5,
+            # "optimizer": MESUDET,
+            # "optimizer_parameters": {
+            #     "mu_prior": 0,
+            #     "sigma_prior": 0.1,
+            #     "N_mu": 1_000_000,
+            #     "N_sigma": 1_000_000,
+            #     "c_sigma": 1,
+            #     "c_mu": 1,
+            #     "second_order": True,
+            #     "clamp_sigma": [0, 0],
+            #     "clamp_mu": [0, 0],
+            #     "enforce_learning_sigma": False,
+            #     "normalise_grad_sigma": 0,
+            #     "normalise_grad_mu": 0,
+            #     "noise_variance": 0,
+            # },
+            "task": "PermutedMNIST",
+            "n_tasks": 10,
             "n_classes": 1,
         }
     ]
@@ -193,8 +195,7 @@ if __name__ == "__main__":
             for i in range(data["n_tasks"]):
                 epochs = data["training_parameters"]["n_epochs"][i] if isinstance(
                     data["training_parameters"]["n_epochs"], list) else data["training_parameters"]["n_epochs"]
-                pbar = tqdm.tqdm(range(epochs))
-                for epoch in pbar:
+                for epoch in range(epochs):
                     predictions, labels = net_trainer.epoch_step(batch_size=batch_size,
                                                                  test_batch_size=data["training_parameters"]["test_batch_size"],
                                                                  train_dataset=train_dataset,
@@ -202,7 +203,6 @@ if __name__ == "__main__":
                                                                  task_id=i,
                                                                  permutations=permutations,
                                                                  epoch=epoch,
-                                                                 pbar=pbar,
                                                                  epochs=epochs,
                                                                  continual=data["training_parameters"]["continual"],
                                                                  batch_params=batch_params if data["optimizer"] in [

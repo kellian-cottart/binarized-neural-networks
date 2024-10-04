@@ -6,7 +6,7 @@ from .layers import *
 from torchvision.models.resnet import BasicBlock
 
 
-class ResNet18Bayesian(Module):
+class ResNet18Hybrid(Module):
     """ ResNet18 Neural Network
     """
 
@@ -92,7 +92,7 @@ class ResNet18Bayesian(Module):
                                      momentum=momentum,
                                      gnnum_groups=gnnum_groups,
                                      activation_function=activation_function,
-                                     classifier=True,
+                                     classifier=False,
                                      )
 
     def _replace_conv2d(self, layer):
@@ -172,11 +172,8 @@ class ResNet18Bayesian(Module):
             torch.Tensor: Output tensor
 
         """
-        repeat_samples = self.n_samples_train if self.n_samples_train > 1 else 1
-        samples = self.n_samples_train
         x = self.transform(x)
-        x = x.repeat(repeat_samples, *([1] * (len(x.size())-1)))
-        x = self.features(x, samples)
+        x = self.features(x, 0)
         return self.classifier(x)
 
     # add number of parameters total

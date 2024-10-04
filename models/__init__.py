@@ -17,3 +17,4 @@ from .cifarnet import *
 from .cifarnethybrid import *
 from .resnet18 import *
 from .resnet18bayesian import *
+from .resnet18hybrid import *

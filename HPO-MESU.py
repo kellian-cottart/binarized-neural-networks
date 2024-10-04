@@ -60,11 +60,11 @@ def train_iteration(trial):
         trial (optuna.Trial): Optuna trial
     """
     ### OPTIM PARAMETERS ###
-    sigma_init = trial.suggest_float("sigma_init", 1e-2, 1e-1, log=True)
-    sigma_prior = trial.suggest_float("sigma_prior", 1e-2, 1e-1, log=True)
-    N_mu = trial.suggest_int("N_mu", 100, 100_000_000)
-    N_sigma = trial.suggest_int("N_sigma", 100, 100_000_000)
-    lr_mu = trial.suggest_float("lr_mu", 1e-8, 1e-2, log=True)
+    sigma_init = trial.suggest_float("sigma_init", 1e-3, 1e-1, log=True)
+    sigma_prior = trial.suggest_float("sigma_prior", 1e-3, 1e-1, log=True)
+    N_mu = trial.suggest_int("N_mu", 100, 10_000_000)
+    N_sigma = trial.suggest_int("N_sigma", 100, 10_000_000)
+    lr_mu = trial.suggest_float("lr_mu", 1e-3, 100, log=True)
     lr_sigma = trial.suggest_float("lr_sigma", 1e-3, 100, log=True)
 
     ### TASK PARAMETERS ###
@@ -80,6 +80,8 @@ def train_iteration(trial):
         "n_tasks", [parser.parse_args().n_tasks])
     n_classes = trial.suggest_categorical(
         "n_classes", [parser.parse_args().n_classes])
+    sigma_multiplier = trial.suggest_float(
+        "sigma_multiplier", 1e-1, 1e1, log=True)
     # should be an array of integers
     layers = [int(i) for i in parser.parse_args().layers.split(
         "-")] if parser.parse_args().layers != "" else []
@@ -94,7 +96,7 @@ def train_iteration(trial):
     ### NETWORK CONFIGURATION ###
     data = {
         "image_padding": 0,
-        "nn_type": models.DNN,
+        "nn_type": models.ResNet18Hybrid,
         "nn_parameters": {
             # NETWORK ###
             "layers": layers,
@@ -119,14 +121,14 @@ def train_iteration(trial):
             "running_stats": False,
             "affine": False,
             "frozen": False,
-            "sigma_multiplier": 1,
+            "sigma_multiplier": sigma_multiplier,
             "version": 0,
         },
         "training_parameters": {
             'n_epochs': epochs,
             'batch_size': batch_size,
             'test_batch_size': batch_size,
-            'feature_extraction': True,
+            'feature_extraction': False,
             'data_aug_it': 1,
             'full': False,
             "continual": False,
@@ -146,9 +148,24 @@ def train_iteration(trial):
         #     "lr_sigma": lr_sigma,
         #     "norm_term": False,
         # },
-        "optimizer": SGD,
+        # "optimizer": SGD,
+        # "optimizer_parameters": {
+        #     "lr": lr_mu,
+        # },
+        "optimizer": MESUDET,
         "optimizer_parameters": {
-            "lr": lr_mu,
+            "mu_prior": 0,
+            "sigma_prior": sigma_prior,
+            "N_mu": N_mu,
+            "N_sigma": N_sigma,
+            "c_sigma": lr_sigma,
+            "c_mu": lr_mu,
+            "second_order": True,
+            "clamp_sigma": [0, 0],
+            "clamp_mu": [0, 0],
+            "enforce_learning_sigma": False,
+            "normalise_grad_sigma": 0,
+            "normalise_grad_mu": 0,
         },
         "task": task,
         "n_tasks": n_tasks,
