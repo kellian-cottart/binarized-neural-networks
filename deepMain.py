@@ -38,7 +38,7 @@ if __name__ == "__main__":
             "nn_type": models.ResNet18Bayesian,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [],
+                "layers": [512],
                 # "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
@@ -64,7 +64,7 @@ if __name__ == "__main__":
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 20,
+                'n_epochs': 10,
                 'batch_size': 128,
                 'test_batch_size': 128,
                 'feature_extraction': False,
@@ -84,7 +84,7 @@ if __name__ == "__main__":
                 "N_mu": 1_000_000,
                 "N_sigma": 1_000_000,
                 "lr_mu": 1,
-                "lr_sigma": 0.1,
+                "lr_sigma": 1,
                 "norm_term": False,
             },
             # "optimizer": BHUparallel,

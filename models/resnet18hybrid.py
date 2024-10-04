@@ -72,8 +72,6 @@ class ResNet18Hybrid(Module):
             for param in self.features.parameters():
                 param.requires_grad = False
                 param.grad = None
-
-        self.transform = torchvision.models.ResNet18_Weights.IMAGENET1K_V1.transforms()
         layers.insert(0, list(resnet.children())[-1].in_features)
         ## CLASSIFIER INITIALIZATION ##
         self.classifier = BayesianNN(layers=layers,
@@ -172,7 +170,6 @@ class ResNet18Hybrid(Module):
             torch.Tensor: Output tensor
 
         """
-        x = self.transform(x)
         x = self.features(x, 0)
         return self.classifier(x)
 

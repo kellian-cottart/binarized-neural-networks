@@ -1,9 +1,10 @@
 from torch.nn import *
 from .bayesianNeuralNetwork import BayesianNN
 from .layers.activation import *
-import torchvision
+from torchvision.transforms import Normalize
 from .layers import *
 from torchvision.models.resnet import BasicBlock
+from torchvision.models import resnet18, ResNet18_Weights
 
 
 class ResNet18Bayesian(Module):
@@ -61,19 +62,16 @@ class ResNet18Bayesian(Module):
         self.n_samples_train = n_samples_train
         self.sigma_multiplier = sigma_multiplier
         self.sigma_init = std
-        resnet = torchvision.models.resnet18(
-            weights=torchvision.models.ResNet18_Weights.IMAGENET1K_V1)
+        resnet = resnet18(
+            weights=ResNet18_Weights.IMAGENET1K_V1)
         # remove classifier layers
         self.features = MetaBayesSequential(*list(resnet.children())[:-1])
-
         self.features = self._replace_layers(self.features)
         # freeze feature extractor
         if frozen == True:
             for param in self.features.parameters():
                 param.requires_grad = False
                 param.grad = None
-
-        self.transform = torchvision.models.ResNet18_Weights.IMAGENET1K_V1.transforms()
         layers.insert(0, list(resnet.children())[-1].in_features)
         ## CLASSIFIER INITIALIZATION ##
         self.classifier = BayesianNN(layers=layers,
@@ -172,7 +170,6 @@ class ResNet18Bayesian(Module):
             torch.Tensor: Output tensor
 
         """
-        x = self.transform(x)
         x = self.features(x, 1)
         return self.classifier(x)
 

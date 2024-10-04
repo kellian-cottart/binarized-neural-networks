@@ -58,7 +58,6 @@ class ResNet18(Module):
         # remove classifier layers
         self.features = Sequential(*list(resnet.children())[:-1])
         layers.insert(0, list(resnet.children())[-1].in_features)
-        self.transform = torchvision.models.ResNet18_Weights.IMAGENET1K_V1.transforms()
         # freeze feature extractor
         if frozen == True:
             for param in self.features.parameters():
@@ -92,7 +91,6 @@ class ResNet18(Module):
             torch.Tensor: Output tensor
 
         """
-        x = self.transform(x)
         x = self.features(x)
         return self.classifier(x)
 

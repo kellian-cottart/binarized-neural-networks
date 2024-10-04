@@ -425,6 +425,10 @@ class GPULoading:
         training_data = training_data.reshape(-1, 3, 32, 32)
         test_data = test_data.reshape(-1, 3, 32, 32)
         training_data, test_data = self.normalization(training_data, test_data)
+        rescale = v2.Resize(224)
+        training_data = rescale(training_data)
+        test_data = rescale(test_data)
+        # scale data to imagenet size
         # I want to retrieve the class number for each fine label, and sort them by coarse label
         fine_to_coarse = {}
         for (fine, coarse) in zip(fine_labels, coarse_labels):
@@ -458,14 +462,14 @@ class GPULoading:
                 if fine in dataset_fine_classes:
                     train_x.append(training_data[j])
                     train_y.append(coarse_labels[j])
-            train_x = from_numpy(np.array(train_x).reshape(-1, 3, 32, 32))
+            train_x = from_numpy(np.array(train_x).reshape(-1, 3, 224, 224))
             train_y = from_numpy(np.array(train_y))
             # testing data
             for j, fine in enumerate(test_fine_labels):
                 if fine in dataset_fine_classes:
                     test_x.append(test_data[j])
                     test_y.append(test_coarse_labels[j])
-            test_x = from_numpy(np.array(test_x).reshape(-1, 3, 32, 32))
+            test_x = from_numpy(np.array(test_x).reshape(-1, 3, 224, 224))
             test_y = from_numpy(np.array(test_y))
             # normalize and pad the data
             train_dataset, test_dataset = self.to_dataset(
