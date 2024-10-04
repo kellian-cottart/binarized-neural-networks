@@ -314,13 +314,13 @@ class GPUTrainer:
                 batch_params=batch_params)
         return predictions, labels
 
-    def epoch_step(self, batch_size, test_batch_size, train_dataset, test_dataset, task_id, permutations, epoch, epochs, continual=False, batch_params=None):
+    def epoch_step(self, batch_size, test_batch_size, train_dataset, test_dataset, task_id, permutations, epoch, epochs, pbar=True, continual=False, batch_params=None):
         task_train_dataset = train_dataset[task_id] if isinstance(
             train_dataset, list) else train_dataset
         num_batches = len(task_train_dataset) // batch_size
         task_train_dataset.shuffle()
-        pbar = tqdm(range(num_batches))
-        for n_batch in pbar:
+        bar = tqdm(range(num_batches)) if pbar else range(num_batches)
+        for n_batch in bar:
             ### TRAINING ###
             batch, labels = batch_yielder(
                 dataset=task_train_dataset,
@@ -334,9 +334,9 @@ class GPUTrainer:
                 continual=continual
             )
             self.batch_step(batch, labels)
-            if n_batch % 100 == 0:
+            if n_batch % 100 == 0 and pbar:
                 self.pbar_update(
-                    pbar, epoch, n_epochs=epochs, n_tasks=self.n_tasks, task_id=task_id)
+                    bar, epoch, n_epochs=epochs, n_tasks=self.n_tasks, task_id=task_id)
         if batch_params is not None:
             batch_params[task_id] = self.model.save_bn_states()
         ### TESTING ###

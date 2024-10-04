@@ -16,6 +16,7 @@ SEED = 1000  # Random seed
 N_NETWORKS = 1  # Number of networks to train
 DEVICE = device("cuda:0")
 GRAPHS = True
+PBAR = False
 MODULO = 10
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
@@ -202,6 +203,7 @@ if __name__ == "__main__":
                                                                  test_dataset=test_dataset,
                                                                  task_id=i,
                                                                  permutations=permutations,
+                                                                 pbar=PBAR,
                                                                  epoch=epoch,
                                                                  epochs=epochs,
                                                                  continual=data["training_parameters"]["continual"],
