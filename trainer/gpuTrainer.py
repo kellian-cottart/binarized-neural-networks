@@ -152,7 +152,7 @@ class GPUTrainer:
                 diagonal[i][j] = hessian[i][j]
         return diagonal
 
-    def evaluate(self, test_loader, batch_size=1024, train_loader=None, batch_params=None, permutations=None):
+    def evaluate(self, test_loader, batch_size=1024, train_loader=None, batch_params=None, permutations=None, save_acc=True):
         """ Evaluate the model on the test sets
 
         Args:
@@ -184,8 +184,9 @@ class GPUTrainer:
             labels.append(torch.cat(target_batch))
             test.append(torch.mean(torch.tensor(batch)))
         test = torch.tensor(test)
-        self.testing_accuracy.append(test)
-        self.mean_testing_accuracy.append(test.mean())
+        if save_acc:
+            self.testing_accuracy.append(test)
+            self.mean_testing_accuracy.append(test.mean())
         # ### TRAINING SET ###
         # Conditional, we only compute the training accuracy if the training data is provided
         if train_loader is not None:
@@ -203,7 +204,8 @@ class GPUTrainer:
                     target_batch.append(targets)
                 train.append(torch.mean(torch.tensor(batch)))
             train = torch.tensor(train)
-            self.training_accuracy.append(train)
+            if save_acc:
+                self.training_accuracy.append(train)
         return test_predictions, labels
 
     def predict(self, inputs):

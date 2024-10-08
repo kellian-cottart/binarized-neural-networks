@@ -17,6 +17,7 @@ N_NETWORKS = 1  # Number of networks to train
 DEVICE = device("cuda:0")
 GRAPHS = True
 PBAR = True
+TEST_OOD = True
 MODULO = 10
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
@@ -35,7 +36,7 @@ if __name__ == "__main__":
     networks_data = [
         {
             "image_padding": 0,
-            "nn_type": models.ResNet18Bayesian,
+            "nn_type": models.BayesianNN,
             "nn_parameters": {
                 # NETWORK ###
                 "layers": [512],
@@ -48,7 +49,7 @@ if __name__ == "__main__":
                 "n_samples_test": 5,
                 "n_samples_train": 5,
                 "tau": 1,
-                "std": sqrt(1e-4),
+                "std": 0.075,
                 "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
@@ -64,9 +65,9 @@ if __name__ == "__main__":
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 10,
+                'n_epochs': 1,
                 'batch_size': 128,
-                'test_batch_size': 128,
+                'test_batch_size': 1,
                 'feature_extraction': False,
                 'data_aug_it': 1,
                 'full': False,
@@ -79,13 +80,13 @@ if __name__ == "__main__":
             "reduction": "sum",
             "optimizer": MESU,
             "optimizer_parameters": {
-                "sigma_prior": sqrt(1e-2),
+                "sigma_prior": 0.075,
                 "mu_prior": 0,
-                "N_mu": 1_000_000,
-                "N_sigma": 1_000_000,
+                "N_mu": 1e6,
+                "N_sigma": 1e6,
                 "lr_mu": 1,
                 "lr_sigma": 1,
-                "norm_term": False,
+                "clamp_grad": 1,
             },
             # "optimizer": BHUparallel,
             # "optimizer_parameters": {
@@ -113,8 +114,8 @@ if __name__ == "__main__":
             #     "normalise_grad_mu": 0,
             #     "noise_variance": 0,
             # },
-            "task": "DILCIFAR100",
-            "n_tasks": 5,
+            "task": "PermutedMNIST",
+            "n_tasks": 10,
             "n_classes": 1,
         }
     ]
@@ -144,6 +145,9 @@ if __name__ == "__main__":
             ### LOADING DATASET ###
             train_dataset, test_dataset, shape, target_size = loader.task_selection(
                 task=data["task"], n_tasks=data["n_tasks"], batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"], run=iteration, full=data["training_parameters"]["full"] if "full" in data["training_parameters"] else False)
+            if TEST_OOD:
+                emnist_train, _, _, _ = loader.task_selection(
+                    task="EMNIST", n_tasks=1, batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"],  run=iteration, full=data["training_parameters"]["full"] if "full" in data["training_parameters"] else False)
             if iteration == 0:
                 data['nn_parameters']['layers'].append(target_size)
 
@@ -209,10 +213,13 @@ if __name__ == "__main__":
                                                                  continual=data["training_parameters"]["continual"],
                                                                  batch_params=batch_params if data["optimizer"] in [
                                                                      MetaplasticAdam] and net_trainer.model.affine and data["training_parameters"]["task_boundaries"] else None)
-                    ### EXPORT VISUALIZATION OF PARAMETERS ###
-                    if GRAPHS:
-                        graphs(main_folder=main_folder, net_trainer=net_trainer, task=i,
-                               n_tasks=data["n_tasks"], epoch=epoch, predictions=predictions, labels=labels, modulo=MODULO)
+                if TEST_OOD:
+                    emnist_pred, emnist_labels = net_trainer.evaluate(
+                        test_loader=[emnist_train], save_acc=False)
+                ### EXPORT VISUALIZATION OF PARAMETERS ###
+                if GRAPHS and (epoch % MODULO == 0 or epoch == epochs - 1):
+                    graphs(main_folder=main_folder, net_trainer=net_trainer, task=i,
+                           n_tasks=data["n_tasks"], epoch=epoch, predictions=predictions, labels=labels, ood_predictions=emnist_pred if TEST_OOD else None, ood_labels=emnist_labels if TEST_OOD else None)
                 ### TASK BOUNDARIES ###
                 if data["training_parameters"]["task_boundaries"] == True and isinstance(net_trainer.optimizer, BayesBiNN):
                     net_trainer.optimizer.update_prior_lambda()

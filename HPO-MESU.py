@@ -60,13 +60,11 @@ def train_iteration(trial):
         trial (optuna.Trial): Optuna trial
     """
     ### OPTIM PARAMETERS ###
-    sigma_init = trial.suggest_float("sigma_init", 1e-4, 1e-1, log=True)
-    sigma_prior = trial.suggest_float("sigma_prior", 1e-3, 1e-1, log=True)
-    N_mu = trial.suggest_int("N_mu", 10_000, 10_000_000)
-    N_sigma = trial.suggest_int("N_sigma", 10_000, 10_000_000)
+    sigma_init = trial.suggest_float("sigma_init", 1e-4, 5e-1, log=True)
+    N_mu = 1e6
     lr_mu = trial.suggest_float("lr_mu", 1e-3, 100, log=True)
-    lr_sigma = trial.suggest_float("lr_sigma", 1e-3, 100, log=True)
-
+    activation_function = trial.suggest_categorical(
+        "activation_function", ["relu"])
     ### TASK PARAMETERS ###
     seed = trial.suggest_categorical(
         "seed", [1000])
@@ -80,8 +78,6 @@ def train_iteration(trial):
         "n_tasks", [parser.parse_args().n_tasks])
     n_classes = trial.suggest_categorical(
         "n_classes", [parser.parse_args().n_classes])
-    sigma_multiplier = trial.suggest_float(
-        "sigma_multiplier", 1e-1, 1e1, log=True)
     # should be an array of integers
     layers = [int(i) for i in parser.parse_args().layers.split(
         "-")] if parser.parse_args().layers != "" else []
@@ -96,7 +92,7 @@ def train_iteration(trial):
     ### NETWORK CONFIGURATION ###
     data = {
         "image_padding": 0,
-        "nn_type": models.ResNet18Bayesian,
+        "nn_type": models.BayesianNN,
         "nn_parameters": {
             # NETWORK ###
             "layers": layers,
@@ -110,7 +106,7 @@ def train_iteration(trial):
             "n_samples_train": 5,
             "tau": 1,
             "std": sigma_init,
-            "activation_function": "relu",
+            "activation_function": activation_function,
             "activation_parameters": {
                 "width": 1,
                 "power": 2,
@@ -121,13 +117,13 @@ def train_iteration(trial):
             "running_stats": False,
             "affine": False,
             "frozen": False,
-            "sigma_multiplier": sigma_multiplier,
+            "sigma_multiplier": 1,
             "version": 0,
         },
         "training_parameters": {
             'n_epochs': epochs,
             'batch_size': batch_size,
-            'test_batch_size': batch_size,
+            'test_batch_size': 128,
             'feature_extraction': False,
             'data_aug_it': 1,
             'full': False,
@@ -140,12 +136,12 @@ def train_iteration(trial):
         "reduction": "sum",
         "optimizer": MESU,
         "optimizer_parameters": {
-            "sigma_prior": sigma_prior,
+            "sigma_prior": sigma_init,
             "mu_prior": 0,
             "N_mu": N_mu,
-            "N_sigma": N_sigma,
+            "N_sigma": N_mu,
             "lr_mu": lr_mu,
-            "lr_sigma": lr_sigma,
+            "lr_sigma": lr_mu,
             "norm_term": False,
         },
         # "optimizer": SGD,

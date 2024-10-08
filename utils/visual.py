@@ -9,45 +9,47 @@ from optimizers import *
 # plt.switch_backend('agg')
 
 
-def graphs(main_folder, net_trainer, task, n_tasks, epoch, predictions=None, labels=None, modulo=10):
-    if (epoch % modulo == modulo-1 or epoch == 0):
-        # print predicted and associated certainty
-        visualize_certainty_task(
-            predictions=predictions,
-            labels=labels,
-            path=os.path.join(main_folder, "certainty"),
-            task=task,
-            n_tasks=n_tasks,
-            epoch=epoch,
-            log=True,
+def graphs(main_folder, net_trainer, task, n_tasks, epoch, predictions=None, labels=None, ood_predictions=None, ood_labels=None):
+
+    # print predicted and associated certainty
+    visualize_certainty_task(
+        predictions=predictions,
+        labels=labels,
+        path=os.path.join(main_folder, "certainty"),
+        task=task,
+        n_tasks=n_tasks,
+        epoch=epoch,
+        log=True,
+        ood_predictions=ood_predictions,
+        ood_labels=ood_labels,
+    )
+    params = list(net_trainer.model.parameters())
+    grad = [param.grad for param in params if param.grad is not None]
+    if grad != []:
+        visualize_grad(
+            parameters=params,
+            grad=grad,
+            path=os.path.join(main_folder, "grad"),
+            task=task+1,
+            epoch=epoch+1,
         )
-        # params = list(net_trainer.model.parameters())
-        # grad = [param.grad for param in params if param.grad is not None]
-        # if grad != []:
-        #     visualize_grad(
-        #         parameters=params,
-        #         grad=grad,
-        #         path=os.path.join(main_folder, "grad"),
-        #         task=task+1,
-        #         epoch=epoch+1,
-        #     )
-        # visualize_lambda(
-        #     parameters=params,
-        #     lambda_=params if not isinstance(
-        #         net_trainer.optimizer, BayesBiNN) else net_trainer.optimizer.state['lambda'],
-        #     path=os.path.join(main_folder, "lambda"),
-        #     threshold=None,
-        #     task=task+1,
-        #     epoch=epoch+1,
-        # )
-        # if hasattr(net_trainer.optimizer, 'state') and net_trainer.optimizer.state['lr'] != {}:
-        #     visualize_lr(
-        #         parameters=params,
-        #         lr=net_trainer.optimizer.state['lr'],
-        #         path=os.path.join(main_folder, "lr"),
-        #         task=task+1,
-        #         epoch=epoch+1,
-        #     )
+    visualize_lambda(
+        parameters=params,
+        lambda_=params if not isinstance(
+            net_trainer.optimizer, BayesBiNN) else net_trainer.optimizer.state['lambda'],
+        path=os.path.join(main_folder, "lambda"),
+        threshold=None,
+        task=task+1,
+        epoch=epoch+1,
+    )
+    if hasattr(net_trainer.optimizer, 'state') and net_trainer.optimizer.state['lr'] != {}:
+        visualize_lr(
+            parameters=params,
+            lr=net_trainer.optimizer.state['lr'],
+            path=os.path.join(main_folder, "lr"),
+            task=task+1,
+            epoch=epoch+1,
+        )
 
 
 def versionning(folder, title, format=".pdf"):
@@ -422,7 +424,7 @@ def visualize_lambda(parameters, lambda_, path, threshold=10, task=None, epoch=N
     plt.close()
 
 
-def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoch=None, log=True):
+def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoch=None, log=True, ood_predictions=None, ood_labels=None):
     """ Visualize the certainty of the model with respected to correct and incorrect predictions
 
     Args:
@@ -453,6 +455,26 @@ def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoc
     sum_aleatoric = torch.sum(aleatoric, dim=0)
     sum_epistemic = torch.sum(epistemic, dim=0)
 
+    # Do the same but for the out of distribution data
+    if ood_predictions is not None:
+        ood_concat_predictions = torch.cat(ood_predictions, dim=1)
+        if log == True:
+            ood_concat_predictions = torch.exp(ood_concat_predictions)
+        ood_concat_labels = torch.cat(ood_labels, dim=0)
+        aleatoric = torch.zeros(
+            (ood_concat_predictions.shape[2], ood_concat_predictions.shape[1]))
+        epistemic = torch.zeros(
+            (ood_concat_predictions.shape[2], ood_concat_predictions.shape[1]))
+        # Compute the uncertainty associated with each class
+        for k in ood_concat_labels.unique():
+            alea_uncertainty, epi_uncertainty = compute_task_uncertainty(
+                ood_concat_predictions[:, :, k])
+            aleatoric[k] = alea_uncertainty
+            epistemic[k] = epi_uncertainty
+        # vectors are (n_classes, n_elements)
+        ood_sum_aleatoric = torch.sum(aleatoric, dim=0)
+        ood_sum_epistemic = torch.sum(epistemic, dim=0)
+
     seen_indexes = torch.cat(
         [pred for pred in predictions[:task+1]], dim=1).shape[1]
     mean_predictions = torch.mean(concat_predictions, dim=0)
@@ -476,13 +498,14 @@ def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoc
         aleatoric_seen[false_predictions], bins=bins, min=minimum, max=maximum).detach().cpu()
     unseen_hist = torch.histc(
         aleatoric_unseen, bins=bins, min=minimum, max=maximum).detach().cpu()
+
+    width = (maximum - minimum) / bins
     ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
-           correct_hist * 100 / len(aleatoric_seen), width=maximum/(2*bins),
-           alpha=0.5, label="Correct predictions", color='blue')
+           correct_hist * 100 / len(aleatoric_seen), width=width, alpha=0.5, label="Correct predictions", color='blue')
     ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
-           incorrect_hist * 100 / len(aleatoric_seen), width=maximum/(2*bins), alpha=0.5, label="Incorrect predictions", color='orange')
+           incorrect_hist * 100 / len(aleatoric_seen), width=width, alpha=0.5, label="Incorrect predictions", color='orange')
     ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
-           unseen_hist * 100 / len(aleatoric_unseen), width=maximum/(2*bins), alpha=0.5, label="Unseen predictions", color='red')
+           unseen_hist * 100 / len(aleatoric_unseen), width=width, alpha=0.5, label="Unseen predictions", color='red')
     ax.set_xlabel('Aleatoric Uncertainty [-]')
     ax.set_ylabel('Histogram [%]')
     ax.legend(frameon=False)
@@ -509,13 +532,14 @@ def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoc
         epistemic_seen[false_predictions], bins=bins, min=minimum, max=maximum).detach().cpu()
     unseen_hist = torch.histc(
         epistemic_unseen, bins=bins, min=minimum, max=maximum).detach().cpu()
+    width = (maximum - minimum) / bins
     ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
-           correct_hist * 100 / len(epistemic_seen), width=maximum/bins,
+           correct_hist * 100 / len(epistemic_seen), width=width,
            alpha=0.5, label="Correct predictions", color='blue')
     ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
-           incorrect_hist * 100 / len(epistemic_seen), width=maximum/bins, alpha=0.5, label="Incorrect predictions", color='orange')
+           incorrect_hist * 100 / len(epistemic_seen), width=width, alpha=0.5, label="Incorrect predictions", color='orange')
     ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
-           unseen_hist * 100 / len(epistemic_unseen), width=maximum/bins, alpha=0.5, label="Unseen predictions", color='red')
+           unseen_hist * 100 / len(epistemic_unseen), width=width, alpha=0.5, label="Unseen predictions", color='red')
     ax.set_xlabel('Epistemic Uncertainty [-]')
     ax.set_ylabel('Histogram [%]')
     ax.legend(frameon=False)
@@ -527,6 +551,15 @@ def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoc
     # save output
     fig.savefig(versionning(
         path, f"epi-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "epi-certainty"),  bbox_inches='tight')
+    # save aleatoric and epistemic uncertainty
+    torch.save(aleatoric_seen, versionning(
+        path, f"alea-seen-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "alea-seen-certainty", ".pt"))
+    torch.save(epistemic_seen, versionning(
+        path, f"epi-seen-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "epi-seen-certainty", ".pt"))
+    torch.save(aleatoric_unseen, versionning(
+        path, f"alea-unseen-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "alea-unseen-certainty", ".pt"))
+    torch.save(epistemic_unseen, versionning(
+        path, f"epi-unseen-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "epi-unseen-certainty", ".pt"))
     plt.close()
 
     # bar plot of the epistemic uncertainty per class

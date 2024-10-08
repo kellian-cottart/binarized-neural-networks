@@ -12,6 +12,7 @@ class BayesianNN(DNN):
                  layers,
                  zeroMean=False,
                  n_samples_train=1,
+                 n_samples_test=1,
                  *args,
                  **kwargs):
         """ NN initialization
@@ -22,6 +23,7 @@ class BayesianNN(DNN):
         """
         self.zeroMean = zeroMean
         self.n_samples_train = n_samples_train
+        self.n_samples_test = n_samples_test
         if "classifier" in kwargs:
             self.classifier = kwargs["classifier"]
         super().__init__(layers, *args, **kwargs)
@@ -83,8 +85,12 @@ class BayesianNN(DNN):
             torch.Tensor: Output tensor
 
         """
-        repeat_samples = self.n_samples_train if self.n_samples_train > 1 else 1
-        samples = self.n_samples_train
+        if hasattr(kwargs, "backwards") and not kwargs["backwards"]:
+            samples = self.n_samples_test
+            repeat_samples = self.n_samples_test if self.n_samples_test > 1 else 1
+        else:
+            samples = self.n_samples_train
+            repeat_samples = self.n_samples_train if self.n_samples_train > 1 else 1
         if x.dim() == 4 and (not hasattr(self, "classifier") or self.classifier == False):
             x = x.repeat(samples, *(1,)*len(x.size()[1:]))
         out = self.layers(x, samples)

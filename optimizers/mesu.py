@@ -32,7 +32,7 @@ class MESU(Optimizer):
             - Individual priors for each synapse
     """
 
-    def __init__(self, params, lr_sigma=1, lr_mu=1, sigma_prior=0.1, mu_prior=0.1, N_mu=1e5, N_sigma=1e5, norm_term=False):
+    def __init__(self, params, lr_sigma=1, lr_mu=1, sigma_prior=0.1, mu_prior=0.1, N_mu=1e5, N_sigma=1e5, clamp_grad=0):
 
         if sigma_prior <= 0:
             raise ValueError(
@@ -44,7 +44,7 @@ class MESU(Optimizer):
             N_sigma=N_sigma,
             lr_sigma=lr_sigma,
             lr_mu=lr_mu,
-            norm_term=norm_term,
+            clamp_grad=clamp_grad,
         )
 
         super().__init__(params, defaults)
@@ -75,11 +75,11 @@ class MESU(Optimizer):
                 N_sigma=group['N_sigma'],
                 lr_sigma=group['lr_sigma'],
                 lr_mu=group['lr_mu'],
-                norm_term=group['norm_term'],
+                clamp_grad=group['clamp_grad'],
             )
 
 
-def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, mu_prior: float, N_mu: int, N_sigma: float, lr_mu: float, lr_sigma: float, norm_term: bool = False):
+def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, mu_prior: float, N_mu: int, N_sigma: float, lr_mu: float, lr_sigma: float, clamp_grad: float = 0):
     if not params:
         raise ValueError('No gradients found in parameters!')
     if len(params) % 2 == 1:
@@ -88,19 +88,16 @@ def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, mu_pr
     for sigma, mu, grad_sigma, grad_mu in zip(params[::2], params[1::2], d_p_list[::2], d_p_list[1::2]):
         grad_mu.data = grad_mu.data * lr_mu
         grad_sigma.data = grad_sigma.data * lr_sigma
+        if clamp_grad > 0:
+            grad_mu.data.clamp_(min=-clamp_grad, max=clamp_grad)
+            grad_sigma.data.clamp_(min=-clamp_grad, max=clamp_grad)
         variance = sigma.data ** 2
-        square_root = 1 / ((grad_sigma.abs()/sigma).mean()) if norm_term else 1
-        second_order_mu = 1 + variance * \
-            ((grad_mu**2) - (1/(N_mu*variance) - 1/(N_mu*(sigma_prior**2))))
-        second_order_sigma = 1 + variance * \
-            ((grad_mu**2) - (1/(N_sigma*variance) -
-             1/(N_sigma*(sigma_prior**2))))
         prior_attraction_mu = variance * \
             (mu_prior - mu.data) / N_mu * (sigma_prior ** 2)
         prior_attraction_sigma = 0.5 * sigma * \
             (sigma_prior ** 2 - variance) / (N_sigma * (sigma_prior ** 2))
         mu.data = mu.data + (-variance * grad_mu +
-                             prior_attraction_mu) / second_order_mu
-        sigma.data = sigma.data + (- 0.5 * variance * grad_sigma *
-                                   square_root + prior_attraction_sigma) / second_order_sigma
-        sigma.data.clamp_(min=1e-10, max=0.9)
+                             prior_attraction_mu)
+        sigma.data = sigma.data + \
+            (- 0.5 * variance * grad_sigma +
+             prior_attraction_sigma)
