@@ -49,7 +49,7 @@ if __name__ == "__main__":
                 "n_samples_test": 5,
                 "n_samples_train": 5,
                 "tau": 1,
-                "std": 0.075,
+                "std": 0.11,
                 "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
@@ -66,7 +66,7 @@ if __name__ == "__main__":
             },
             "training_parameters": {
                 'n_epochs': 1,
-                'batch_size': 128,
+                'batch_size': 1,
                 'test_batch_size': 1,
                 'feature_extraction': False,
                 'data_aug_it': 1,
@@ -80,7 +80,7 @@ if __name__ == "__main__":
             "reduction": "sum",
             "optimizer": MESU,
             "optimizer_parameters": {
-                "sigma_prior": 0.075,
+                "sigma_prior": 0.11,
                 "mu_prior": 0,
                 "N_mu": 1e6,
                 "N_sigma": 1e6,
@@ -88,6 +88,11 @@ if __name__ == "__main__":
                 "lr_sigma": 1,
                 "clamp_grad": 1,
             },
+            # "optimizer": BGD,
+            # "optimizer_parameters": {
+            #     "lr": 1,
+            #     "clamp_grad": 1,
+            # },
             # "optimizer": BHUparallel,
             # "optimizer_parameters": {
             #     "lr_max": 5,
@@ -147,7 +152,7 @@ if __name__ == "__main__":
                 task=data["task"], n_tasks=data["n_tasks"], batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"], run=iteration, full=data["training_parameters"]["full"] if "full" in data["training_parameters"] else False)
             if TEST_OOD:
                 emnist_train, _, _, _ = loader.task_selection(
-                    task="EMNIST", n_tasks=1, batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"],  run=iteration, full=data["training_parameters"]["full"] if "full" in data["training_parameters"] else False)
+                    task="KMNIST", n_tasks=1, batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"],  run=iteration, full=data["training_parameters"]["full"] if "full" in data["training_parameters"] else False)
             if iteration == 0:
                 data['nn_parameters']['layers'].append(target_size)
 

@@ -17,7 +17,6 @@ def graphs(main_folder, net_trainer, task, n_tasks, epoch, predictions=None, lab
         labels=labels,
         path=os.path.join(main_folder, "certainty"),
         task=task,
-        n_tasks=n_tasks,
         epoch=epoch,
         log=True,
         ood_predictions=ood_predictions,
@@ -424,7 +423,7 @@ def visualize_lambda(parameters, lambda_, path, threshold=10, task=None, epoch=N
     plt.close()
 
 
-def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoch=None, log=True, ood_predictions=None, ood_labels=None):
+def visualize_certainty_task(predictions, labels, path, task=None, epoch=None, log=True, ood_predictions=None, ood_labels=None):
     """ Visualize the certainty of the model with respected to correct and incorrect predictions
 
     Args:
@@ -454,173 +453,149 @@ def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoc
     # vectors are (n_classes, n_elements)
     sum_aleatoric = torch.sum(aleatoric, dim=0)
     sum_epistemic = torch.sum(epistemic, dim=0)
-
-    # Do the same but for the out of distribution data
-    if ood_predictions is not None:
-        ood_concat_predictions = torch.cat(ood_predictions, dim=1)
-        if log == True:
-            ood_concat_predictions = torch.exp(ood_concat_predictions)
-        ood_concat_labels = torch.cat(ood_labels, dim=0)
-        aleatoric = torch.zeros(
-            (ood_concat_predictions.shape[2], ood_concat_predictions.shape[1]))
-        epistemic = torch.zeros(
-            (ood_concat_predictions.shape[2], ood_concat_predictions.shape[1]))
-        # Compute the uncertainty associated with each class
-        for k in ood_concat_labels.unique():
-            alea_uncertainty, epi_uncertainty = compute_task_uncertainty(
-                ood_concat_predictions[:, :, k])
-            aleatoric[k] = alea_uncertainty
-            epistemic[k] = epi_uncertainty
-        # vectors are (n_classes, n_elements)
-        ood_sum_aleatoric = torch.sum(aleatoric, dim=0)
-        ood_sum_epistemic = torch.sum(epistemic, dim=0)
-
     seen_indexes = torch.cat(
         [pred for pred in predictions[:task+1]], dim=1).shape[1]
     mean_predictions = torch.mean(concat_predictions, dim=0)
-
     # in the seen indexes, get the right predictions and the wrong predictions
     correct_predictions = torch.argmax(
         mean_predictions[:seen_indexes, :], dim=1) == concat_labels[:seen_indexes].to(mean_predictions.device)
     false_predictions = torch.argmax(
         mean_predictions[:seen_indexes, :], dim=1) != concat_labels[:seen_indexes].to(mean_predictions.device)
-
-    # We want to plot the histogram of aleatoric uncertainty for correct and incorrect predictions
-    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-    bins = 50
-    minimum = torch.min(sum_aleatoric).item()
-    maximum = torch.max(sum_aleatoric).item()
-    aleatoric_seen = sum_aleatoric[:seen_indexes]
     aleatoric_unseen = sum_aleatoric[seen_indexes:]
-    correct_hist = torch.histc(
-        aleatoric_seen[correct_predictions], bins=bins, min=minimum, max=maximum).detach().cpu()
-    incorrect_hist = torch.histc(
-        aleatoric_seen[false_predictions], bins=bins, min=minimum, max=maximum).detach().cpu()
-    unseen_hist = torch.histc(
-        aleatoric_unseen, bins=bins, min=minimum, max=maximum).detach().cpu()
-
-    width = (maximum - minimum) / bins
-    ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
-           correct_hist * 100 / len(aleatoric_seen), width=width, alpha=0.5, label="Correct predictions", color='blue')
-    ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
-           incorrect_hist * 100 / len(aleatoric_seen), width=width, alpha=0.5, label="Incorrect predictions", color='orange')
-    ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
-           unseen_hist * 100 / len(aleatoric_unseen), width=width, alpha=0.5, label="Unseen predictions", color='red')
-    ax.set_xlabel('Aleatoric Uncertainty [-]')
-    ax.set_ylabel('Histogram [%]')
-    ax.legend(frameon=False)
-    ax.xaxis.set_minor_locator(AutoMinorLocator(5))
-    ax.yaxis.set_minor_locator(AutoMinorLocator(5))
-    ax.tick_params(which='both', width=1)
-    ax.tick_params(which='major', length=6)
-    ax.set_ylim(0, 50)
-    # save output
-    fig.savefig(versionning(
-        path, f"alea-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "alea-certainty"),  bbox_inches='tight')
-    plt.close()
-
-    # We want to plot the histogram of epistemic uncertainty for correct and incorrect predictions
-    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-    bins = 50
-    minimum = torch.min(sum_epistemic).item()
-    maximum = torch.max(sum_epistemic).item()
+    aleatoric_seen = sum_aleatoric[:seen_indexes]
     epistemic_seen = sum_epistemic[:seen_indexes]
     epistemic_unseen = sum_epistemic[seen_indexes:]
-    correct_hist = torch.histc(
-        epistemic_seen[correct_predictions], bins=bins, min=minimum, max=maximum).detach().cpu()
-    incorrect_hist = torch.histc(
-        epistemic_seen[false_predictions], bins=bins, min=minimum, max=maximum).detach().cpu()
-    unseen_hist = torch.histc(
-        epistemic_unseen, bins=bins, min=minimum, max=maximum).detach().cpu()
-    width = (maximum - minimum) / bins
-    ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
-           correct_hist * 100 / len(epistemic_seen), width=width,
-           alpha=0.5, label="Correct predictions", color='blue')
-    ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
-           incorrect_hist * 100 / len(epistemic_seen), width=width, alpha=0.5, label="Incorrect predictions", color='orange')
-    ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
-           unseen_hist * 100 / len(epistemic_unseen), width=width, alpha=0.5, label="Unseen predictions", color='red')
-    ax.set_xlabel('Epistemic Uncertainty [-]')
-    ax.set_ylabel('Histogram [%]')
-    ax.legend(frameon=False)
-    ax.xaxis.set_minor_locator(AutoMinorLocator(5))
-    ax.yaxis.set_minor_locator(AutoMinorLocator(5))
-    ax.tick_params(which='both', width=1)
-    ax.tick_params(which='major', length=6)
-    ax.set_ylim(0, 50)
-    # save output
-    fig.savefig(versionning(
-        path, f"epi-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "epi-certainty"),  bbox_inches='tight')
-    # save aleatoric and epistemic uncertainty
-    torch.save(aleatoric_seen, versionning(
-        path, f"alea-seen-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "alea-seen-certainty", ".pt"))
-    torch.save(epistemic_seen, versionning(
-        path, f"epi-seen-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "epi-seen-certainty", ".pt"))
-    torch.save(aleatoric_unseen, versionning(
-        path, f"alea-unseen-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "alea-unseen-certainty", ".pt"))
-    torch.save(epistemic_unseen, versionning(
-        path, f"epi-unseen-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "epi-unseen-certainty", ".pt"))
-    plt.close()
 
-    # bar plot of the epistemic uncertainty per class
-    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-    ax.bar(torch.arange(0, epistemic.shape[0]).detach().cpu(),
-           epistemic[:, 0].detach().cpu(), color='blue', label='Epistemic')
-    # stack bar aleatoric
-    ax.bar(torch.arange(0, aleatoric.shape[0]).detach().cpu(),
-           aleatoric[:, 0].detach().cpu(), bottom=epistemic[:, 0].detach().cpu(), color='red', label='Aleatoric')
-    ax.set_xlabel('Class [-]')
-    ax.set_ylabel('Uncertainty [-]')
-    ax.yaxis.set_minor_locator(AutoMinorLocator(5))
-    ax.set_xticks(torch.arange(0, epistemic.shape[0]).detach().cpu())
-    ax.text(0.5, 0.95, f"Predicted class: {torch.argmax(mean_predictions[0]).item()}", fontsize=9,
-            ha='center', va='center', transform=ax.transAxes, fontweight='bold')
-    ax.text(0.5, 0.9, f"True class: {concat_labels[0].item()}", fontsize=9,
-            ha='center', va='center', transform=ax.transAxes, fontweight='bold')
-    ax.tick_params(which='both', width=1)
-    ax.tick_params(which='major', length=6)
-    ax.legend(frameon=False)
-    ax.set_ylim(0, 0.75)
-    # save output
-    fig.savefig(versionning(
-        path, f"uncertaintyseen0-task{task+1}-epoch{epoch+1}" if epoch is not None else "uncertainty"),  bbox_inches='tight')
-    plt.close()
+    graph_uncertainty(path=path,
+                      title=f"alea-certainty-{epoch+1}-task{task+1}" if epoch is not None else "alea-certainty",
+                      seen_uncertainty=aleatoric_seen,
+                      unseen_uncertainty=aleatoric_unseen,
+                      correct_indices=correct_predictions,
+                      false_indices=false_predictions,
+                      )
+    graph_uncertainty(path=path,
+                      title=f"epi-certainty-{epoch+1}-task{task+1}" if epoch is not None else "epi-certainty",
+                      seen_uncertainty=epistemic_seen,
+                      unseen_uncertainty=epistemic_unseen,
+                      correct_indices=correct_predictions,
+                      false_indices=false_predictions,
+                      )
+    if ood_predictions is not None:
+        ood_concat_predictions = torch.cat(ood_predictions, dim=1)
+        print(ood_concat_predictions.shape, concat_predictions.shape)
+        if log == True:
+            ood_concat_predictions = torch.exp(ood_concat_predictions)
+        ood_concat_labels = torch.cat(ood_labels, dim=0)
+        ood_aleatoric = torch.zeros(
+            (ood_concat_predictions.shape[2], ood_concat_predictions.shape[1]))
+        ood_epistemic = torch.zeros(
+            (ood_concat_predictions.shape[2], ood_concat_predictions.shape[1]))
+        # Compute the uncertainty associated with each class
+        for k in ood_concat_labels.unique():
+            ood_alea_uncertainty, ood_epi_uncertainty = compute_task_uncertainty(
+                ood_concat_predictions[:, :, k])
+            ood_aleatoric[k] = ood_alea_uncertainty
+            ood_epistemic[k] = ood_epi_uncertainty
+        # vectors are (n_classes, n_elements)
+        ood_sum_aleatoric = torch.sum(ood_aleatoric, dim=0)
+        ood_sum_epistemic = torch.sum(ood_epistemic, dim=0)
+        graph_uncertainty(path=path,
+                          title=f"ood-alea-certainty-{epoch+1}-task{task+1}" if epoch is not None else "ood-alea-certainty",
+                          seen_uncertainty=aleatoric_seen,
+                          unseen_uncertainty=ood_sum_aleatoric,
+                          correct_indices=correct_predictions,
+                          false_indices=false_predictions,
+                          )
+        graph_uncertainty(path=path,
+                          title=f"ood-epi-certainty-{epoch+1}-task{task+1}" if epoch is not None else "ood-epi-certainty",
+                          seen_uncertainty=sum_epistemic[:seen_indexes],
+                          unseen_uncertainty=ood_sum_epistemic,
+                          correct_indices=correct_predictions,
+                          false_indices=false_predictions,
+                          )
 
-    seen_epistemic = sum_epistemic[:seen_indexes]
-    unseen_epistemic = sum_epistemic[seen_indexes:]
-    if len(unseen_epistemic) == 0:
-        return
-    # bar plot of the epistemic uncertainty on the first unseen
-    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
-    ax.bar(torch.arange(0, epistemic.shape[0]).detach().cpu(),
-           epistemic[:, seen_indexes+1].detach().cpu(), color='blue', label='Epistemic')
-    # stack bar aleatoric
-    ax.bar(torch.arange(0, aleatoric.shape[0]).detach().cpu(),
-           aleatoric[:, seen_indexes+1].detach().cpu(), bottom=epistemic[:, seen_indexes+1].detach().cpu(), color='red', label='Aleatoric')
-    ax.set_xlabel('Class [-]')
-    ax.set_ylabel('Uncertainty [-]')
-    ax.yaxis.set_minor_locator(AutoMinorLocator(5))
-    ax.set_xticks(torch.arange(0, epistemic.shape[0]).detach().cpu())
-    ax.text(0.5, 0.95, f"Predicted class: {torch.argmax(mean_predictions[seen_indexes+1]).item()}", fontsize=9,
-            ha='center', va='center', transform=ax.transAxes, fontweight='bold')
-    ax.text(0.5, 0.9, f"True class: {concat_labels[seen_indexes+1].item()}", fontsize=9,
-            ha='center', va='center', transform=ax.transAxes, fontweight='bold')
-    ax.tick_params(which='both', width=1)
-    ax.tick_params(which='major', length=6)
-    ax.legend(frameon=False)
-    ax.set_ylim(0, 0.75)
-    # save output
-    fig.savefig(versionning(
-        path, f"uncertaintyunseen0-task{task+1}-epoch{epoch+1}" if epoch is not None else "uncertainty"),  bbox_inches='tight')
-    plt.close()
+    # save pt file for the uncertainty
+    torch.save(aleatoric, versionning(
+        path, f"alea-certainty-{epoch+1}-task{task+1}" if epoch is not None else "alea-certainty", ".pt"))
+    torch.save(epistemic, versionning(
+        path, f"epi-certainty-{epoch+1}-task{task+1}" if epoch is not None else "epi-certainty", ".pt"))
+    if ood_predictions is not None:
+        torch.save(ood_aleatoric, versionning(
+            path, f"ood-alea-certainty-{epoch+1}-task{task+1}" if epoch is not None else "ood-alea-certainty", ".pt"))
+        torch.save(ood_epistemic, versionning(
+            path, f"ood-epi-certainty-{epoch+1}-task{task+1}" if epoch is not None else "ood-epi-certainty", ".pt"))
 
+    # # bar plot of the epistemic uncertainty per class
+    # fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+    # ax.bar(torch.arange(0, epistemic.shape[0]).detach().cpu(),
+    #        epistemic[:, 0].detach().cpu(), color='blue', label='Epistemic')
+    # # stack bar aleatoric
+    # ax.bar(torch.arange(0, aleatoric.shape[0]).detach().cpu(),
+    #        aleatoric[:, 0].detach().cpu(), bottom=epistemic[:, 0].detach().cpu(), color='red', label='Aleatoric')
+    # ax.set_xlabel('Class [-]')
+    # ax.set_ylabel('Uncertainty [-]')
+    # ax.yaxis.set_minor_locator(AutoMinorLocator(5))
+    # ax.set_xticks(torch.arange(0, epistemic.shape[0]).detach().cpu())
+    # ax.text(0.5, 0.95, f"Predicted class: {torch.argmax(mean_predictions[0]).item()}", fontsize=9,
+    #         ha='center', va='center', transform=ax.transAxes, fontweight='bold')
+    # ax.text(0.5, 0.9, f"True class: {concat_labels[0].item()}", fontsize=9,
+    #         ha='center', va='center', transform=ax.transAxes, fontweight='bold')
+    # ax.tick_params(which='both', width=1)
+    # ax.tick_params(which='major', length=6)
+    # ax.legend(frameon=False)
+    # ax.set_ylim(0, 0.75)
+    # # save output
+    # fig.savefig(versionning(
+    #     path, f"uncertaintyseen0-task{task+1}-epoch{epoch+1}" if epoch is not None else "uncertainty"),  bbox_inches='tight')
+    # plt.close()
+    # if len(epistemic_unseen) == 0:
+    #     return
+    # # bar plot of the epistemic uncertainty on the first unseen
+    # fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+    # ax.bar(torch.arange(0, epistemic.shape[0]).detach().cpu(),
+    #        epistemic[:, seen_indexes+1].detach().cpu(), color='blue', label='Epistemic')
+    # # stack bar aleatoric
+    # ax.bar(torch.arange(0, aleatoric.shape[0]).detach().cpu(),
+    #        aleatoric[:, seen_indexes+1].detach().cpu(), bottom=epistemic[:, seen_indexes+1].detach().cpu(), color='red', label='Aleatoric')
+    # ax.set_xlabel('Class [-]')
+    # ax.set_ylabel('Uncertainty [-]')
+    # ax.yaxis.set_minor_locator(AutoMinorLocator(5))
+    # ax.set_xticks(torch.arange(0, epistemic.shape[0]).detach().cpu())
+    # ax.text(0.5, 0.95, f"Predicted class: {torch.argmax(mean_predictions[seen_indexes+1]).item()}", fontsize=9,
+    #         ha='center', va='center', transform=ax.transAxes, fontweight='bold')
+    # ax.text(0.5, 0.9, f"True class: {concat_labels[seen_indexes+1].item()}", fontsize=9,
+    #         ha='center', va='center', transform=ax.transAxes, fontweight='bold')
+    # ax.tick_params(which='both', width=1)
+    # ax.tick_params(which='major', length=6)
+    # ax.legend(frameon=False)
+    # ax.set_ylim(0, 0.75)
+    # # save output
+    # fig.savefig(versionning(
+    #     path, f"uncertaintyunseen0-task{task+1}-epoch{epoch+1}" if epoch is not None else "uncertainty"),  bbox_inches='tight')
+    # plt.close()
     # We want to plot the ROC curve of the model between seen and unseen distributions
+    if len(epistemic_unseen) == 0:
+        return
+    roc_auc(path=path,
+            title=f"roc-auc-epistemic-task{task+1}-epoch{epoch+1}" if epoch is not None else "roc-auc",
+            epistemic_seen=epistemic_seen,
+            epistemic_unseen=epistemic_unseen,
+            )
+    if ood_predictions is not None:
+        roc_auc(path=path,
+                title=f"roc-auc-ood-epistemic-task{task+1}-epoch{epoch+1}" if epoch is not None else "roc-auc",
+                epistemic_seen=epistemic_seen,
+                epistemic_unseen=ood_sum_epistemic,
+                )
+
+
+def roc_auc(path, title, epistemic_seen, epistemic_unseen):
     threshold = torch.linspace(0, 1, 100).cpu()
     fpr = torch.zeros_like(threshold)
     tpr = torch.zeros_like(threshold)
     for i, t in enumerate(threshold):
-        fpr[i] = torch.sum(seen_epistemic > t).item() / len(seen_epistemic)
-        tpr[i] = torch.sum(unseen_epistemic > t).item() / len(unseen_epistemic)
+        fpr[i] = torch.sum(epistemic_seen > t).item() / len(epistemic_seen)
+        tpr[i] = torch.sum(epistemic_unseen > t).item() / len(epistemic_unseen)
 
     fig, ax = plt.subplots(1, 1, figsize=(5, 5))
     ax.text(0.5, 0.95, f"AUC: {-torch.trapz(tpr, fpr).item():.2f}",
@@ -637,8 +612,42 @@ def visualize_certainty_task(predictions, labels, path, n_tasks, task=None, epoc
     ax.set_ylim(0, 1)
     ax.set_xlim(0, 1)
     # save output
-    fig.savefig(versionning(
-        path, f"roc-certainty-task{task+1}-epoch{epoch+1}" if epoch is not None else "roc-certainty"),  bbox_inches='tight')
+    fig.savefig(versionning(path, title),  bbox_inches='tight')
+    plt.close()
+
+
+def graph_uncertainty(path, title, seen_uncertainty, unseen_uncertainty, correct_indices, false_indices):
+    bins = 50
+    if len(unseen_uncertainty) == 0:
+        minimum = torch.min(seen_uncertainty).item()
+        maximum = torch.max(seen_uncertainty).item()
+    else:
+        minimum = torch.min(seen_uncertainty).item()
+        maximum = torch.max(unseen_uncertainty).item()
+    correct_hist = torch.histc(
+        seen_uncertainty[correct_indices], bins=bins, min=minimum, max=maximum).detach().cpu()
+    incorrect_hist = torch.histc(
+        seen_uncertainty[false_indices], bins=bins, min=minimum, max=maximum).detach().cpu()
+    unseen_hist = torch.histc(
+        unseen_uncertainty, bins=bins, min=minimum, max=maximum).detach().cpu()
+    fig, ax = plt.subplots(1, 1, figsize=(5, 5))
+    width = (maximum - minimum) / bins
+    ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
+           correct_hist * 100 / len(seen_uncertainty), width=width, alpha=0.5, label="Correct predictions", color='blue')
+    ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
+           incorrect_hist * 100 / len(seen_uncertainty), width=width, alpha=0.5, label="Incorrect predictions", color='orange')
+    ax.bar(torch.linspace(minimum, maximum, bins).detach().cpu(),
+           unseen_hist * 100 / len(unseen_uncertainty), width=width, alpha=0.5, label="Unseen predictions", color='red')
+    ax.set_xlabel('Uncertainty [-]')
+    ax.set_ylabel('Histogram [%]')
+    ax.legend(frameon=False)
+    ax.xaxis.set_minor_locator(AutoMinorLocator(5))
+    ax.yaxis.set_minor_locator(AutoMinorLocator(5))
+    ax.tick_params(which='both', width=1)
+    ax.tick_params(which='major', length=6)
+    ax.set_ylim(0, 50)
+    # save output
+    fig.savefig(versionning(path, title), bbox_inches='tight')
     plt.close()
 
 

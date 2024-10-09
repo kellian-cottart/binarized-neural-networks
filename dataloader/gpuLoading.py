@@ -30,6 +30,11 @@ PATH_EMNIST_Y_TRAIN = "datasets/EMNIST/raw/emnist-balanced-train-labels-idx1-uby
 PATH_EMNIST_X_TEST = "datasets/EMNIST/raw/emnist-balanced-test-images-idx3-ubyte"
 PATH_EMNIST_Y_TEST = "datasets/EMNIST/raw/emnist-balanced-test-labels-idx1-ubyte"
 
+PATH_KMNIST_X_TRAIN = "datasets/KMNIST/raw/train-images-idx3-ubyte"
+PATH_KMNIST_Y_TRAIN = "datasets/KMNIST/raw/train-labels-idx1-ubyte"
+PATH_KMNIST_X_TEST = "datasets/KMNIST/raw/t10k-images-idx3-ubyte"
+PATH_KMNIST_Y_TEST = "datasets/KMNIST/raw/t10k-labels-idx1-ubyte"
+
 PATH_CIFAR10 = "datasets/cifar-10-batches-py"
 PATH_CIFAR10_DATABATCH = [
     f"{PATH_CIFAR10}/data_batch_{i}" for i in range(1, 6)]
@@ -69,6 +74,8 @@ class GPULoading:
 
         if "emnist" in task.lower():
             train, test = self.emnist(*args, **kwargs)
+        elif "kmnist" in task.lower():
+            train, test = self.kmnist(*args, **kwargs)
         elif "fullpmnist" in task.lower():
             train, test = self.permuted_mnist_full(
                 *args, **kwargs)
@@ -111,6 +118,12 @@ class GPULoading:
             datasets.EMNIST("datasets", download=True, split="balanced")
         return self.mnist_like(PATH_EMNIST_X_TRAIN, PATH_EMNIST_Y_TRAIN,
                                PATH_EMNIST_X_TEST, PATH_EMNIST_Y_TEST, *args, **kwargs)
+
+    def kmnist(self, *args, **kwargs):
+        if not os.path.exists(PATH_KMNIST_X_TRAIN):
+            datasets.KMNIST("datasets", download=True)
+        return self.mnist_like(PATH_KMNIST_X_TRAIN, PATH_KMNIST_Y_TRAIN,
+                               PATH_KMNIST_X_TEST, PATH_KMNIST_Y_TEST, *args, **kwargs)
 
     def mnist_like(self, path_train_x, path_train_y, path_test_x, path_test_y, *args, **kwargs):
         """ Load a local dataset on GPU corresponding either to MNIST or FashionMNIST
