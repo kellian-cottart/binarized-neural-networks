@@ -259,28 +259,23 @@ def visualize_lr(parameters, lr, path, task=None, epoch=None):
         current_ax = ax[i] if len(params) > 1 else ax
         title = r'Learning rate ' + \
             f"[{'x'.join([str(s) for s in lr.shape][::-1])}]"
-
         bins = 100
         mini = lr.min().item()
         maxi = lr.max().item()
         hist = torch.histc(lr, bins=bins, min=mini,
                            max=maxi).detach().cpu()
         length = torch.prod(torch.tensor(lr.shape)).item()
-
         x = torch.linspace(mini, maxi, bins).detach().cpu()
-
         current_ax.bar(x,
                        hist * 100 / length,
                        width=2*(maxi-mini)/bins,
                        zorder=2,
                        color='purple')
-
         # write on the graph the maximum value and the minimum value
         current_ax.text(0.5, 0.95, f"Max: {maxi:.6f}",
                         fontsize=6, ha='center', va='center', transform=current_ax.transAxes)
         current_ax.text(0.5, 0.9, f"Min: {lr.min().item():.6f}",
                         fontsize=6, ha='center', va='center', transform=current_ax.transAxes)
-
         current_ax.set_xlabel(r'Learning rate [-]')
         current_ax.set_ylabel(r'Histogram of learning rate [%]')
         # font of xaxis label is 6
@@ -482,7 +477,6 @@ def visualize_certainty_task(predictions, labels, path, task=None, epoch=None, l
                       )
     if ood_predictions is not None:
         ood_concat_predictions = torch.cat(ood_predictions, dim=1)
-        print(ood_concat_predictions.shape, concat_predictions.shape)
         if log == True:
             ood_concat_predictions = torch.exp(ood_concat_predictions)
         ood_concat_labels = torch.cat(ood_labels, dim=0)
@@ -646,6 +640,7 @@ def graph_uncertainty(path, title, seen_uncertainty, unseen_uncertainty, correct
     ax.tick_params(which='both', width=1)
     ax.tick_params(which='major', length=6)
     ax.set_ylim(0, 50)
+    ax.set_xlim(0)
     # save output
     fig.savefig(versionning(path, title), bbox_inches='tight')
     plt.close()
