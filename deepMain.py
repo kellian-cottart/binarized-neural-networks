@@ -18,7 +18,7 @@ DEVICE = device("cuda:0")
 GRAPHS = True
 PBAR = True
 TEST_OOD = True
-MODULO = 10
+MODULO = 1
 ### PATHS ###
 SAVE_FOLDER = "saved_deep_models"
 DATASETS_PATH = "datasets"
@@ -49,7 +49,7 @@ if __name__ == "__main__":
                 "n_samples_test": 5,
                 "n_samples_train": 5,
                 "tau": 1,
-                "std": 0.11,
+                "std": 0.1,
                 "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
@@ -67,7 +67,7 @@ if __name__ == "__main__":
             "training_parameters": {
                 'n_epochs': 1,
                 'batch_size': 1,
-                'test_batch_size': 1,
+                'test_batch_size': 128,
                 'feature_extraction': False,
                 'data_aug_it': 1,
                 'full': False,
@@ -78,21 +78,21 @@ if __name__ == "__main__":
             "output_function": "log_softmax",
             "criterion": functional.F.nll_loss,
             "reduction": "sum",
-            "optimizer": MESU,
-            "optimizer_parameters": {
-                "sigma_prior": 0.11,
-                "mu_prior": 0,
-                "N_mu": 1e6,
-                "N_sigma": 1e6,
-                "lr_mu": 1,
-                "lr_sigma": 1,
-                "clamp_grad": 1,
-            },
-            # "optimizer": BGD,
+            # "optimizer": MESU,
             # "optimizer_parameters": {
-            #     "lr": 1,
+            #     "sigma_prior": 0.1,
+            #     "mu_prior": 0,
+            #     "N_mu": 1e6,
+            #     "N_sigma": 1e6,
+            #     "lr_mu": 1,
+            #     "lr_sigma": 1,
             #     "clamp_grad": 1,
             # },
+            "optimizer": BGD,
+            "optimizer_parameters": {
+                "lr": 1,
+                "clamp_grad": 1,
+            },
             # "optimizer": BHUparallel,
             # "optimizer_parameters": {
             #     "lr_max": 5,
@@ -120,7 +120,7 @@ if __name__ == "__main__":
             #     "noise_variance": 0,
             # },
             "task": "PermutedMNIST",
-            "n_tasks": 10,
+            "n_tasks": 100,
             "n_classes": 1,
         }
     ]
@@ -218,13 +218,14 @@ if __name__ == "__main__":
                                                                  continual=data["training_parameters"]["continual"],
                                                                  batch_params=batch_params if data["optimizer"] in [
                                                                      MetaplasticAdam] and net_trainer.model.affine and data["training_parameters"]["task_boundaries"] else None)
-                if TEST_OOD:
-                    emnist_pred, emnist_labels = net_trainer.evaluate(
-                        test_loader=[emnist_train], save_acc=False)
-                ### EXPORT VISUALIZATION OF PARAMETERS ###
-                if GRAPHS and (epoch % MODULO == 0 or epoch == epochs - 1):
-                    graphs(main_folder=main_folder, net_trainer=net_trainer, task=i,
-                           n_tasks=data["n_tasks"], epoch=epoch, predictions=predictions, labels=labels, ood_predictions=emnist_pred if TEST_OOD else None, ood_labels=emnist_labels if TEST_OOD else None)
+
+                    ### EXPORT VISUALIZATION OF PARAMETERS ###
+                    if GRAPHS and (epoch % MODULO == 0 or epoch == epochs - 1):
+                        if TEST_OOD:
+                            emnist_pred, emnist_labels = net_trainer.evaluate(
+                                test_loader=[emnist_train], save_acc=False)
+                        graphs(main_folder=main_folder, net_trainer=net_trainer, task=i,
+                               n_tasks=data["n_tasks"], epoch=epoch, predictions=predictions, labels=labels, ood_predictions=emnist_pred if TEST_OOD else None, ood_labels=emnist_labels if TEST_OOD else None)
                 ### TASK BOUNDARIES ###
                 if data["training_parameters"]["task_boundaries"] == True and isinstance(net_trainer.optimizer, BayesBiNN):
                     net_trainer.optimizer.update_prior_lambda()

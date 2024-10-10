@@ -14,13 +14,10 @@ class MetaBayesSequential(Sequential):
     def __init__(self, *args):
         super().__init__(*args)
 
-    def forward(self, x, samples):
+    def forward(self, x, samples, *args, **kwargs):
         for module in self:
             if "Meta" in module.__class__.__name__:
-
-                # if isinstance(module, MetaBayesConv2d) or isinstance(module, MetaBayesLinearParallel):
-                #     print(f"{module.__class__.__name__}\t{module.weight.sigma.data.min().item()}\t{module.weight.sigma.data.max().item()}\t{module.weight.sigma.data.mean().item()}")
-                x = module(x, samples)
+                x = module(x, samples, *args, **kwargs)
             else:
                 x = module(x)
         return x
@@ -41,17 +38,13 @@ class MetaBayesMBConv(MBConv):
 class MetaBayesBasicBlock(BasicBlock):
     def forward(self, x: Tensor, samples: int) -> Tensor:
         identity = x
-
         out = self.conv1(x, samples)
         out = self.bn1(out, samples)
         out = self.relu(out)
-
         out = self.conv2(out, samples)
         out = self.bn2(out, samples)
-
         if self.downsample is not None:
             identity = self.downsample(x, samples)
-
         out += identity
         out = self.relu(out)
         return out

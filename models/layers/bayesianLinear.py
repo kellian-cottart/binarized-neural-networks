@@ -53,9 +53,9 @@ class MetaBayesLinearParallel(Module):
             init.constant_(self.bias.sigma, self.sigma_init)
             # init.constant_(self.bias.sigma2, self.sigma_init)
 
-    def forward(self, x: Tensor, samples: int) -> Tensor:
+    def forward(self, x: Tensor, samples: int, *args, **kwargs) -> Tensor:
         """Forward pass using sampled weights and biases."""
-        W = self.weight.sample(samples)
+        W = self.weight.sample(samples, *args, **kwargs)
         x = x.reshape(samples, x.size(0)//samples, x.size(1))
         if self.bias:
             B = self.bias.sample(samples).unsqueeze(1).repeat(1, x.size(1), 1)

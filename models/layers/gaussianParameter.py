@@ -65,14 +65,14 @@ class GaussianParameter(Module):
         self.mu = Parameter(
             empty_like(self.sigma, **factory_kwargs))
 
-    def sample(self, samples=1):
+    def sample(self, samples=1, *args, **kwargs):
         """Sample from the Gaussian distribution using the reparameterization trick."""
         # Sample from the standard normal and adjust with sigma and mu
         if samples == 0:
             return self.mu.unsqueeze(0)
         sigma = self.sigma.repeat(samples, *([1] * (len(self.sigma.size()))))
         mu = self.mu.repeat(samples, *([1] * (len(self.mu.size()))))
-        return sigma * empty_like(sigma).normal_() + mu
+        return mu + sigma * empty_like(sigma).normal_()
 
     def extra_repr(self):
         return f"mu={self.mu.size()}, sigma={self.sigma.size()}"
