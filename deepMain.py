@@ -46,8 +46,8 @@ if __name__ == "__main__":
                 "device": DEVICE,
                 "dropout": False,
                 "bias": False,
-                "n_samples_test": 5,
-                "n_samples_train": 5,
+                "n_samples_test": 8,
+                "n_samples_train": 16,
                 "tau": 1,
                 "std": 0.1,
                 "activation_function": "relu",
@@ -78,21 +78,20 @@ if __name__ == "__main__":
             "output_function": "log_softmax",
             "criterion": functional.F.nll_loss,
             "reduction": "sum",
-            # "optimizer": MESU,
+            "optimizer": MESU,
+            "optimizer_parameters": {
+                "mu_prior": 0,
+                "N_mu": 600_000,
+                "N_sigma": 600_000,
+                "lr_mu": 1,
+                "lr_sigma": 1,
+                "clamp_grad": 0.1,
+            },
+            # "optimizer": BGD,
             # "optimizer_parameters": {
-            #     "sigma_prior": 0.1,
-            #     "mu_prior": 0,
-            #     "N_mu": 1e6,
-            #     "N_sigma": 1e6,
-            #     "lr_mu": 1,
-            #     "lr_sigma": 1,
+            #     "lr": 1,
             #     "clamp_grad": 1,
             # },
-            "optimizer": BGD,
-            "optimizer_parameters": {
-                "lr": 1,
-                "clamp_grad": 1,
-            },
             # "optimizer": BHUparallel,
             # "optimizer_parameters": {
             #     "lr_max": 5,
@@ -101,7 +100,7 @@ if __name__ == "__main__":
             # },
             # "optimizer": SGD,
             # "optimizer_parameters": {
-            #     "lr": 0.0001,
+            #     "lr": 0.001,
             # },
             # "optimizer": MESUDET,
             # "optimizer_parameters": {
@@ -120,7 +119,7 @@ if __name__ == "__main__":
             #     "noise_variance": 0,
             # },
             "task": "PermutedMNIST",
-            "n_tasks": 100,
+            "n_tasks": 10,
             "n_classes": 1,
         }
     ]

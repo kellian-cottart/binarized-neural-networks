@@ -79,6 +79,15 @@ class GPULoading:
         elif "fullpmnist" in task.lower():
             train, test = self.permuted_mnist_full(
                 *args, **kwargs)
+        elif "mnist" in task.lower() and "fashion" in task.lower():
+            train = []
+            test = []
+            mnist_train, mnist_test = self.mnist(*args, **kwargs)
+            fashion_train, fashion_test = self.fashion_mnist(*args, **kwargs)
+            train.append(mnist_train)
+            train.append(fashion_train)
+            test.append(mnist_test)
+            test.append(fashion_test)
         elif "mnist" in task.lower():
             train, test = self.mnist(*args, **kwargs)
         elif "fashion" in task.lower():

@@ -38,7 +38,6 @@ class BayesianNN(DNN):
         self.layers = MetaBayesSequential(*self.layers)
         self.layers.append(Flatten(start_dim=1).to(self.device))
         for i, _ in enumerate(layers[:-1]):
-            print(layers[i], layers[i+1])
             self.layers.append(MetaBayesLinearParallel(
                 in_features=layers[i],
                 out_features=layers[i+1],
