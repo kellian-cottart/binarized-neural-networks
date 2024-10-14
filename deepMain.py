@@ -39,7 +39,7 @@ if __name__ == "__main__":
             "nn_type": models.BayesianNN,
             "nn_parameters": {
                 # NETWORK ###
-                "layers": [512],
+                "layers": [50],
                 # "features": [16, 32, 64],
                 "kernel_size": [3, 3, 3],
                 "padding": "same",
@@ -47,9 +47,9 @@ if __name__ == "__main__":
                 "dropout": False,
                 "bias": False,
                 "n_samples_test": 8,
-                "n_samples_train": 16,
+                "n_samples_train": 8,
                 "tau": 1,
-                "std": 0.1,
+                "std": 0.15,
                 "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
@@ -81,8 +81,8 @@ if __name__ == "__main__":
             "optimizer": MESU,
             "optimizer_parameters": {
                 "mu_prior": 0,
-                "N_mu": 600_000,
-                "N_sigma": 600_000,
+                "N_mu": N,
+                "N_sigma": N,
                 "lr_mu": 1,
                 "lr_sigma": 1,
                 "clamp_grad": 0.1,
@@ -90,7 +90,7 @@ if __name__ == "__main__":
             # "optimizer": BGD,
             # "optimizer_parameters": {
             #     "lr": 1,
-            #     "clamp_grad": 1,
+            #     "clamp_grad": 0.05,
             # },
             # "optimizer": BHUparallel,
             # "optimizer_parameters": {
@@ -118,10 +118,10 @@ if __name__ == "__main__":
             #     "normalise_grad_mu": 0,
             #     "noise_variance": 0,
             # },
-            "task": "PermutedMNIST",
-            "n_tasks": 10,
+            "task": "MNIST",
+            "n_tasks": 1,
             "n_classes": 1,
-        }
+        } for N in [100_000, 200_000, 300_000]
     ]
 
     for index, data in enumerate(networks_data):

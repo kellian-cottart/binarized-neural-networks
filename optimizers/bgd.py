@@ -58,8 +58,8 @@ def bgd(params: List[Tensor], d_p_list: List[Tensor], lr: float, clamp_grad: flo
 
     for sigma, mu, grad_sigma, grad_mu in zip(params[::2], params[1::2], d_p_list[::2], d_p_list[1::2]):
         if clamp_grad > 0:
-            grad_mu.clamp_(-clamp_grad, clamp_grad)
-            grad_sigma.clamp_(-clamp_grad, clamp_grad)
+            grad_sigma.data.clamp_(min=-clamp_grad/sigma, max=clamp_grad/sigma)
+            grad_mu.data.clamp_(min=-clamp_grad/sigma, max=clamp_grad/sigma)
         variance = sigma.data ** 2
         sigma.data.add_(-0.5 * variance * grad_sigma - sigma *
                         (-1 + (1 + 0.25 * (variance * (grad_sigma ** 2))) ** 0.5))
