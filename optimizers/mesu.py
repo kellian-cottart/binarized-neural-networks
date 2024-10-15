@@ -96,10 +96,9 @@ def mesu(params: List[Tensor], d_p_list: List[Tensor], sigma_prior: float, mu_pr
         variance = sigma.data ** 2
         prior_attraction_mu = variance * \
             (mu_prior - mu.data) / N_mu * (sigma_prior ** 2)
-        prior_attraction_sigma = 0.5 * sigma * \
+        prior_attraction_sigma = sigma * \
             (sigma_prior ** 2 - variance) / (N_sigma * (sigma_prior ** 2))
         mu.data = mu.data + (-variance * grad_mu +
                              prior_attraction_mu)
-        sigma.data = sigma.data + \
-            (- 0.5 * variance * grad_sigma +
-             prior_attraction_sigma)
+        sigma.data = sigma.data + 0.5 * \
+            (- variance * grad_sigma + prior_attraction_sigma)

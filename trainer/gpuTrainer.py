@@ -278,42 +278,45 @@ class GPUTrainer:
         """
         self.model.load_state_dict(torch.load(path))
 
-    def evaluate_tasks(self, dataset, task, permutations, batch_size=128, train_dataset=None, batch_params=None):
+    def evaluate_tasks(self, dataset, task, permutations, batch_size=128, train_dataset=None, batch_params=None, save_acc=True):
         if "PermutedLabels" in task:
             dataset = dataset[0]
             predictions, labels = self.evaluate(
                 test_permuted_labels(
                     test_dataset=dataset,
-                    permutations=permutations
+                    permutations=permutations,
                 ),
                 train_loader=test_permuted_labels(
                     test_dataset=train_dataset[0] if isinstance(
                         train_dataset, list) else train_dataset,
-                    permutations=permutations
+                    permutations=permutations,
                 ) if train_dataset is not None else None,
                 batch_size=dataset.data.shape[0],
-                batch_params=batch_params)
+                batch_params=batch_params,
+                save_acc=save_acc,)
         elif "Permuted" in task:
             dataset = dataset[0]
             predictions, labels = self.evaluate(
                 test_permuted_dataset(
                     test_dataset=dataset,
-                    permutations=permutations
+                    permutations=permutations,
                 ),
                 train_loader=test_permuted_dataset(
                     test_dataset=train_dataset[0] if isinstance(
                         train_dataset, list) else train_dataset,
-                    permutations=permutations
+                    permutations=permutations,
                 ) if train_dataset is not None else None,
                 batch_size=dataset.data.shape[0],
-                batch_params=batch_params)
+                batch_params=batch_params,
+                save_acc=save_acc,)
         else:
             predictions, labels = self.evaluate(
                 dataset,
                 train_loader=train_dataset if isinstance(
                     train_dataset, list) else [train_dataset],
                 batch_size=batch_size,
-                batch_params=batch_params)
+                batch_params=batch_params,
+                save_acc=save_acc,)
         return predictions, labels
 
     def epoch_step(self, batch_size, test_batch_size, train_dataset, test_dataset, task_id, permutations, epoch, epochs, pbar=True, continual=False, batch_params=None):

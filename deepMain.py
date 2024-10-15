@@ -49,7 +49,7 @@ if __name__ == "__main__":
                 "n_samples_test": 8,
                 "n_samples_train": 8,
                 "tau": 1,
-                "std": 0.15,
+                "std": 0.2,
                 "activation_function": "relu",
                 "activation_parameters": {
                     "width": 1,
@@ -65,7 +65,7 @@ if __name__ == "__main__":
                 "version": 0,
             },
             "training_parameters": {
-                'n_epochs': 1,
+                'n_epochs': 100,
                 'batch_size': 1,
                 'test_batch_size': 128,
                 'feature_extraction': False,
@@ -78,20 +78,20 @@ if __name__ == "__main__":
             "output_function": "log_softmax",
             "criterion": functional.F.nll_loss,
             "reduction": "sum",
-            "optimizer": MESU,
-            "optimizer_parameters": {
-                "mu_prior": 0,
-                "N_mu": N,
-                "N_sigma": N,
-                "lr_mu": 1,
-                "lr_sigma": 1,
-                "clamp_grad": 0.1,
-            },
-            # "optimizer": BGD,
+            # "optimizer": MESU,
             # "optimizer_parameters": {
-            #     "lr": 1,
-            #     "clamp_grad": 0.05,
+            #     "mu_prior": 0,
+            #     "N_mu": 300_000,
+            #     "N_sigma": 300_000,
+            #     "lr_mu": 1,
+            #     "lr_sigma": 1,
+            #     "clamp_grad": 0,
             # },
+            "optimizer": BGD,
+            "optimizer_parameters": {
+                "lr": 1,
+                "clamp_grad": 0,
+            },
             # "optimizer": BHUparallel,
             # "optimizer_parameters": {
             #     "lr_max": 5,
@@ -100,7 +100,7 @@ if __name__ == "__main__":
             # },
             # "optimizer": SGD,
             # "optimizer_parameters": {
-            #     "lr": 0.001,
+            #     "lr": 0.0001,
             # },
             # "optimizer": MESUDET,
             # "optimizer_parameters": {
@@ -121,7 +121,7 @@ if __name__ == "__main__":
             "task": "MNIST",
             "n_tasks": 1,
             "n_classes": 1,
-        } for N in [100_000, 200_000, 300_000]
+        }
     ]
 
     for index, data in enumerate(networks_data):
@@ -150,8 +150,11 @@ if __name__ == "__main__":
             train_dataset, test_dataset, shape, target_size = loader.task_selection(
                 task=data["task"], n_tasks=data["n_tasks"], batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"], run=iteration, full=data["training_parameters"]["full"] if "full" in data["training_parameters"] else False)
             if TEST_OOD:
-                emnist_train, _, _, _ = loader.task_selection(
-                    task="KMNIST", n_tasks=1, batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"],  run=iteration, full=data["training_parameters"]["full"] if "full" in data["training_parameters"] else False)
+                # random permutations for mnist
+                permutations_ood = [randperm(prod(tensor(shape)))
+                                    for _ in range(data["n_tasks"])]
+                kmnist, _, _, _ = loader.task_selection(
+                    task="MNIST", n_tasks=1, batch_size=batch_size, feature_extraction=feature_extraction, iterations=data_aug_it, padding=data["image_padding"],  run=iteration, full=data["training_parameters"]["full"] if "full" in data["training_parameters"] else False)
             if iteration == 0:
                 data['nn_parameters']['layers'].append(target_size)
 
@@ -221,10 +224,10 @@ if __name__ == "__main__":
                     ### EXPORT VISUALIZATION OF PARAMETERS ###
                     if GRAPHS and (epoch % MODULO == 0 or epoch == epochs - 1):
                         if TEST_OOD:
-                            emnist_pred, emnist_labels = net_trainer.evaluate(
-                                test_loader=[emnist_train], save_acc=False)
-                        graphs(main_folder=main_folder, net_trainer=net_trainer, task=i,
-                               n_tasks=data["n_tasks"], epoch=epoch, predictions=predictions, labels=labels, ood_predictions=emnist_pred if TEST_OOD else None, ood_labels=emnist_labels if TEST_OOD else None)
+                            kmnist_pred, kmnist_labels = net_trainer.evaluate_tasks(
+                                dataset=[kmnist], task="PermutedMNIST", permutations=permutations_ood, batch_size=batch_size, save_acc=False)
+                        graphs(main_folder=main_folder, net_trainer=net_trainer, task=i, n_tasks=data["n_tasks"], epoch=epoch, predictions=predictions,
+                               labels=labels, ood_predictions=kmnist_pred if TEST_OOD else None, ood_labels=kmnist_labels if TEST_OOD else None)
                 ### TASK BOUNDARIES ###
                 if data["training_parameters"]["task_boundaries"] == True and isinstance(net_trainer.optimizer, BayesBiNN):
                     net_trainer.optimizer.update_prior_lambda()

@@ -513,6 +513,11 @@ def visualize_certainty_task(predictions, labels, path, task=None, epoch=None, l
         path, f"alea-certainty-{epoch+1}-task{task+1}" if epoch is not None else "alea-certainty", ".pt"))
     torch.save(epistemic, versionning(
         path, f"epi-certainty-{epoch+1}-task{task+1}" if epoch is not None else "epi-certainty", ".pt"))
+    # save epistemic seen and unseen
+    torch.save(epistemic_seen, versionning(
+        path, f"epi-certainty-seen-{epoch+1}-task{task+1}" if epoch is not None else "epi-seen-certainty", ".pt"))
+    torch.save(epistemic_unseen, versionning(
+        path, f"epi-certainty-unseen-{epoch+1}-task{task+1}" if epoch is not None else "epi-unseen-certainty", ".pt"))
     if ood_predictions is not None:
         torch.save(ood_aleatoric, versionning(
             path, f"ood-alea-certainty-{epoch+1}-task{task+1}" if epoch is not None else "ood-alea-certainty", ".pt"))

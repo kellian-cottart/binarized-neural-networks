@@ -1,0 +1,59 @@
+{
+    "image_padding": 0,
+    "nn_type": "BayesianNN",
+    "nn_parameters": {
+        "layers": [
+            "tensor(784, device='cuda:0')",
+            50,
+            10
+        ],
+        "kernel_size": [
+            3,
+            3,
+            3
+        ],
+        "padding": "same",
+        "device": "cuda:0",
+        "dropout": false,
+        "bias": false,
+        "n_samples_test": 8,
+        "n_samples_train": 8,
+        "tau": 1,
+        "std": 0.2,
+        "activation_function": "relu",
+        "activation_parameters": {
+            "width": 1,
+            "power": 2
+        },
+        "normalization": "",
+        "eps": 1e-05,
+        "momentum": 0.15,
+        "running_stats": false,
+        "affine": false,
+        "frozen": false,
+        "sigma_multiplier": 1,
+        "version": 0
+    },
+    "training_parameters": {
+        "n_epochs": 1,
+        "batch_size": 1,
+        "test_batch_size": 128,
+        "feature_extraction": false,
+        "data_aug_it": 1,
+        "full": false,
+        "continual": false,
+        "task_boundaries": false
+    },
+    "label_trick": false,
+    "output_function": "log_softmax",
+    "criterion": "nll_loss",
+    "reduction": "sum",
+    "optimizer": "BGD",
+    "optimizer_parameters": {
+        "lr": 1,
+        "clamp_grad": 0
+    },
+    "task": "PermutedMNIST",
+    "n_tasks": 100,
+    "n_classes": 1
+}

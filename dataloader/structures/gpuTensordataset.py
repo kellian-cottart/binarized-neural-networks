@@ -13,8 +13,8 @@ class GPUTensorDataset(Dataset):
     """
 
     def __init__(self, data, targets, device="cuda:0"):
-        self.data = data.to("cpu")
-        self.targets = targets.to("cpu")
+        self.data = data.to("cuda:0")
+        self.targets = targets.to("cuda:0")
         self.device = device
 
     def __getitem__(self, index):
@@ -27,7 +27,7 @@ class GPUTensorDataset(Dataset):
 
     def shuffle(self):
         """ Shuffle the data and targets tensors """
-        perm = randperm(len(self.data), device="cpu")
+        perm = randperm(len(self.data), device="cuda:0")
         self.data = self.data[perm]
         self.targets = self.targets[perm]
 
@@ -41,7 +41,7 @@ class GPUTensorDataset(Dataset):
 
     def __getclasses__(self, class_indexes):
         """ Return a GPUTensorDataset with only the specified classes """
-        class_indexes = tensor(class_indexes, device="cpu")
+        class_indexes = tensor(class_indexes, device="cuda:0")
         indexes = isin(self.targets, class_indexes)
         return GPUTensorDataset(self.data[indexes], self.targets[indexes], device=self.device)
 
